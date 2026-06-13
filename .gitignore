@@ -3,3 +3,6 @@ dist
 .env
 .DS_Store
 *.local
+
+# 用户放入供阅读的版权书籍，不入库
+*.docx
