@@ -17,7 +17,11 @@ export interface MovieRecord {
   synopsis: string;
 }
 
-export const movieRecords = raw as MovieRecord[];
+// 清洗：导出残留的非标准日期（如个别为「删除」）归一为空，避免显示与排序异常
+const isYMD = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+export const movieRecords: MovieRecord[] = (raw as MovieRecord[]).map((m) =>
+  isYMD(m.date) ? m : { ...m, date: '' }
+);
 export const movieTotal = movieRecords.length;
 
 // 国家/地区 → 代表城市坐标 [lng, lat]。电影偏好取「电影之都」气质的城市（美国→洛杉矶/好莱坞、印度→孟买）。
@@ -37,6 +41,7 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
 };
 
 export const movieCountry = (c: string): [number, number] | undefined => COUNTRY_COORDS[c];
+export const movieCountries = Object.keys(COUNTRY_COORDS);
 
 export interface MoviePoint extends MovieRecord { lng: number; lat: number }
 

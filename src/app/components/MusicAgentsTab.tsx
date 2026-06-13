@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import MusicAgentRunPage from './MusicAgentRunPage';
 import PodcastRunPage from './PodcastRunPage';
+import MoviesRunPage from './MoviesRunPage';
 
 interface AgentItem {
   name: string;
@@ -25,10 +26,16 @@ const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
 ];
 
 
+type Running = 'music' | 'podcast' | 'movies' | null;
+const RUN_BY_NAME: Record<string, Running> = {
+  'music-curator': 'music', 'podcast-curator': 'podcast', 'movies-curator': 'movies',
+};
+
 export default function MusicAgentsTab() {
-  const [running, setRunning] = useState<'music' | 'podcast' | null>(null);
+  const [running, setRunning] = useState<Running>(null);
   if (running === 'music') return <MusicAgentRunPage onBack={() => setRunning(null)} />;
   if (running === 'podcast') return <PodcastRunPage onBack={() => setRunning(null)} />;
+  if (running === 'movies') return <MoviesRunPage onBack={() => setRunning(null)} />;
 
   return (
     <div className="h-full flex flex-col bg-[#EAEAEA] font-sans">
@@ -52,7 +59,7 @@ export default function MusicAgentsTab() {
         <div className="font-pixel text-[8px] flex justify-between items-center tracking-wider">
           <span>CURATORS: {GROUPS[0].items.length}</span>
           <span className="opacity-50">|</span>
-          <span>RUNNABLE: 2</span>
+          <span>RUNNABLE: {Object.keys(RUN_BY_NAME).length}</span>
           <span className="opacity-50">|</span>
           <span>EDGE+CLOUD</span>
         </div>
@@ -68,11 +75,12 @@ export default function MusicAgentsTab() {
             </div>
             <div className="space-y-2">
               {g.items.map((a) => {
-                const runnable = a.name === 'music-curator' || a.name === 'podcast-curator';
+                const target = RUN_BY_NAME[a.name];
+                const runnable = !!target;
                 return (
                   <button
                     key={a.name}
-                    onClick={runnable ? () => setRunning(a.name === 'music-curator' ? 'music' : 'podcast') : undefined}
+                    onClick={runnable ? () => setRunning(target) : undefined}
                     className={`w-full text-left flex items-center gap-3 bg-white border-2 border-black p-2.5 shadow-[2px_2px_0_rgba(0,0,0,0.85)] transition-colors ${
                       runnable ? 'hover:bg-[#00ff88]/10 active:translate-y-px' : 'cursor-default'
                     }`}

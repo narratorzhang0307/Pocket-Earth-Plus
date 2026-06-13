@@ -7,7 +7,19 @@ import img5 from '../../imports/image-5.png';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import EarthMap from './EarthMap';
 import { type MarkerKind, KIND_COLOR, toGeoJSON } from '../data/mapMarkers';
+import { getUserMarks, subscribeUserMarks } from '../data/userMarks';
 import MapLegend from './MapLegend';
+
+// 合并：静态标记（音乐/照片/电影）+ 用户运行时落点（各 agent 写入），实时给地球图层
+function buildMarksData() {
+  const base = toGeoJSON();
+  const extra = getUserMarks().map((m) => ({
+    type: 'Feature' as const,
+    geometry: { type: 'Point' as const, coordinates: [m.lng, m.lat] },
+    properties: { kind: m.kind, label: m.label || '' },
+  }));
+  return { type: 'FeatureCollection' as const, features: [...base.features, ...extra] };
+}
 
 interface MyMapTabProps {
   onViewInAR?: () => void;
@@ -100,7 +112,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
         ctx.fillStyle = color; ctx.fillRect(off, off, inner, inner);
         map.addImage(id, ctx.getImageData(0, 0, s, s));
       });
-      map.addSource('marks', { type: 'geojson', data: toGeoJSON() as never });
+      map.addSource('marks', { type: 'geojson', data: buildMarksData() as never });
       map.addLayer({
         id: 'mark-layer',
         type: 'symbol',
@@ -132,6 +144,16 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
     if (map.isStyleLoaded()) apply();
     else map.once('idle', apply);
   }, [map, visibleKinds]);
+
+  // tab1 ⇄ tab2 联动：各 agent 写入用户落点后，实时刷新地球图层数据
+  useEffect(() => {
+    if (!map) return;
+    const refresh = () => {
+      const src = map.getSource('marks') as mapboxgl.GeoJSONSource | undefined;
+      if (src) src.setData(buildMarksData() as never);
+    };
+    return subscribeUserMarks(refresh);
+  }, [map]);
 
   // 细节层（照片/紫点/文字/连线）显隐程度
   const detail = clamp01((zoom - DETAIL_START) / (DETAIL_FULL - DETAIL_START));
