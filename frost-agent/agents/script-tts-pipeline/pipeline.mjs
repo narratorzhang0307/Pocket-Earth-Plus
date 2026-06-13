@@ -1,12 +1,14 @@
 // DJ 声音流水线（离线 Node 脚本）。
-// 真实可用：normalize（展示稿→口播稿）、writeback（OSS URL→audio.db）。
-// synth（MiniMax TTS）/ upload（OSS）需 API 与凭据，留接入点；本仓库不含密钥。
+// 真实可用：normalize（展示稿→口播稿）、writeback（音频托管 URL→audio.db）。
+// synth（TTS 引擎）/ upload（对象存储）需 API 与凭据，留接入点；本仓库不含密钥。
+// 数据底座：仓库根的 resource-library/audio.db（二进制不入库，schema 见 backend）。
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.resolve(HERE, '../../../../../resource-library/audio.db');
+// frost-agent/agents/script-tts-pipeline/ → 仓库根（上溯 3 层）→ resource-library/audio.db
+const DB_PATH = path.resolve(HERE, '../../../resource-library/audio.db');
 
 const CN = ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
 
@@ -34,8 +36,8 @@ if (cmd === 'normalize') {
 
 if (cmd === 'writeback') {
   const city = arg('city'), kind = arg('kind'), url = arg('url');
-  if (!city || !kind || !url) { console.error('用法: writeback --city <slug> --kind podcast|intro [--track <id>] --url <oss_url> [--text ...]'); process.exit(1); }
-  if (!url.startsWith('http')) { console.error('url 必须是 OSS 绝对地址'); process.exit(1); }
+  if (!city || !kind || !url) { console.error('用法: writeback --city <slug> --kind podcast|intro [--track <id>] --url <audio_url> [--text ...]'); process.exit(1); }
+  if (!url.startsWith('http')) { console.error('url 必须是音频托管的绝对地址'); process.exit(1); }
   const db = new DatabaseSync(DB_PATH);
   if (!db.prepare('SELECT 1 FROM cities WHERE slug=?').get(city)) { console.error('城市不存在: ' + city); process.exit(1); }
   if (kind === 'podcast') {
@@ -53,7 +55,7 @@ if (cmd === 'writeback') {
     console.log(r.changes ? `已写 DJ 解说 ${city}/${track}` : `未找到曲目 ${city}/${track}`);
   } else { console.error('kind 只能是 podcast | intro'); process.exit(1); }
   db.close();
-  console.log('接着运行: npm run radio:build');
+  console.log('接着运行: npm run library:build');
   process.exit(0);
 }
 
