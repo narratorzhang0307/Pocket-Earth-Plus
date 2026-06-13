@@ -6,6 +6,7 @@ import img4 from '../../imports/image-4.png';
 import img5 from '../../imports/image-5.png';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import EarthMap from './EarthMap';
+import musicCities from '../data/music-cities.json';
 
 interface MyMapTabProps {
   onViewInAR?: () => void;
@@ -214,6 +215,41 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
             </div>
           );
         })}
+
+        {/* 音乐城市点：全球电台城市，落到地球上；缩小到地球视角时显示城市名 */}
+        {map && (() => {
+          const container = map.getContainer();
+          const W = container.clientWidth;
+          const H = container.clientHeight;
+          // 地球档（缩小）才显示城市名，放大后隐藏，避免标签拥挤
+          const labelOpacity = clamp01((5 - zoom) / (5 - 3.2));
+          return musicCities.map((c) => {
+            // 隐藏转到背面/视野外的城市（所有缩放级别都生效，避免街道档出现投影幽灵点）
+            if (centralAngleDeg(mapCenter, [c.lng, c.lat]) > 85) return null;
+            const p = map.project([c.lng, c.lat]);
+            // 视口裁剪：放大到街道级别后，全球城市点落在视野外，不渲染
+            if (p.x < -40 || p.x > W + 40 || p.y < -40 || p.y > H + 40) return null;
+            return (
+              <div
+                key={`music-${c.slug}`}
+                className="absolute z-[5] pointer-events-none -translate-x-1/2 -translate-y-1/2"
+                style={{ left: `${p.x}px`, top: `${p.y}px` }}
+              >
+                {/* 橙色音乐点（区别于诗歌绿点） */}
+                <div className="w-2 h-2 rounded-full bg-[#ff8c5a] border border-black shadow-[0_0_6px_rgba(255,140,90,0.85)]" />
+                {/* 城市名（地球档显示） */}
+                {labelOpacity > 0.01 && (
+                  <div
+                    className="absolute left-1/2 top-2 -translate-x-1/2 whitespace-nowrap font-pixel text-[6px] text-[#ff8c5a] leading-none"
+                    style={{ opacity: labelOpacity, textShadow: '0 0 2px #000,0 0 2px #000' }}
+                  >
+                    {c.nameZh}
+                  </div>
+                )}
+              </div>
+            );
+          });
+        })()}
       </div>
     </div>
   );
