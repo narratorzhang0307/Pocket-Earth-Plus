@@ -6,8 +6,7 @@ import img4 from '../../imports/image-4.png';
 import img5 from '../../imports/image-5.png';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import EarthMap from './EarthMap';
-import MapMarkersLayer from './MapMarkersLayer';
-import { MAP_MARKERS, type MarkerKind } from '../data/mapMarkers';
+import { type MarkerKind, KIND_COLOR, toGeoJSON } from '../data/mapMarkers';
 import MapLegend from './MapLegend';
 
 interface MyMapTabProps {
@@ -81,6 +80,56 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
       map.off('zoom', onMove);
     };
   }, [map]);
+
+  // mapbox 原生标记图层：贴地 / 背面遮挡 / 重叠碰撞都交给 mapbox（symbol 图层 + 方块图标）
+  useEffect(() => {
+    if (!map) return;
+    const setup = () => {
+      if (map.getSource('marks')) return;
+      (Object.entries(KIND_COLOR) as [MarkerKind, string][]).forEach(([k, color]) => {
+        const id = 'sq-' + k;
+        if (map.hasImage(id)) return;
+        const s = 18;
+        const cv = document.createElement('canvas');
+        cv.width = s; cv.height = s;
+        const ctx = cv.getContext('2d');
+        if (!ctx) return;
+        ctx.fillStyle = '#000'; ctx.fillRect(0, 0, s, s);
+        ctx.fillStyle = color; ctx.fillRect(6, 6, 6, 6);
+        map.addImage(id, ctx.getImageData(0, 0, s, s));
+      });
+      map.addSource('marks', { type: 'geojson', data: toGeoJSON() as never });
+      map.addLayer({
+        id: 'mark-layer',
+        type: 'symbol',
+        source: 'marks',
+        layout: {
+          'icon-image': ['concat', 'sq-', ['get', 'kind']],
+          'icon-allow-overlap': false,
+          'text-field': ['case', ['==', ['get', 'kind'], 'music'], ['get', 'label'], ''],
+          'text-font': ['Arial Unicode MS Regular'],
+          'text-size': 9,
+          'text-offset': [0, 0.9],
+          'text-anchor': 'top',
+          'text-optional': true,
+        },
+        paint: { 'text-color': '#00ff88', 'text-halo-color': '#000', 'text-halo-width': 1.2 },
+      } as never);
+    };
+    if (map.isStyleLoaded()) setup();
+    else map.once('style.load', setup);
+  }, [map]);
+
+  // 图层开关：按可见类型过滤 mapbox 标记图层
+  useEffect(() => {
+    if (!map) return;
+    const apply = () => {
+      if (!map.getLayer('mark-layer')) return;
+      map.setFilter('mark-layer', ['in', ['get', 'kind'], ['literal', [...visibleKinds]]] as never);
+    };
+    if (map.isStyleLoaded()) apply();
+    else map.once('idle', apply);
+  }, [map, visibleKinds]);
 
   // 细节层（照片/紫点/文字/连线）显隐程度
   const detail = clamp01((zoom - DETAIL_START) / (DETAIL_FULL - DETAIL_START));
@@ -226,16 +275,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
           );
         })}
 
-        {/* 统一地图标记层：音乐(绿) + 照片(青)；背面隐藏 / 视口裁剪 / 重合聚合都在层内 */}
-        {map && (
-          <MapMarkersLayer
-            map={map}
-            zoom={zoom}
-            mapCenter={mapCenter}
-            markers={MAP_MARKERS}
-            visibleKinds={visibleKinds}
-          />
-        )}
+        {/* 标记点（音乐绿 / 照片青）由 mapbox symbol 图层原生渲染，见上方 useEffect */}
 
         {/* 左下角图例 + 图层开关（绿=音乐 / 青=照片，可开闭）*/}
         <MapLegend visibleKinds={visibleKinds} onToggle={toggleKind} />

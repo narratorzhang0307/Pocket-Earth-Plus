@@ -51,3 +51,15 @@ const photoMarkers: MapMarker[] = photoPoints.map((p) => {
 });
 
 export const MAP_MARKERS: MapMarker[] = [...musicMarkers, ...photoMarkers];
+
+// 转 GeoJSON，交给 mapbox symbol 图层原生渲染（贴地 / 背面遮挡 / 重叠碰撞都由 mapbox 处理）
+export function toGeoJSON() {
+  return {
+    type: 'FeatureCollection' as const,
+    features: MAP_MARKERS.map((m) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [m.lng, m.lat] },
+      properties: { kind: m.kind, label: m.label || '' },
+    })),
+  };
+}
