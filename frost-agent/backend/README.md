@@ -22,8 +22,11 @@ cities/*.json ──(seed-db)──> audio.db ──(build-library)──> citie
 ## 用法
 
 ```bash
-# 建 schema（如有 resource-library/cities/*.json 则一并灌库）
+# 1) 建 schema（如有 resource-library/cities/*.json 则一并灌库）
 node frost-agent/backend/seed-db.mjs
+
+# 2) 从 audio.db 生成前端读取的 cities/*.json
+node frost-agent/backend/build-library.mjs
 ```
 
 > 二进制 `audio.db` 与城市数据均不入库；外部音频托管 URL 与凭据只在本地。
