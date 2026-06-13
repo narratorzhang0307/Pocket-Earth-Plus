@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { ChevronLeft, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { timelineGroups, calendarPhotos, magazineYears, hasPhotos } from '../data/photos';
+import { timelineGroups, calendarMonths, magazineYears, hasPhotos } from '../data/photos';
 
 // 照片 tab —— 同一批照片以「时间 / 日历 / 杂志」三种方式分布。
 // 数据全部来自解耦的 photos 数据源（换照片只换数据源，这里不动）。
 
-const DAYS = Array.from({ length: 30 }, (_, i) => i + 1);
 const WEEK = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const SEGMENTS = ['时间', '日历', '杂志'] as const;
 type Segment = (typeof SEGMENTS)[number];
@@ -15,12 +14,15 @@ type Lightbox = { img: string; caption: string; sub?: string };
 // OSS 图片加载失败时优雅降级：隐藏失败图，露出父级灰底占位
 const onImgErr = (e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.style.opacity = '0'; };
 
-const litDays = Object.keys(calendarPhotos).length;
 
 export default function PhotosTab() {
   const [segment, setSegment] = useState<Segment>('日历');
   const [lightbox, setLightbox] = useState<Lightbox | null>(null);
   const [openYear, setOpenYear] = useState<number | null>(null);
+  const [monthIdx, setMonthIdx] = useState(0);
+  const month = calendarMonths[monthIdx] || { label: '', dim: 30, days: {} };
+  const monthDays = Array.from({ length: month.dim }, (_, i) => i + 1);
+  const cycleMonth = (d: number) => setMonthIdx((i) => (i + d + calendarMonths.length) % calendarMonths.length);
 
   return (
     <div className="h-full flex flex-col bg-[#EAEAEA] font-sans relative overflow-hidden">
@@ -99,12 +101,12 @@ export default function PhotosTab() {
             {segment === '日历' && (
               <div className="px-4 pt-4 pb-6">
                 <div className="flex justify-between items-center mb-3">
-                  <h2 className="font-pixel text-base tracking-wider">2025.06</h2>
+                  <h2 className="font-pixel text-base tracking-wider">{month.label}</h2>
                   <div className="flex gap-1.5">
-                    <button className="w-7 h-7 border-2 border-black bg-white flex items-center justify-center shadow-[1px_1px_0_#000] active:translate-y-px">
+                    <button onClick={() => cycleMonth(1)} className="w-7 h-7 border-2 border-black bg-white flex items-center justify-center shadow-[1px_1px_0_#000] active:translate-y-px">
                       <ChevronLeft className="w-3.5 h-3.5 text-black" strokeWidth={3} />
                     </button>
-                    <button className="w-7 h-7 border-2 border-black bg-white flex items-center justify-center shadow-[1px_1px_0_#000] active:translate-y-px">
+                    <button onClick={() => cycleMonth(-1)} className="w-7 h-7 border-2 border-black bg-white flex items-center justify-center shadow-[1px_1px_0_#000] active:translate-y-px">
                       <ChevronLeft className="w-3.5 h-3.5 text-black rotate-180" strokeWidth={3} />
                     </button>
                   </div>
@@ -115,16 +117,16 @@ export default function PhotosTab() {
                   ))}
                 </div>
                 <div className="grid grid-cols-7 gap-1">
-                  {DAYS.map((day) => {
-                    const p = calendarPhotos[day];
+                  {monthDays.map((day) => {
+                    const p = month.days[day];
                     if (p) {
                       return (
                         <button
                           key={day}
-                          onClick={() => setLightbox({ img: p.full, caption: `JUNE ${day}, 2025`, sub: `${p.count} 张 · LOC_SYNC` })}
+                          onClick={() => setLightbox({ img: p.full, caption: `${month.label} · ${day}`, sub: `${p.count} 张 · LOC_SYNC` })}
                           className="aspect-square relative overflow-hidden border-2 border-black shadow-[1px_1px_0_#000] active:translate-y-px bg-[#d8d8d6]"
                         >
-                          <img src={p.thumb} onError={onImgErr} alt={`June ${day}`} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all" />
+                          <img src={p.thumb} onError={onImgErr} alt={`${month.label} ${day}`} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all" />
                           <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-transparent" />
                           <span className="absolute top-0.5 left-1 font-pixel text-[8px] text-[#7CFF6B] leading-none z-10">{day}</span>
                           {p.count > 1 && (
@@ -143,7 +145,7 @@ export default function PhotosTab() {
                   })}
                 </div>
                 <div className="mt-4 text-center font-pixel text-[8px] text-black/30 tracking-widest">
-                  {litDays} DAYS LIT
+                  {Object.keys(month.days).length} DAYS LIT · {monthIdx + 1}/{calendarMonths.length}
                 </div>
               </div>
             )}

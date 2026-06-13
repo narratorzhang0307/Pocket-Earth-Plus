@@ -88,18 +88,26 @@ export const timelineGroups: TimelineGroup[] = TL_LABELS.map((l, gi) => {
   };
 });
 
-// —— 日历：2025.06，随机选若干天，每天若干张 ——
-export const calendarPhotos: Record<number, CalendarCell> = {};
-{
-  const cap = POOL.length ? 18 : 0;
-  const litDays = new Set<number>();
-  let guard = 0;
-  while (litDays.size < cap && guard++ < 400) litDays.add(1 + Math.floor(rand() * 30));
-  for (const day of litDays) {
-    const cover = take(1)[0];
-    if (cover) calendarPhotos[day] = { thumb: cover.thumb!, full: cover.full!, count: 1 + Math.floor(rand() * 20) };
+// —— 日历：多个月，每月随机选若干天（支持左右切月）——
+export interface CalendarMonth { label: string; dim: number; days: Record<number, CalendarCell> }
+const MONTHS = [
+  { y: 2025, m: 6, dim: 30 }, { y: 2025, m: 5, dim: 31 },
+  { y: 2025, m: 4, dim: 30 }, { y: 2025, m: 3, dim: 31 },
+];
+export const calendarMonths: CalendarMonth[] = MONTHS.map(({ y, m, dim }) => {
+  const days: Record<number, CalendarCell> = {};
+  if (POOL.length) {
+    const cap = 12 + Math.floor(rand() * 6);
+    const lit = new Set<number>();
+    let guard = 0;
+    while (lit.size < cap && guard++ < 400) lit.add(1 + Math.floor(rand() * dim));
+    for (const d of lit) {
+      const c = take(1)[0];
+      if (c) days[d] = { thumb: c.thumb!, full: c.full!, count: 1 + Math.floor(rand() * 15) };
+    }
   }
-}
+  return { label: `${y}.${String(m).padStart(2, '0')}`, dim, days };
+});
 
 // —— 杂志：按年份相册，每年一组 ——
 const YEARS = [2025, 2024, 2023, 2022, 2021, 2020];
