@@ -235,12 +235,14 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
                 className="absolute z-[5] pointer-events-none -translate-x-1/2 -translate-y-1/2"
                 style={{ left: `${p.x}px`, top: `${p.y}px` }}
               >
-                {/* 橙色音乐点（区别于诗歌绿点） */}
-                <div className="w-2 h-2 rounded-full bg-[#ff8c5a] border border-black shadow-[0_0_6px_rgba(255,140,90,0.85)]" />
+                {/* 绿色方块音乐点（同「上街去」地图标记：黑框 + 绿芯） */}
+                <div className="w-2.5 h-2.5 bg-black flex items-center justify-center border border-black shadow-[1px_1px_0px_#00ff88]">
+                  <div className="w-1.5 h-1.5 bg-[#00ff88]" />
+                </div>
                 {/* 城市名（地球档显示） */}
                 {labelOpacity > 0.01 && (
                   <div
-                    className="absolute left-1/2 top-2 -translate-x-1/2 whitespace-nowrap font-pixel text-[6px] text-[#ff8c5a] leading-none"
+                    className="absolute left-1/2 top-2 -translate-x-1/2 whitespace-nowrap font-pixel text-[6px] text-[#00ff88] leading-none"
                     style={{ opacity: labelOpacity, textShadow: '0 0 2px #000,0 0 2px #000' }}
                   >
                     {c.nameZh}
