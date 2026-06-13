@@ -6,19 +6,43 @@ import img4 from '../../imports/image-4.png';
 import img5 from '../../imports/image-5.png';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import EarthMap from './EarthMap';
-import { type MarkerKind, KIND_COLOR, toGeoJSON } from '../data/mapMarkers';
+import { type MarkerKind, KIND_COLOR, toGeoJSON, MAP_MARKERS, photoById, movieById, bookById } from '../data/mapMarkers';
 import { getUserMarks, subscribeUserMarks } from '../data/userMarks';
+import { AnimatePresence } from 'motion/react';
 import MapLegend from './MapLegend';
+import MarkerDetail, { type MarkerDetailData } from './MarkerDetail';
 
-// 合并：静态标记（音乐/照片/电影）+ 用户运行时落点（各 agent 写入），实时给地球图层
+// 合并：静态标记（音乐/照片/电影/书）+ 用户运行时落点（各 agent 写入），实时给地球图层
 function buildMarksData() {
   const base = toGeoJSON();
   const extra = getUserMarks().map((m) => ({
     type: 'Feature' as const,
     geometry: { type: 'Point' as const, coordinates: [m.lng, m.lat] },
-    properties: { kind: m.kind, label: m.label || '' },
+    properties: { kind: m.kind, label: m.label || '', id: m.id },
   }));
   return { type: 'FeatureCollection' as const, features: [...base.features, ...extra] };
+}
+
+// 照片标记（含 thumb/full，已带散开坐标）—— 放大后做缩略预览用
+const PHOTO_MARKERS = MAP_MARKERS.filter((m) => m.kind === 'photo');
+const PREVIEW_ZOOM = 5.5; // 放大到此缩放以上，照片以缩略图预览
+
+// 点击标记 → 取详情（用户落点优先，其次静态查找表）
+function resolveDetail(id: string, kind: MarkerKind, label: string): MarkerDetailData | null {
+  const um = getUserMarks().find((m) => m.id === id);
+  if (um) {
+    const meta = (um.meta || {}) as Record<string, unknown>;
+    if (kind === 'movie') return { kind, title: um.label, original: String(meta.original || ''), director: String(meta.director || ''), country: String(meta.country || ''), year: meta.year as number, rating: meta.rating as number, date: String(meta.date || ''), synopsis: String(meta.synopsis || '') };
+    if (kind === 'book') return { kind, title: um.label, author: String(meta.author || ''), place: String(meta.place || ''), year: meta.year as number, note: String(meta.note || '') };
+    if (kind === 'travel') return { kind, title: um.label, city: String(meta.city || ''), tag: String(meta.tag || ''), note: String(meta.note || ''), date: String(meta.date || '') };
+    if (kind === 'photo') return { kind, full: String(meta.full || ''), thumb: String(meta.thumb || ''), city: String(meta.city || um.label || '') };
+    return { kind: 'music', title: um.label };
+  }
+  if (kind === 'photo') { const p = photoById.get(id); return p ? { kind, full: p.full, thumb: p.thumb, city: (p.city || '').split(',')[0] } : null; }
+  if (kind === 'movie') { const m = movieById.get(id); return m ? { kind, title: m.title, original: m.original, director: m.director, country: m.country, year: m.year, rating: m.rating, date: m.date, synopsis: m.synopsis } : null; }
+  if (kind === 'book') { const b = bookById.get(id); return b ? { kind, title: b.title, author: b.author, place: b.place, year: b.year, note: b.note } : null; }
+  if (kind === 'music') return { kind, title: label, city: label };
+  return null;
 }
 
 interface MyMapTabProps {
@@ -77,6 +101,8 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
     });
   // 纯平移时 zoom 不变，需要强制重渲染来更新投影位置
   const [, tick] = useReducer((x) => x + 1, 0);
+  // 点击标记后的详情弹层
+  const [selected, setSelected] = useState<MarkerDetailData | null>(null);
 
   useEffect(() => {
     if (!map) return;
@@ -153,6 +179,32 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
       if (src) src.setData(buildMarksData() as never);
     };
     return subscribeUserMarks(refresh);
+  }, [map]);
+
+  // 点击标记 → 弹出详情；悬停变手型
+  useEffect(() => {
+    if (!map) return;
+    const onClick = (e: mapboxgl.MapLayerMouseEvent) => {
+      const f = e.features && e.features[0];
+      if (!f || !f.properties) return;
+      const d = resolveDetail(String(f.properties.id), f.properties.kind as MarkerKind, String(f.properties.label || ''));
+      if (d) setSelected(d);
+    };
+    const enter = () => { map.getCanvas().style.cursor = 'pointer'; };
+    const leave = () => { map.getCanvas().style.cursor = ''; };
+    const bind = () => {
+      if (!map.getLayer('mark-layer')) return;
+      map.on('click', 'mark-layer', onClick);
+      map.on('mouseenter', 'mark-layer', enter);
+      map.on('mouseleave', 'mark-layer', leave);
+    };
+    if (map.isStyleLoaded() && map.getLayer('mark-layer')) bind();
+    else map.once('idle', bind);
+    return () => {
+      map.off('click', 'mark-layer', onClick);
+      map.off('mouseenter', 'mark-layer', enter);
+      map.off('mouseleave', 'mark-layer', leave);
+    };
   }, [map]);
 
   // 细节层（照片/紫点/文字/连线）显隐程度
@@ -299,11 +351,39 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
           );
         })}
 
-        {/* 标记点（音乐绿 / 照片青）由 mapbox symbol 图层原生渲染，见上方 useEffect */}
+        {/* 标记点由 mapbox symbol 图层原生渲染；点击弹详情见上方 useEffect */}
 
-        {/* 左下角图例 + 图层开关（绿=音乐 / 青=照片，可开闭）*/}
+        {/* 放大后照片缩略预览（DOM 叠层，仅渲染视口内、可见、有图的照片，点开看大图） */}
+        {map && zoom >= PREVIEW_ZOOM && visibleKinds.has('photo') && (() => {
+          const b = map.getBounds();
+          const out: React.ReactNode[] = [];
+          for (const m of PHOTO_MARKERS) {
+            if (!m.thumb) continue;
+            if (!b || !b.contains([m.lng, m.lat])) continue;
+            const pt = map.project([m.lng, m.lat]);
+            out.push(
+              <button
+                key={'pv-' + m.id}
+                className="absolute z-[15] -translate-x-1/2 -translate-y-1/2 w-10 h-10 border-2 border-white shadow-[1px_1px_0_rgba(0,0,0,0.6)] overflow-hidden bg-[#d8d8d6] active:scale-95"
+                style={{ left: `${pt.x}px`, top: `${pt.y}px` }}
+                onClick={() => setSelected({ kind: 'photo', full: m.full, thumb: m.thumb, city: (m.label || '').split(',')[0] })}
+              >
+                <img src={m.thumb} alt={m.label} className="w-full h-full object-cover" loading="lazy" />
+              </button>
+            );
+            if (out.length >= 80) break;
+          }
+          return out;
+        })()}
+
+        {/* 左下角图例 + 图层开关（绿=音乐 / 青=照片 / 琥珀=电影 / 紫=书 / 玫红=行程，可开闭）*/}
         <MapLegend visibleKinds={visibleKinds} onToggle={toggleKind} />
       </div>
+
+      {/* 标记详情弹层（照片灯箱 / 电影票根 / 藏书票 / 行程足迹 / 音乐城市） */}
+      <AnimatePresence>
+        {selected && <MarkerDetail data={selected} onClose={() => setSelected(null)} />}
+      </AnimatePresence>
     </div>
   );
 }

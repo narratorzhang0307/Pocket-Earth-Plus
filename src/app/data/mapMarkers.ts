@@ -67,6 +67,11 @@ const bookMarkers: MapMarker[] = bookPoints.map((b) => ({
 
 export const MAP_MARKERS: MapMarker[] = [...musicMarkers, ...photoMarkers, ...movieMarkers, ...bookMarkers];
 
+// 点击查详情用的查找表（按带前缀的 marker id）：geojson 里只放 id，详情走这里查，保持要素轻量
+export const photoById = new Map(photoPoints.map((p) => ['p-' + p.id, p]));
+export const movieById = new Map(moviePoints.map((m) => ['mv-' + m.id, m]));
+export const bookById = new Map(bookPoints.map((b) => ['bk-' + b.id, b]));
+
 // 转 GeoJSON，交给 mapbox symbol 图层原生渲染（贴地 / 背面遮挡 / 重叠碰撞都由 mapbox 处理）
 export function toGeoJSON() {
   return {
@@ -74,7 +79,7 @@ export function toGeoJSON() {
     features: MAP_MARKERS.map((m) => ({
       type: 'Feature' as const,
       geometry: { type: 'Point' as const, coordinates: [m.lng, m.lat] },
-      properties: { kind: m.kind, label: m.label || '' },
+      properties: { kind: m.kind, label: m.label || '', id: m.id },
     })),
   };
 }
