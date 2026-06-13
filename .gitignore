@@ -11,3 +11,6 @@ dist
 resource-library/audio.db
 resource-library/cities/
 resource-library/city-meta.json
+
+# 日落照片库（OSS 链接数据，私有，不入库）
+resource-library/world-photos.json
