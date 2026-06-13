@@ -2,6 +2,7 @@
 // 内容静态提炼自 frost-agent/ARCHITECTURE.md 与各 contract.md
 import { useState } from 'react';
 import MusicAgentRunPage from './MusicAgentRunPage';
+import PodcastRunPage from './PodcastRunPage';
 
 interface AgentItem {
   name: string;
@@ -15,6 +16,7 @@ const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
     sub: '落点子 agent · 把对象钉到地球',
     items: [
       { name: 'music-curator', role: '把音乐钉到歌手出身地 / 歌曲城市', status: '契约就位' },
+      { name: 'podcast-curator', role: '城市播客：每座城一段深度文化叙事', status: '可运行' },
       { name: 'books-curator', role: '把书钉到故事地 / 作者地 + 读完日期', status: '契约就位' },
       { name: 'movies-curator', role: '把电影钉到取景地 / 故事地', status: '契约就位' },
       { name: 'photos-curator', role: '端侧整理相册，高价值照片钉地球', status: '契约就位' },
@@ -45,8 +47,9 @@ const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
 const totalAgents = GROUPS.reduce((n, g) => n + g.items.length, 0);
 
 export default function MusicAgentsTab() {
-  const [running, setRunning] = useState(false);
-  if (running) return <MusicAgentRunPage onBack={() => setRunning(false)} />;
+  const [running, setRunning] = useState<'music' | 'podcast' | null>(null);
+  if (running === 'music') return <MusicAgentRunPage onBack={() => setRunning(null)} />;
+  if (running === 'podcast') return <PodcastRunPage onBack={() => setRunning(null)} />;
 
   return (
     <div className="h-full flex flex-col bg-[#EAEAEA] font-sans">
@@ -70,7 +73,7 @@ export default function MusicAgentsTab() {
         <div className="font-pixel text-[8px] flex justify-between items-center tracking-wider">
           <span>AGENTS: {totalAgents}</span>
           <span className="opacity-50">|</span>
-          <span>CURATORS: 4</span>
+          <span>CURATORS: {GROUPS[0].items.length}</span>
           <span className="opacity-50">|</span>
           <span>EDGE+CLOUD</span>
         </div>
@@ -86,11 +89,11 @@ export default function MusicAgentsTab() {
             </div>
             <div className="space-y-2">
               {g.items.map((a) => {
-                const runnable = a.name === 'music-curator';
+                const runnable = a.name === 'music-curator' || a.name === 'podcast-curator';
                 return (
                   <button
                     key={a.name}
-                    onClick={runnable ? () => setRunning(true) : undefined}
+                    onClick={runnable ? () => setRunning(a.name === 'music-curator' ? 'music' : 'podcast') : undefined}
                     className={`w-full text-left flex items-center gap-3 bg-white border-2 border-black p-2.5 shadow-[2px_2px_0_rgba(0,0,0,0.85)] transition-colors ${
                       runnable ? 'hover:bg-[#00ff88]/10 active:translate-y-px' : 'cursor-default'
                     }`}
