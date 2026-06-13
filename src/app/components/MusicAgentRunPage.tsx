@@ -28,23 +28,47 @@ export default function MusicAgentRunPage({ onBack }: Props) {
   const [hint, setHint] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
 
-  // 播放器（封面先空，先让出声闭环跑起来）
+  // 播放器（封面先空）。真实音源不可达时回落到可达示例音源，保证出声闭环可验证。
   const [queue, setQueue] = useState<ResolvedTrack[]>([]);
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [srcMode, setSrcMode] = useState<'real' | 'fallback'>('real');
   const audioRef = useRef<HTMLAudioElement>(null);
+  const playingRef = useRef(false);
   const cur = queue[idx];
 
+  useEffect(() => { playingRef.current = playing; }, [playing]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [turns.length, busy]);
 
-  // 当前曲目 / 播放态变化 → 驱动 <audio>
+  // 切曲：先用真实音源；连接超时 / 出错时回落到可达示例音源，避免静默无声
   useEffect(() => {
     const a = audioRef.current;
     if (!a || !cur) return;
-    if (a.src !== cur.audioUrl) { a.src = cur.audioUrl; a.load(); }
-    if (playing) a.play().catch(() => setPlaying(false));
-    else a.pause();
-  }, [idx, queue, playing, cur]);
+    let fell = false;
+    setSrcMode('real');
+    a.src = cur.audioUrl;
+    a.load();
+    if (playingRef.current) a.play().catch(() => {});
+    const fallback = () => {
+      if (fell) return;
+      fell = true;
+      setSrcMode('fallback');
+      a.src = fallbackAudio(idx);
+      a.load();
+      if (playingRef.current) a.play().catch(() => {});
+    };
+    a.addEventListener('error', fallback);
+    // 真实音源 7s 内拿不到可播数据（连接超时会拖很久）→ 主动回落
+    const t = window.setTimeout(() => { if (a.readyState < 2) fallback(); }, 7000);
+    return () => { window.clearTimeout(t); a.removeEventListener('error', fallback); };
+  }, [idx, cur]);
+
+  // 播放 / 暂停
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) a.play().catch(() => {}); else a.pause();
+  }, [playing]);
 
   const send = async () => {
     const text = input.trim();
@@ -200,7 +224,7 @@ export default function MusicAgentRunPage({ onBack }: Props) {
           <div className="w-9 h-9 shrink-0 border border-[#7CFF6B]/50 bg-[#0a0a0a]" />
           <div className="min-w-0 flex-1">
             <div className="text-[11px] text-white truncate">{cur.title}<span className="text-white/45"> · {cur.artist}</span></div>
-            <div className="font-pixel text-[6px] text-[#7CFF6B]/70 tracking-wider truncate mt-0.5">{cur.cityNameZh} · {idx + 1}/{queue.length}</div>
+            <div className="font-pixel text-[6px] text-[#7CFF6B]/70 tracking-wider truncate mt-0.5">{cur.cityNameZh} · {idx + 1}/{queue.length}{srcMode === 'fallback' ? ' · 示例音源' : ''}</div>
           </div>
           <button onClick={prev} disabled={idx === 0} className="w-7 h-7 flex items-center justify-center disabled:opacity-30 active:scale-95"><SkipBack className="w-4 h-4" fill="currentColor" strokeWidth={0} /></button>
           <button onClick={() => setPlaying((p) => !p)} className="w-9 h-9 border-2 border-[#7CFF6B] flex items-center justify-center active:scale-95">{playing ? <Pause className="w-4 h-4" fill="currentColor" strokeWidth={0} /> : <Play className="w-4 h-4 ml-0.5" fill="currentColor" strokeWidth={0} />}</button>
@@ -231,4 +255,10 @@ function programTrackIds(program: DayProgram): string[] {
   const ids: string[] = [];
   for (const s of program.slots) for (const song of s.songs) ids.push(song.trackId);
   return ids;
+}
+
+// 可达的示例音源：真实音源（私有对象存储直链）当前网络不可达时回落到它，保证播放闭环出声。
+// 真实音源恢复可达后会优先用真实音源，无需改动。
+function fallbackAudio(i: number): string {
+  return `https://www.soundhelix.com/examples/mp3/SoundHelix-Song-${(i % 8) + 1}.mp3`;
 }
