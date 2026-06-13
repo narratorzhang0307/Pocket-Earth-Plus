@@ -27,6 +27,12 @@ node frost-agent/backend/seed-db.mjs
 
 # 2) 从 audio.db 生成前端读取的 cities/*.json
 node frost-agent/backend/build-library.mjs
+
+# 拿到音频托管 URL 后写库（任选其一），再跑 build-library
+node frost-agent/backend/add-audio.mjs podcast     <city_slug> <audio_url> [标题] [文稿]
+node frost-agent/backend/add-audio.mjs track-audio <city_slug> <track_id> <audio_url>
+node frost-agent/backend/add-audio.mjs track-intro <city_slug> <track_id> <audio_url>
+node frost-agent/backend/add-audio.mjs cover       <city_slug> <audio_url>
 ```
 
 > 二进制 `audio.db` 与城市数据均不入库；外部音频托管 URL 与凭据只在本地。
