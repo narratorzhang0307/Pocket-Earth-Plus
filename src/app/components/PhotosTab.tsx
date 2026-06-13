@@ -81,7 +81,7 @@ export default function PhotosTab() {
                           style={{ rotate: p.rot, marginLeft: idx === 0 ? 0 : -26 }}
                           whileHover={{ scale: 1.06, rotate: 0, y: -6, zIndex: 50 }}
                           whileTap={{ scale: 0.95 }}
-                          onClick={() => setLightbox({ img: p.img, caption: p.cap })}
+                          onClick={() => setLightbox({ img: p.full, caption: p.cap })}
                           className="relative bg-white p-1.5 pb-4 border-2 border-black shadow-[2px_2px_0_rgba(0,0,0,0.85)] w-[92px] shrink-0 origin-bottom"
                         >
                           <div className="w-full aspect-square bg-[#d8d8d6] border border-black/30 overflow-hidden">
@@ -121,10 +121,10 @@ export default function PhotosTab() {
                       return (
                         <button
                           key={day}
-                          onClick={() => setLightbox({ img: p.img, caption: `JUNE ${day}, 2025`, sub: `${p.count} 张 · LOC_SYNC` })}
+                          onClick={() => setLightbox({ img: p.full, caption: `JUNE ${day}, 2025`, sub: `${p.count} 张 · LOC_SYNC` })}
                           className="aspect-square relative overflow-hidden border-2 border-black shadow-[1px_1px_0_#000] active:translate-y-px bg-[#d8d8d6]"
                         >
-                          <img src={p.img} onError={onImgErr} alt={`June ${day}`} className="w-full h-full object-cover grayscale contrast-125" />
+                          <img src={p.thumb} onError={onImgErr} alt={`June ${day}`} className="w-full h-full object-cover grayscale contrast-125" />
                           <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-transparent" />
                           <span className="absolute top-0.5 left-1 font-pixel text-[8px] text-[#7CFF6B] leading-none z-10">{day}</span>
                           {p.count > 1 && (
@@ -177,10 +177,10 @@ export default function PhotosTab() {
                     {magazineYears.find((y) => y.year === openYear)!.photos.map((p, i) => (
                       <button
                         key={p.id}
-                        onClick={() => setLightbox({ img: p.img, caption: `${openYear} · #${i + 1}` })}
+                        onClick={() => setLightbox({ img: p.full, caption: `${openYear} · #${i + 1}` })}
                         className="aspect-square border-2 border-black overflow-hidden shadow-[1px_1px_0_#000] active:translate-y-px bg-[#d8d8d6]"
                       >
-                        <img src={p.img} onError={onImgErr} className="w-full h-full object-cover grayscale contrast-125" />
+                        <img src={p.thumb} onError={onImgErr} className="w-full h-full object-cover grayscale contrast-125" />
                       </button>
                     ))}
                   </div>

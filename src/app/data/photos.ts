@@ -1,12 +1,17 @@
-// 照片数据源（解耦）：从本地 resource-library/world-photos.json 加载一批日落照片，
-// 确定性随机地派生出「时间 / 日历 / 杂志」三种分布。
-// 换成任何其它照片，只要给出 { id, city, url } 列表放到同一文件即可，三视图自动重排。
-// 数据文件私有不入库；缺失时为空，三视图自动显示空态。
+// 照片数据源（解耦）：从本地 resource-library/photos 加载缩略图(thumb)与高清(full)两版，
+// 确定性随机派生「时间 / 日历 / 杂志」三种分布。换照片只换 photos/ 目录，三视图自动重排。
+// 列表展示用 thumb（低清、快），点开看 full（高清）。照片私有不入库；缺失时三视图显示空态。
 
-interface RawPhoto { id: string; city: string; url: string; alt?: string }
+interface RawPhoto { id: string; thumb: string; full: string }
 
-const mods = import.meta.glob('../../../resource-library/world-photos.json', { eager: true, import: 'default' });
-const RAW: RawPhoto[] = (Object.values(mods)[0] as RawPhoto[]) || [];
+const fullMods = import.meta.glob('../../../resource-library/photos/full/*.jpg', { eager: true, query: '?url', import: 'default' });
+const thumbMods = import.meta.glob('../../../resource-library/photos/thumb/*.jpg', { eager: true, query: '?url', import: 'default' });
+const baseName = (p: string) => p.split('/').pop() || p;
+const thumbBy: Record<string, string> = {};
+for (const [k, v] of Object.entries(thumbMods)) thumbBy[baseName(k)] = v as string;
+const RAW: RawPhoto[] = Object.entries(fullMods)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([k, v]) => ({ id: baseName(k).replace(/\.jpg$/, ''), thumb: thumbBy[baseName(k)] || (v as string), full: v as string }));
 
 // —— 确定性伪随机（固定种子，刷新不抖动）——
 function mulberry32(seed: number) {
@@ -33,10 +38,10 @@ const take = (n: number): RawPhoto[] => {
   return out;
 };
 
-export interface TimelinePhoto { id: string; cap: string; img: string; rot: number }
+export interface TimelinePhoto { id: string; cap: string; img: string; full: string; rot: number }
 export interface TimelineGroup { id: string; title: string; sub?: string; special?: boolean; photos: TimelinePhoto[] }
-export interface CalendarCell { img: string; count: number }
-export interface MagazinePhoto { id: string; img: string }
+export interface CalendarCell { thumb: string; full: string; count: number }
+export interface MagazinePhoto { id: string; thumb: string; full: string }
 export interface MagazineYear { year: number; cover: string; photos: MagazinePhoto[] }
 
 const ROTS = [-6, 5, -3, 7, -4, 6, -5, 4];
@@ -56,9 +61,10 @@ export const timelineGroups: TimelineGroup[] = TL_LABELS.map((l, gi) => {
     id: 'tg' + gi,
     ...l,
     photos: take(n).map((p, idx) => ({
-      id: p.id + '-' + idx,
-      cap: `${p.city} · ${HOURS[(gi + idx) % HOURS.length]}`,
-      img: p.url,
+      id: p.id + '-' + gi + '-' + idx,
+      cap: `日落 · ${HOURS[(gi + idx) % HOURS.length]}`,
+      img: p.thumb,
+      full: p.full,
       rot: ROTS[idx % ROTS.length],
     })),
   };
@@ -67,15 +73,13 @@ export const timelineGroups: TimelineGroup[] = TL_LABELS.map((l, gi) => {
 // —— 日历：2025.06，随机选若干天，每天若干张 ——
 export const calendarPhotos: Record<number, CalendarCell> = {};
 {
+  const cap = Math.min(14, POOL.length ? 14 : 0);
   const litDays = new Set<number>();
-  while (litDays.size < Math.min(14, Math.max(1, Math.floor(POOL.length / 4)) || 0) && POOL.length) {
-    litDays.add(1 + Math.floor(rand() * 30));
-    if (litDays.size >= 14) break;
-  }
+  let guard = 0;
+  while (litDays.size < cap && guard++ < 400) litDays.add(1 + Math.floor(rand() * 30));
   for (const day of litDays) {
-    const count = 1 + Math.floor(rand() * 12);
     const cover = take(1)[0];
-    if (cover) calendarPhotos[day] = { img: cover.url, count };
+    if (cover) calendarPhotos[day] = { thumb: cover.thumb, full: cover.full, count: 1 + Math.floor(rand() * 12) };
   }
 }
 
@@ -83,8 +87,8 @@ export const calendarPhotos: Record<number, CalendarCell> = {};
 const YEARS = [2025, 2024, 2023, 2022, 2021, 2020];
 export const magazineYears: MagazineYear[] = YEARS.map((year, yi) => {
   const n = 6 + ((yi * 2) % 7); // 6~12 张
-  const photos = take(n).map((p, i) => ({ id: p.id + '-' + i, img: p.url }));
-  return { year, cover: photos[0]?.img || '', photos };
+  const photos = take(n).map((p, i) => ({ id: p.id + '-' + year + '-' + i, thumb: p.thumb, full: p.full }));
+  return { year, cover: photos[0]?.thumb || '', photos };
 }).filter((y) => y.photos.length > 0);
 
 export const photoTotal = POOL.length;
