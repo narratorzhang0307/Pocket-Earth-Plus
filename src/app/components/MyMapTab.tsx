@@ -56,7 +56,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
   // 地图标记图层：哪些类型可见（音乐 / 照片），由左下角图例开关控制
-  const [visibleKinds, setVisibleKinds] = useState<Set<MarkerKind>>(() => new Set<MarkerKind>(['music', 'photo']));
+  const [visibleKinds, setVisibleKinds] = useState<Set<MarkerKind>>(() => new Set<MarkerKind>(['music', 'photo', 'movie']));
   const toggleKind = (k: MarkerKind) =>
     setVisibleKinds((prev) => {
       const next = new Set(prev);
@@ -89,13 +89,15 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
       (Object.entries(KIND_COLOR) as [MarkerKind, string][]).forEach(([k, color]) => {
         const id = 'sq-' + k;
         if (map.hasImage(id)) return;
-        const s = 18;
+        const s = k === 'movie' ? 11 : 18;       // 电影点小一点
+        const inner = k === 'movie' ? 5 : 6;
+        const off = Math.round((s - inner) / 2);
         const cv = document.createElement('canvas');
         cv.width = s; cv.height = s;
         const ctx = cv.getContext('2d');
         if (!ctx) return;
         ctx.fillStyle = '#000'; ctx.fillRect(0, 0, s, s);
-        ctx.fillStyle = color; ctx.fillRect(6, 6, 6, 6);
+        ctx.fillStyle = color; ctx.fillRect(off, off, inner, inner);
         map.addImage(id, ctx.getImageData(0, 0, s, s));
       });
       map.addSource('marks', { type: 'geojson', data: toGeoJSON() as never });

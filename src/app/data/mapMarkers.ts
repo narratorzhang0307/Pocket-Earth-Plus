@@ -4,8 +4,9 @@
 
 import musicCities from './music-cities.json';
 import { photoPoints } from './photos';
+import { moviePoints } from './movies';
 
-export type MarkerKind = 'music' | 'photo';
+export type MarkerKind = 'music' | 'photo' | 'movie';
 
 export interface MapMarker {
   id: string;
@@ -17,12 +18,13 @@ export interface MapMarker {
   full?: string;
 }
 
-// 图例 / 开关用的类型配置：标签 + 颜色（绿=音乐，青=照片）
+// 图例 / 开关用的类型配置：标签 + 颜色（绿=音乐，青=照片，琥珀=电影）
 export const MARKER_KINDS: { kind: MarkerKind; label: string; color: string }[] = [
   { kind: 'music', label: '音乐', color: '#00ff88' },
   { kind: 'photo', label: '照片', color: '#00e5ff' },
+  { kind: 'movie', label: '电影', color: '#ffb000' },
 ];
-export const KIND_COLOR: Record<MarkerKind, string> = { music: '#00ff88', photo: '#00e5ff' };
+export const KIND_COLOR: Record<MarkerKind, string> = { music: '#00ff88', photo: '#00e5ff', movie: '#ffb000' };
 
 // 确定性微偏移：同城 / 重合的点在城市附近散开（约 ±0.03°≈3km），放大后能看出分布在不同位置；
 // 缩小时这点偏移看不出来，由地图层的聚合再把重合的只显示一个。
@@ -50,7 +52,12 @@ const photoMarkers: MapMarker[] = photoPoints.map((p) => {
   return { id: 'p-' + p.id, kind: 'photo', lat, lng, label: (p.city || '').split(',')[0], thumb: p.thumb, full: p.full };
 });
 
-export const MAP_MARKERS: MapMarker[] = [...musicMarkers, ...photoMarkers];
+// 电影点：豆瓣观影记录按国家落到代表城市（坐标与散开已在 movies.ts 算好），琥珀色小点
+const movieMarkers: MapMarker[] = moviePoints.map((m) => ({
+  id: 'mv-' + m.id, kind: 'movie', lat: m.lat, lng: m.lng, label: m.title,
+}));
+
+export const MAP_MARKERS: MapMarker[] = [...musicMarkers, ...photoMarkers, ...movieMarkers];
 
 // 转 GeoJSON，交给 mapbox symbol 图层原生渲染（贴地 / 背面遮挡 / 重叠碰撞都由 mapbox 处理）
 export function toGeoJSON() {
