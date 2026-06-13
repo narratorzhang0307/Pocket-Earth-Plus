@@ -85,7 +85,7 @@ export default function PhotosTab() {
                           className="relative bg-white p-1.5 pb-4 border-2 border-black shadow-[2px_2px_0_rgba(0,0,0,0.85)] w-[92px] shrink-0 origin-bottom"
                         >
                           <div className="w-full aspect-square bg-[#d8d8d6] border border-black/30 overflow-hidden">
-                            <img src={p.img} onError={onImgErr} alt={p.cap} className="w-full h-full object-cover" />
+                            <img src={p.img} onError={onImgErr} alt={p.cap} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all" />
                           </div>
                         </motion.button>
                       ))}
@@ -124,7 +124,7 @@ export default function PhotosTab() {
                           onClick={() => setLightbox({ img: p.full, caption: `JUNE ${day}, 2025`, sub: `${p.count} 张 · LOC_SYNC` })}
                           className="aspect-square relative overflow-hidden border-2 border-black shadow-[1px_1px_0_#000] active:translate-y-px bg-[#d8d8d6]"
                         >
-                          <img src={p.thumb} onError={onImgErr} alt={`June ${day}`} className="w-full h-full object-cover" />
+                          <img src={p.thumb} onError={onImgErr} alt={`June ${day}`} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all" />
                           <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-transparent" />
                           <span className="absolute top-0.5 left-1 font-pixel text-[8px] text-[#7CFF6B] leading-none z-10">{day}</span>
                           {p.count > 1 && (
@@ -158,7 +158,7 @@ export default function PhotosTab() {
                       onClick={() => setOpenYear(y.year)}
                       className="relative h-32 border-2 border-black shadow-[3px_3px_0_#000] overflow-hidden active:translate-y-px text-left bg-[#d8d8d6]"
                     >
-                      <img src={y.cover} onError={onImgErr} className="w-full h-full object-cover" />
+                      <img src={y.cover} onError={onImgErr} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
                       <div className="absolute top-2 left-3 font-pixel text-2xl text-[#7CFF6B] drop-shadow-[2px_2px_0_#000]">{y.year}</div>
                       <div className="absolute bottom-2 left-3 font-pixel text-[7px] text-white/85 tracking-widest">翻开 ▶</div>
@@ -180,7 +180,7 @@ export default function PhotosTab() {
                         onClick={() => setLightbox({ img: p.full, caption: `${openYear} · #${i + 1}` })}
                         className="aspect-square border-2 border-black overflow-hidden shadow-[1px_1px_0_#000] active:translate-y-px bg-[#d8d8d6]"
                       >
-                        <img src={p.thumb} onError={onImgErr} className="w-full h-full object-cover" />
+                        <img src={p.thumb} onError={onImgErr} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all" />
                       </button>
                     ))}
                   </div>
