@@ -144,25 +144,44 @@ export default function MusicAgentRunPage({ onBack }: Props) {
             )}
 
             {/* thinking trace */}
-            {turn.trace && turn.trace.length > 0 && (
-              <div className="border-2 border-black/30 bg-[#E2E2E0]">
-                <div className="px-2.5 py-1 border-b border-black/15 font-pixel text-[6px] tracking-widest text-black/40 uppercase">thinking</div>
-                <div className="px-2.5 py-1.5 space-y-1">
-                  {turn.trace.slice(0, 10).map((step, idx) => (
-                    <div key={idx} className="flex gap-2 text-[10px] leading-snug text-black/45">
-                      <span className="text-black/30 w-4 shrink-0 tabular-nums">{String(idx + 1).padStart(2, '0')}</span>
-                      <span className="min-w-0">{step.replace(/^●\s*/, '')}</span>
-                    </div>
-                  ))}
+            {turn.trace && turn.trace.length > 0 && (() => {
+              const edgeOn = turn.trace.some((t) => t.includes('在端上按场景'));
+              const edgeSeen = turn.trace.some((t) => t.includes('Selector(端侧)'));
+              return (
+                <div className="border-2 border-black/30 bg-[#E2E2E0]">
+                  <div className="px-2.5 py-1 border-b border-black/15 font-pixel text-[6px] tracking-widest text-black/40 uppercase flex items-center justify-between">
+                    <span>thinking</span>
+                    {edgeSeen && (
+                      edgeOn
+                        ? <span className="bg-[#00ff88] text-black px-1.5 py-0.5 font-pixel text-[6px] tracking-wider not-italic">● 端侧排序中</span>
+                        : <span className="bg-black/15 text-black/50 px-1.5 py-0.5 font-pixel text-[6px] tracking-wider">端侧未就绪</span>
+                    )}
+                  </div>
+                  <div className="px-2.5 py-1.5 space-y-1">
+                    {turn.trace.slice(0, 10).map((step, idx) => {
+                      const isEdge = step.includes('端侧') || step.includes('Selector');
+                      return (
+                        <div key={idx} className={`flex gap-2 text-[10px] leading-snug ${isEdge ? 'bg-[#00ff88]/25 px-1 py-0.5 text-black/75 font-medium' : 'text-black/45'}`}>
+                          <span className="text-black/30 w-4 shrink-0 tabular-nums">{String(idx + 1).padStart(2, '0')}</span>
+                          <span className="min-w-0">{step.replace(/^●\s*/, '')}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* 歌单 */}
             {turn.playlist && turn.playlist.length > 0 && (
               <div className="border-2 border-black bg-white shadow-[2px_2px_0_rgba(0,0,0,0.85)] overflow-hidden">
                 <div className="px-3 py-2 bg-black/5 border-b-2 border-black flex items-center justify-between gap-2">
-                  <span className="font-pixel text-[7px] tracking-widest text-black/55 uppercase">Playlist</span>
+                  <span className="font-pixel text-[7px] tracking-widest text-black/55 uppercase flex items-center gap-1.5">
+                    Playlist
+                    {turn.trace?.some((t) => t.includes('在端上按场景')) && (
+                      <span className="bg-[#00ff88] text-black px-1 py-0.5 tracking-wider">端侧精选</span>
+                    )}
+                  </span>
                   <button onClick={() => play(turn.playlist!.map((t) => t.trackId), 0)} className="border-2 border-black bg-[#00ff88] px-2 py-1 font-pixel text-[7px] tracking-wider active:translate-y-px">
                     ▶ 播放 {turn.playlist.length} 首
                   </button>
