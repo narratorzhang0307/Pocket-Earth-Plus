@@ -1,11 +1,14 @@
-import { useReducer, useRef, useState, useEffect } from 'react';
+import { useMemo, useReducer, useRef, useState, useEffect } from 'react';
 import { ChevronLeft, BookOpen, Plus, Camera, Star } from 'lucide-react';
-import { SEED_BOOKS, bookTotal, BOOK_PLACES, bookPlace } from '../data/books';
+import { bookRecords, bookTotal, bookMappedTotal, bookCountry, BOOK_PLACES, bookPlace, type BookRecord } from '../data/books';
 import { addUserMark, getUserMarksByKind, subscribeUserMarks, spreadCoord } from '../data/userMarks';
 import { httpEdge } from '../../../frost-agent/edge/httpEdge';
+import { AnimatePresence } from 'motion/react';
+import MarkerDetail, { type MarkerDetailData } from './MarkerDetail';
 
 // books-curator 运行页 —— 读书 agent。
-// 把读过的书钉到「故事 / 作者之地」，在地球上铺成一张阅读地图（藏书票 EX LIBRIS 卡片）。
+// 1) 把豆瓣阅读记录做成「藏书票 EX LIBRIS」流；2) 用户记一本/截图认书 → 钉到「作者 / 故事之地」，与地球联动。
+// 藏书票卡片显示一句话，点开 = 与地球点书点同款的紫色简介详情（≤100 字）。
 // 和 obsidian 的区别：不是书目笔记，而是「书 → 地理 → 地球落点」；端侧模型从书封/书页截图认书。
 
 interface Props { onBack: () => void; embedded?: boolean }
@@ -13,13 +16,27 @@ const VIOLET = '#b388ff';
 
 interface Plate {
   key: string; title: string; author: string; place: string;
-  year?: number | null; rating?: number | null; note?: string; user?: boolean;
+  year?: number | null; rating?: number | null; note?: string; synopsis?: string; date?: string; pinned?: boolean; user?: boolean;
 }
 
 const stars = (r?: number | null) => {
   const n = Math.max(0, Math.min(5, r || 0));
   return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n);
 };
+// 卡片上的「一句话」：优先用户短评，否则取简介首句 / 截断
+const oneLine = (p: Plate) => {
+  if (p.note) return p.note;
+  const s = (p.synopsis || '').trim();
+  if (!s) return '';
+  const head = s.split(/[。！？.!?]/)[0];
+  const t = head && head.length <= 38 ? head : s.slice(0, 38);
+  return t.length < s.length ? t + '…' : t;
+};
+
+function fromRecord(b: BookRecord): Plate {
+  return { key: 'bk' + b.id, title: b.title, author: b.author, place: b.country,
+    year: b.year, rating: b.rating, synopsis: b.synopsis, date: b.date, pinned: !!bookCountry(b.country) };
+}
 
 export default function BooksRunPage({ onBack, embedded }: Props) {
   const [, force] = useReducer((x) => x + 1, 0);
@@ -32,19 +49,29 @@ export default function BooksRunPage({ onBack, embedded }: Props) {
   const [toast, setToast] = useState<string | null>(null);
   const [vision, setVision] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [selected, setSelected] = useState<MarkerDetailData | null>(null);
 
   const userPlates: Plate[] = getUserMarksByKind('book').map((m) => {
     const meta = (m.meta || {}) as Record<string, unknown>;
     return { key: m.id, title: m.label || String(meta.title || ''), author: String(meta.author || ''),
-      place: String(meta.place || ''), year: meta.year as number, rating: meta.rating as number, note: String(meta.note || ''), user: true };
+      place: String(meta.place || ''), year: meta.year as number, rating: meta.rating as number,
+      note: String(meta.note || ''), synopsis: String(meta.synopsis || ''), date: String(meta.date || ''), pinned: true, user: true };
   });
-  const seedPlates: Plate[] = SEED_BOOKS.map((b) => ({ key: b.id, title: b.title, author: b.author, place: b.place, year: b.year, note: b.note }));
-  const feed = [...userPlates, ...seedPlates];
 
-  const placesOnGlobe = new Set([...SEED_BOOKS.map((b) => b.place), ...userPlates.map((p) => p.place)]).size;
-  const onGlobe = bookTotal + userPlates.length;
+  // 豆瓣记录：按读完日期倒序，取近 60 本做藏书票流
+  const recent: Plate[] = useMemo(
+    () => [...bookRecords].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 60).map(fromRecord),
+    []
+  );
+  const feed = [...userPlates, ...recent];
+
+  const countriesSeen = useMemo(() => new Set(bookRecords.map((b) => b.country).filter(Boolean)).size, []);
+  const onGlobe = bookMappedTotal + userPlates.length;
 
   const showToast = (s: string) => { setToast(s); window.setTimeout(() => setToast(null), 2200); };
+
+  const openPlate = (p: Plate) => setSelected({ kind: 'book', title: p.title, author: p.author, place: p.place,
+    year: p.year, rating: p.rating, synopsis: p.synopsis, date: p.date, note: p.note });
 
   const addBook = () => {
     const t = title.trim();
@@ -95,7 +122,7 @@ export default function BooksRunPage({ onBack, embedded }: Props) {
           </button>
           <div className="flex-1 min-w-0">
             <div className="font-pixel text-[11px] tracking-wider truncate">BOOKS-CURATOR</div>
-            <div className="text-[9px] text-black/45 truncate">读书 agent · 阅读地图 · 钉到故事之地</div>
+            <div className="text-[9px] text-black/45 truncate">读书 agent · {bookTotal} 本 · 藏书票钉地球</div>
           </div>
           <BookOpen className="w-4 h-4" strokeWidth={2.5} style={{ color: VIOLET }} />
         </div>
@@ -104,8 +131,8 @@ export default function BooksRunPage({ onBack, embedded }: Props) {
       {/* Stat strip */}
       <div className="px-4 py-2.5 border-b-2 border-black bg-black shrink-0" style={{ color: VIOLET }}>
         <div className="font-pixel text-[8px] flex justify-between items-center tracking-wider">
-          <span>读过 {onGlobe}</span><span className="opacity-40">|</span>
-          <span>故事之地 {placesOnGlobe}</span><span className="opacity-40">|</span>
+          <span>读过 {bookTotal}</span><span className="opacity-40">|</span>
+          <span>国家 {countriesSeen}</span><span className="opacity-40">|</span>
           <span>上地球 {onGlobe}</span>
         </div>
       </div>
@@ -143,31 +170,36 @@ export default function BooksRunPage({ onBack, embedded }: Props) {
         {vision && <div className="text-[10px] text-black/55 leading-snug">⊙ {vision}</div>}
       </div>
 
-      {/* 藏书票流 */}
+      {/* 藏书票流（点开 = 紫色 100 字简介，与地球点书点同款）*/}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5">
-        {feed.map((p) => (
-          <div key={p.key} className="border-2 border-black shadow-[2px_2px_0_rgba(0,0,0,0.85)] bg-white">
-            {/* EX LIBRIS 顶条 */}
-            <div className="flex items-center justify-between px-2.5 py-1 border-b-2" style={{ borderColor: VIOLET }}>
-              <span className="font-pixel text-[7px] tracking-widest" style={{ color: '#7a4dd6' }}>EX LIBRIS · 藏书票{p.user ? ' · NEW' : ''}</span>
-              <span className="text-[10px] tracking-tight" style={{ color: '#7a4dd6' }}>{p.rating ? stars(p.rating) : ''}</span>
-            </div>
-            <div className="px-2.5 py-2">
-              <div className="flex items-baseline gap-2">
-                <div className="text-[14px] font-bold leading-tight truncate">{p.title}</div>
-                {p.year && <span className="font-pixel text-[7px] text-black/35 shrink-0">{p.year}</span>}
+        {feed.map((p) => {
+          const line = oneLine(p);
+          return (
+            <button key={p.key} onClick={() => openPlate(p)} className="w-full text-left border-2 border-black shadow-[2px_2px_0_rgba(0,0,0,0.85)] bg-white active:translate-y-px">
+              {/* EX LIBRIS 顶条 */}
+              <div className="flex items-center justify-between px-2.5 py-1 border-b-2" style={{ borderColor: VIOLET }}>
+                <span className="font-pixel text-[7px] tracking-widest" style={{ color: '#7a4dd6' }}>EX LIBRIS · 藏书票{p.user ? ' · NEW' : ''}</span>
+                <span className="text-[10px] tracking-tight" style={{ color: '#7a4dd6' }}>{p.rating ? stars(p.rating) : ''}</span>
               </div>
-              <div className="text-[10px] text-black/55 mt-0.5 truncate">{p.author}</div>
-              {p.note && <div className="text-[11px] text-black/70 mt-1.5 leading-snug italic">「{p.note}」</div>}
-              <div className="flex items-center gap-1.5 mt-1.5">
-                <span className="w-2 h-2" style={{ background: VIOLET }} />
-                <span className="font-pixel text-[7px] text-black/50 tracking-wider">已钉 {p.place}</span>
+              <div className="px-2.5 py-2">
+                <div className="flex items-baseline gap-2">
+                  <div className="text-[14px] font-bold leading-tight truncate">{p.title}</div>
+                  {p.year && <span className="font-pixel text-[7px] text-black/35 shrink-0">{p.year}</span>}
+                </div>
+                <div className="text-[10px] text-black/55 mt-0.5 truncate">{[p.author, p.place].filter(Boolean).join(' · ')}</div>
+                {line && <div className="text-[11px] text-black/70 mt-1.5 leading-snug italic line-clamp-2">「{line}」</div>}
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <span className="w-2 h-2" style={{ background: p.pinned ? VIOLET : '#bbb' }} />
+                  <span className="font-pixel text-[7px] text-black/50 tracking-wider">
+                    {p.pinned ? `已钉 ${p.place || '故事之地'}` : '未落地球'}{p.date ? ` · 读于 ${p.date}` : ''}
+                  </span>
+                </div>
               </div>
-            </div>
-          </div>
-        ))}
+            </button>
+          );
+        })}
         <div className="text-center text-[8px] font-pixel text-black/30 py-1 tracking-widest">
-          把书钉到故事之地 · 端侧管「认书」· 地球铺成阅读地图
+          藏书票来自豆瓣阅读记录 · 端侧管「认书」· 落点钉地球
         </div>
       </div>
 
@@ -176,6 +208,11 @@ export default function BooksRunPage({ onBack, embedded }: Props) {
           {toast}
         </div>
       )}
+
+      {/* 点藏书票 → 和地球点书点同款的紫色简介详情（≤100 字）*/}
+      <AnimatePresence>
+        {selected && <MarkerDetail data={selected} onClose={() => setSelected(null)} />}
+      </AnimatePresence>
     </div>
   );
 }
