@@ -19,3 +19,6 @@ resource-library/city-meta.json
 # 照片库（高清 full + 缩略 thumb，私有，不入库）
 resource-library/photos/
 resource-library/world-photos.json
+
+# 本地生成 / 准备用的临时产物，不入库
+outputs/

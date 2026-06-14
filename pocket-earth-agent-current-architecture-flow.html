@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Pocket Earth · frost-agent 架构图</title>
+  <style>
+    @page { size: A4 landscape; margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #251b17;
+      background: #f6f0e8;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+    }
+    .page {
+      width: 297mm;
+      height: 210mm;
+      padding: 13mm 15mm 12mm;
+      page-break-after: always;
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, #fbf6ee 0%, #f4ede3 100%);
+    }
+    .page:last-child { page-break-after: auto; }
+    .kicker {
+      color: #b4511f;
+      font-size: 10px;
+      letter-spacing: 0.26em;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 5px 0 0;
+      font-size: 31px;
+      line-height: 1.05;
+      letter-spacing: 0;
+      color: #201713;
+    }
+    .subtitle {
+      margin: 7px 0 12px;
+      color: #6f5b4f;
+      font-size: 12.5px;
+      line-height: 1.45;
+      max-width: 860px;
+    }
+    .meta {
+      position: absolute;
+      right: 15mm;
+      top: 13mm;
+      text-align: right;
+      color: #8a7162;
+      font-size: 9.5px;
+      line-height: 1.5;
+    }
+    .legend {
+      display: flex;
+      gap: 13px;
+      align-items: center;
+      margin-top: -3px;
+      margin-bottom: 8px;
+      color: #6f5b4f;
+      font-size: 10px;
+      flex-wrap: wrap;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .swatch {
+      width: 16px;
+      height: 9px;
+      border-radius: 2px;
+      border: 1px solid #b65b25;
+      background: #fff8ef;
+    }
+    .swatch.core { background: #ffe7cf; }
+    .swatch.agent { background: #edf7f2; border-color: #4d8b70; }
+    .swatch.engine { background: #eef3ff; border-color: #426ca6; }
+    .swatch.data { background: #fff5d7; border-color: #b88924; }
+    .swatch.future { background: #f3f1f5; border-style: dashed; border-color: #826f90; }
+    svg {
+      width: 100%;
+      height: 160mm;
+      display: block;
+    }
+    .small-note {
+      position: absolute;
+      left: 15mm;
+      right: 15mm;
+      bottom: 8mm;
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 1fr;
+      gap: 8px;
+      font-size: 10px;
+      color: #5f4b40;
+    }
+    .note-box {
+      border: 1px solid rgba(138, 113, 98, 0.25);
+      border-radius: 7px;
+      padding: 7px 9px;
+      background: rgba(255, 255, 255, 0.46);
+    }
+    .note-box b { color: #9e4419; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.08fr 1fr;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .grid.three { grid-template-columns: 1fr 1fr 1fr; }
+    .panel {
+      border: 1px solid rgba(138, 113, 98, 0.26);
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.52);
+      padding: 12px 14px;
+      min-height: 0;
+    }
+    .panel h2 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      color: #2a1d17;
+    }
+    .panel p {
+      margin: 0 0 8px;
+      font-size: 11px;
+      line-height: 1.45;
+      color: #5f4b40;
+    }
+    .steps {
+      counter-reset: step;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 7px;
+      font-size: 11.25px;
+      line-height: 1.42;
+      color: #433229;
+    }
+    .steps li {
+      position: relative;
+      padding-left: 27px;
+    }
+    .steps li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #d66022;
+      color: white;
+      font-weight: 700;
+      font-size: 10px;
+      line-height: 18px;
+      text-align: center;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10.1px;
+      line-height: 1.34;
+      color: #3f3029;
+    }
+    th {
+      text-align: left;
+      color: #7f3716;
+      font-size: 9.3px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 6px 7px;
+      border-bottom: 1px solid rgba(138, 113, 98, 0.25);
+      white-space: nowrap;
+    }
+    td {
+      vertical-align: top;
+      padding: 6px 7px;
+      border-bottom: 1px solid rgba(138, 113, 98, 0.16);
+    }
+    .status {
+      display: inline-block;
+      white-space: nowrap;
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: 9px;
+      font-weight: 700;
+      color: #275842;
+      background: #e1f2e8;
+    }
+    .status.partial { color: #765221; background: #fff0cf; }
+    .status.future { color: #5a4a68; background: #eee9f2; }
+    .status.edge { color: #284f86; background: #e7efff; }
+    .code {
+      font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+      color: #7b3d1c;
+      font-size: 9.6px;
+    }
+    .footer {
+      position: absolute;
+      left: 15mm;
+      right: 15mm;
+      bottom: 7mm;
+      border-top: 1px solid rgba(138, 113, 98, 0.22);
+      padding-top: 5px;
+      color: #8a7162;
+      font-size: 9px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 7px;
+    }
+    .pill {
+      border: 1px solid rgba(138, 113, 98, 0.25);
+      border-radius: 999px;
+      padding: 3px 7px;
+      font-size: 9.5px;
+      color: #5f4b40;
+      background: rgba(255, 255, 255, 0.55);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <div class="kicker">Universal Agent Architecture</div>
+    <h1>通用 Agent 架构图</h1>
+    <div class="subtitle">抽象版：一条请求如何从入口进入编排层，经规划、记忆、模型与工具调用，最终被校验、执行并回写状态。</div>
+    <div class="meta">版本 A：通用框架<br/>用途：文档 / 方案解释</div>
+    <div class="legend">
+      <span><i class="swatch core"></i>编排核心</span>
+      <span><i class="swatch engine"></i>模型 / 推理</span>
+      <span><i class="swatch agent"></i>工具 / 子 agent</span>
+      <span><i class="swatch data"></i>状态 / 数据</span>
+      <span>实线：主链路 · 虚线：上下文注入 / 观测</span>
+    </div>
+
+    <svg viewBox="0 0 1460 810" role="img" aria-label="通用 Agent 架构图">
+      <defs>
+        <marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#b85a24" />
+        </marker>
+        <marker id="arrowGreenA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#4d8b70" />
+        </marker>
+        <marker id="arrowBlueA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#426ca6" />
+        </marker>
+        <filter id="shadowA" x="-8%" y="-16%" width="116%" height="132%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#6c3f26" flood-opacity="0.15"/>
+        </filter>
+        <style>
+          .bandA { fill: rgba(255,255,255,0.30); stroke: rgba(130,93,70,0.26); stroke-width: 1.4; }
+          .boxA { fill: #fffaf3; stroke: #b85a24; stroke-width: 1.8; rx: 10; filter: url(#shadowA); }
+          .coreA { fill: #ffe7cf; stroke: #c65b1e; }
+          .agentA { fill: #edf7f2; stroke: #4d8b70; }
+          .engineA { fill: #eef3ff; stroke: #426ca6; }
+          .dataA { fill: #fff5d7; stroke: #b88924; }
+          .labelA { font: 700 17px -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; fill: #291c16; }
+          .subA { font: 12px -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; fill: #6a5145; }
+          .tinyA { font: 10.5px -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; fill: #755f52; }
+          .bandTitleA { font: 800 13px -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; fill: #9e4419; letter-spacing: 1.4px; }
+          .lineA { stroke: #b85a24; stroke-width: 2.2; fill: none; marker-end: url(#arrowA); }
+          .lineGreenA { stroke: #4d8b70; stroke-width: 2.2; fill: none; marker-end: url(#arrowGreenA); }
+          .lineBlueA { stroke: #426ca6; stroke-width: 2.2; fill: none; marker-end: url(#arrowBlueA); }
+          .dashA { stroke-dasharray: 7 6; }
+        </style>
+      </defs>
+
+      <rect class="bandA" x="12" y="24" width="1436" height="96" rx="14"/>
+      <text class="bandTitleA" x="32" y="52">1 · USER / CHANNEL</text>
+      <rect class="boxA" x="125" y="50" width="170" height="48"/>
+      <text class="labelA" x="163" y="79">用户 / 系统</text>
+      <rect class="boxA" x="368" y="50" width="235" height="48"/>
+      <text class="labelA" x="410" y="73">入口层</text>
+      <text class="subA" x="407" y="91">Web · API · Chat UI</text>
+      <rect class="boxA dataA" x="690" y="50" width="250" height="48"/>
+      <text class="labelA" x="724" y="73">请求上下文</text>
+      <text class="subA" x="724" y="91">身份 · 环境 · 权限 · 历史</text>
+      <path class="lineA" d="M295 74 L368 74"/>
+      <path class="lineA" d="M603 74 L690 74"/>
+
+      <rect class="bandA" x="12" y="150" width="1436" height="215" rx="14"/>
+      <text class="bandTitleA" x="32" y="178">2 · ORCHESTRATION CORE</text>
+      <rect class="boxA coreA" x="92" y="207" width="190" height="72"/>
+      <text class="labelA" x="138" y="236">Shell</text>
+      <text class="subA" x="125" y="256">人格 / 口径 / 权限</text>
+      <rect class="boxA coreA" x="330" y="196" width="210" height="94"/>
+      <text class="labelA" x="381" y="227">Router</text>
+      <text class="subA" x="363" y="249">规则快路由 / 语义路由</text>
+      <text class="subA" x="378" y="268">选择处理器</text>
+      <rect class="boxA coreA" x="600" y="196" width="220" height="94"/>
+      <text class="labelA" x="655" y="227">Planner</text>
+      <text class="subA" x="637" y="249">任务拆解 / 下一步</text>
+      <text class="subA" x="647" y="268">可中断恢复</text>
+      <rect class="boxA dataA" x="885" y="190" width="200" height="72"/>
+      <text class="labelA" x="934" y="219">Memory</text>
+      <text class="subA" x="915" y="239">短期上下文 / 长期画像</text>
+      <rect class="boxA dataA" x="1135" y="190" width="205" height="72"/>
+      <text class="labelA" x="1192" y="219">State</text>
+      <text class="subA" x="1166" y="239">任务状态 / 会话状态</text>
+      <rect class="boxA coreA" x="1000" y="284" width="230" height="54"/>
+      <text class="labelA" x="1046" y="317">Guardrails</text>
+      <text class="subA" x="1042" y="334">策略 / 权限 / 输出约束</text>
+      <path class="lineA" d="M815 74 C815 138 200 138 187 207"/>
+      <path class="lineA" d="M282 243 L330 243"/>
+      <path class="lineA" d="M540 243 L600 243"/>
+      <path class="lineA dashA" d="M885 226 C825 226 835 243 820 243"/>
+      <path class="lineA dashA" d="M1135 226 C1070 236 1015 256 820 243"/>
+      <path class="lineA dashA" d="M1115 284 C1040 257 950 250 820 249"/>
+
+      <rect class="bandA" x="12" y="394" width="1436" height="167" rx="14"/>
+      <text class="bandTitleA" x="32" y="422">3 · REASONING + ACTION</text>
+      <rect class="boxA engineA" x="124" y="450" width="230" height="70"/>
+      <text class="labelA" x="172" y="478">LLM Brain</text>
+      <text class="subA" x="162" y="499">理解 · 生成 · 推理</text>
+      <rect class="boxA coreA" x="430" y="450" width="220" height="70"/>
+      <text class="labelA" x="482" y="478">Decision</text>
+      <text class="subA" x="468" y="499">下一步动作 / 是否结束</text>
+      <rect class="boxA agentA" x="730" y="450" width="220" height="70"/>
+      <text class="labelA" x="783" y="478">Tools</text>
+      <text class="subA" x="767" y="499">API · DB · 文件 · 搜索</text>
+      <rect class="boxA agentA" x="1030" y="450" width="250" height="70"/>
+      <text class="labelA" x="1083" y="478">Sub-agents</text>
+      <text class="subA" x="1068" y="499">研究 / 执行 / 评审 / 发布</text>
+      <path class="lineBlueA" d="M710 290 C640 360 420 400 300 450"/>
+      <path class="lineBlueA" d="M354 485 L430 485"/>
+      <path class="lineA" d="M650 485 L730 485"/>
+      <path class="lineGreenA" d="M950 485 L1030 485"/>
+      <path class="lineGreenA dashA" d="M1155 520 C1125 588 915 594 840 520"/>
+
+      <rect class="bandA" x="12" y="590" width="1436" height="135" rx="14"/>
+      <text class="bandTitleA" x="32" y="618">4 · VALIDATION / EXECUTION / OBSERVABILITY</text>
+      <rect class="boxA coreA" x="105" y="642" width="250" height="54"/>
+      <text class="labelA" x="157" y="675">Boundary</text>
+      <text class="subA" x="144" y="692">suggest → validate → execute</text>
+      <rect class="boxA dataA" x="442" y="642" width="240" height="54"/>
+      <text class="labelA" x="503" y="675">Knowledge</text>
+      <text class="subA" x="478" y="692">RAG / 向量 / 业务数据</text>
+      <rect class="boxA agentA" x="768" y="642" width="240" height="54"/>
+      <text class="labelA" x="829" y="675">Execution</text>
+      <text class="subA" x="822" y="692">动作落地 / 工作流</text>
+      <rect class="boxA dataA" x="1095" y="642" width="245" height="54"/>
+      <text class="labelA" x="1139" y="675">Trace + Metrics</text>
+      <text class="subA" x="1139" y="692">日志 / 健康 / 审计</text>
+      <rect class="boxA" x="555" y="748" width="255" height="42"/>
+      <text class="labelA" x="600" y="775">Final Response</text>
+      <path class="lineA" d="M840 520 C740 585 390 610 230 642"/>
+      <path class="lineA" d="M355 669 L442 669"/>
+      <path class="lineA" d="M682 669 L768 669"/>
+      <path class="lineA dashA" d="M1008 669 L1095 669"/>
+      <path class="lineA" d="M888 696 C842 732 776 743 727 748"/>
+      <path class="lineA" d="M555 769 C430 748 295 720 230 696"/>
+    </svg>
+
+    <div class="small-note">
+      <div class="note-box"><b>核心判断：</b>Agent 不是一次 LLM 调用，而是“编排 + 工具 + 校验 + 状态”的闭环。</div>
+      <div class="note-box"><b>安全边界：</b>子 agent 或工具只提出动作建议，落地前必须通过独立校验。</div>
+      <div class="note-box"><b>可观测：</b>trace、日志和 health 让“为什么这么做”可以被看见、调试和复盘。</div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="kicker">Pocket Earth · frost-agent</div>
+    <h1>Pocket Earth 当前 Agent 架构流程图</h1>
+    <div class="subtitle">项目版：把“本地空间知识库”落成一套端云双脑、多 curator、统一地球索引的 harness。图中强调当前代码真实闭环与可插拔接入点。</div>
+    <div class="meta">版本 B：项目当前实现<br/>参考：README / 代码 / PPT</div>
+    <div class="legend">
+      <span><i class="swatch core"></i>frost-agent Harness</span>
+      <span><i class="swatch engine"></i>端云双脑</span>
+      <span><i class="swatch agent"></i>可运行 agent / curator</span>
+      <span><i class="swatch data"></i>地球索引 / 本地状态</span>
+      <span><i class="swatch future"></i>契约就位 / 演进层</span>
+    </div>
+
+    <svg viewBox="0 0 1460 810" role="img" aria-label="Pocket Earth 当前 Agent 架构流程图">
+      <defs>
+        <marker id="arrowB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#b85a24" />
+        </marker>
+        <marker id="arrowGreenB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#4d8b70" />
+        </marker>
+        <marker id="arrowBlueB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#426ca6" />
+        </marker>
+        <filter id="shadowB" x="-8%" y="-16%" width="116%" height="132%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#6c3f26" flood-opacity="0.15"/>
+        </filter>
+        <style>
+          .bandB { fill: rgba(255,255,255,0.30); stroke: rgba(130,93,70,0.26); stroke-width: 1.4; }
+          .boxB { fill: #fffaf3; stroke: #b85a24; stroke-width: 1.8; rx: 10; filter: url(#shadowB); }
+          .coreB { fill: #ffe7cf; stroke: #c65b1e; }
+          .agentB { fill: #edf7f2; stroke: #4d8b70; }
+          .engineB { fill: #eef3ff; stroke: #426ca6; }
+          .dataB { fill: #fff5d7; stroke: #b88924; }
+          .futureB { fill: #f3f1f5; stroke: #826f90; stroke-dasharray: 7 5; }
+          .execB { fill: #fef6e6; stroke: #b85a24; }
+          .labelB { font: 700 16.5px -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; fill: #291c16; }
+          .subB { font: 11.8px -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; fill: #6a5145; }
+          .tinyB { font: 10.3px -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; fill: #755f52; }
+          .bandTitleB { font: 800 13px -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; fill: #9e4419; letter-spacing: 1.4px; }
+          .lineB { stroke: #b85a24; stroke-width: 2.2; fill: none; marker-end: url(#arrowB); }
+          .lineGreenB { stroke: #4d8b70; stroke-width: 2.2; fill: none; marker-end: url(#arrowGreenB); }
+          .lineBlueB { stroke: #426ca6; stroke-width: 2.2; fill: none; marker-end: url(#arrowBlueB); }
+          .dashB { stroke-dasharray: 7 6; }
+        </style>
+      </defs>
+
+      <rect class="bandB" x="12" y="18" width="1436" height="100" rx="14"/>
+      <text class="bandTitleB" x="32" y="46">1 · PRODUCT ENTRY / THREE TABS</text>
+      <rect class="boxB" x="58" y="48" width="190" height="48"/>
+      <text class="labelB" x="106" y="75">PHOTOS</text>
+      <text class="subB" x="91" y="92">时间 · 日历 · 杂志</text>
+      <rect class="boxB dataB" x="310" y="48" width="215" height="48"/>
+      <text class="labelB" x="363" y="75">EARTH</text>
+      <text class="subB" x="343" y="92">Mapbox globe 统一索引</text>
+      <rect class="boxB" x="590" y="48" width="245" height="48"/>
+      <text class="labelB" x="645" y="75">AGENTS</text>
+      <text class="subB" x="626" y="92">FROST-AGENT 控制台</text>
+      <rect class="boxB dataB" x="930" y="48" width="250" height="48"/>
+      <text class="labelB" x="968" y="75">Local Stores</text>
+      <text class="subB" x="962" y="92">userMarks · planets · geoStickers</text>
+      <path class="lineB" d="M248 72 L310 72"/>
+      <path class="lineB" d="M835 72 L930 72"/>
+
+      <rect class="bandB" x="12" y="145" width="1436" height="218" rx="14"/>
+      <text class="bandTitleB" x="32" y="173">2 · FROST-AGENT HARNESS CORE</text>
+      <rect class="boxB coreB" x="58" y="204" width="165" height="70"/>
+      <text class="labelB" x="104" y="232">Shell</text>
+      <text class="subB" x="82" y="253">persona + HUMAN_VOICE</text>
+      <rect class="boxB coreB" x="260" y="193" width="225" height="92"/>
+      <text class="labelB" x="324" y="224">Router</text>
+      <text class="subB" x="289" y="246">规则秒回 · 端侧预分类</text>
+      <text class="subB" x="307" y="265">云脑路由 · 规则兜底</text>
+      <rect class="boxB coreB" x="532" y="204" width="210" height="70"/>
+      <text class="labelB" x="575" y="232">Intent Registry</text>
+      <text class="subB" x="574" y="253">新增意图注册处理器</text>
+      <rect class="boxB dataB" x="785" y="184" width="200" height="65"/>
+      <text class="labelB" x="826" y="213">Memory</text>
+      <text class="subB" x="813" y="233">最近 6 轮对话</text>
+      <rect class="boxB dataB" x="1018" y="184" width="225" height="65"/>
+      <text class="labelB" x="1073" y="213">Profile</text>
+      <text class="subB" x="1051" y="233">跨会话口味 · fingerprint</text>
+      <rect class="boxB coreB" x="1070" y="278" width="220" height="60"/>
+      <text class="labelB" x="1116" y="307">Health + Trace</text>
+      <text class="subB" x="1110" y="326">降级可观测 · thinking</text>
+      <path class="lineB" d="M712 96 C682 128 220 145 140 204"/>
+      <path class="lineB" d="M223 239 L260 239"/>
+      <path class="lineB" d="M485 239 L532 239"/>
+      <path class="lineB dashB" d="M785 216 C740 224 736 238 742 239"/>
+      <path class="lineB dashB" d="M1018 216 C930 238 830 244 742 239"/>
+      <path class="lineB dashB" d="M1180 278 C1060 250 930 246 742 246"/>
+
+      <rect class="bandB" x="12" y="386" width="1436" height="164" rx="14"/>
+      <text class="bandTitleB" x="32" y="414">3 · DUAL-SPEED MODEL LAYER</text>
+      <rect class="boxB engineB" x="92" y="444" width="270" height="70"/>
+      <text class="labelB" x="143" y="472">Edge Selector</text>
+      <text class="subB" x="124" y="493">classify · rank · embed · vision</text>
+      <text class="tinyB" x="121" y="510">MNN → ollama → stub · edgeSafe</text>
+      <rect class="boxB engineB" x="430" y="444" width="255" height="70"/>
+      <text class="labelB" x="488" y="472">Cloud Brain</text>
+      <text class="subB" x="467" y="493">DeepSeek via /api/frost-llm</text>
+      <text class="tinyB" x="469" y="510">无 key / 出错 → 空串 fallback</text>
+      <rect class="boxB futureB" x="755" y="444" width="250" height="70"/>
+      <text class="labelB" x="808" y="472">Provider Compat</text>
+      <text class="subB" x="800" y="493">deepseek · qwen · mnn</text>
+      <text class="tinyB" x="802" y="510">换模型 = 加 adapter</text>
+      <rect class="boxB futureB" x="1080" y="444" width="240" height="70"/>
+      <text class="labelB" x="1128" y="472">/api/unsplash</text>
+      <text class="subB" x="1112" y="493">planet-builder 抓图代理</text>
+      <text class="tinyB" x="1118" y="510">密钥只在服务端</text>
+      <path class="lineBlueB" d="M372 285 C310 336 250 390 227 444"/>
+      <path class="lineBlueB" d="M637 274 C600 340 572 390 558 444"/>
+      <path class="lineBlueB dashB" d="M685 479 L755 479"/>
+      <path class="lineBlueB dashB" d="M1005 479 L1080 479"/>
+
+      <rect class="bandB" x="12" y="574" width="1436" height="112" rx="14"/>
+      <text class="bandTitleB" x="32" y="602">4 · SUB-AGENTS / CURATORS</text>
+      <rect class="boxB agentB" x="44" y="620" width="190" height="42"/>
+      <text class="labelB" x="76" y="647">music / radio</text>
+      <rect class="boxB agentB" x="258" y="620" width="190" height="42"/>
+      <text class="labelB" x="289" y="647">books / movies</text>
+      <rect class="boxB agentB" x="472" y="620" width="190" height="42"/>
+      <text class="labelB" x="503" y="647">photos / travel</text>
+      <rect class="boxB agentB" x="686" y="620" width="190" height="42"/>
+      <text class="labelB" x="725" y="647">planet / mood</text>
+      <rect class="boxB agentB" x="900" y="620" width="190" height="42"/>
+      <text class="labelB" x="937" y="647">council room</text>
+      <rect class="boxB futureB" x="1114" y="620" width="230" height="42"/>
+      <text class="labelB" x="1147" y="647">public plaza</text>
+      <path class="lineGreenB" d="M372 285 C330 470 120 520 139 620"/>
+      <path class="lineGreenB" d="M372 285 C370 470 353 520 353 620"/>
+      <path class="lineGreenB" d="M372 285 C430 470 567 520 567 620"/>
+      <path class="lineGreenB" d="M372 285 C565 470 781 520 781 620"/>
+      <path class="lineGreenB" d="M372 285 C665 470 995 520 995 620"/>
+      <path class="lineGreenB dashB" d="M372 285 C760 472 1229 520 1229 620"/>
+
+      <rect class="bandB" x="12" y="710" width="1436" height="78" rx="14"/>
+      <text class="bandTitleB" x="32" y="738">5 · BOUNDARY + EARTH INDEX</text>
+      <rect class="boxB coreB" x="72" y="752" width="230" height="34"/>
+      <text class="labelB" x="103" y="775">Action Validators</text>
+      <rect class="boxB dataB" x="365" y="752" width="230" height="34"/>
+      <text class="labelB" x="402" y="775">mark_place / radioActions</text>
+      <rect class="boxB dataB" x="660" y="752" width="220" height="34"/>
+      <text class="labelB" x="707" y="775">localStorage Stores</text>
+      <rect class="boxB dataB" x="945" y="752" width="240" height="34"/>
+      <text class="labelB" x="1000" y="775">Mapbox Globe</text>
+      <path class="lineB" d="M567 662 C520 710 320 728 208 752"/>
+      <path class="lineB" d="M187 752 L365 769"/>
+      <path class="lineB" d="M595 769 L660 769"/>
+      <path class="lineB" d="M880 769 L945 769"/>
+    </svg>
+
+    <div class="small-note">
+      <div class="note-box"><b>一句话：</b>用户不是在“和一个聊天框说话”，而是在调度一套把个人对象钉回地球的 harness。</div>
+      <div class="note-box"><b>端云分工：</b>端侧负责选择、排序、识别、打分；云端只做叙事、推荐与自由回答。</div>
+      <div class="note-box"><b>统一出口：</b>所有落点最终进入本地 store，再由地球订阅合并刷新，形成一颗会长大的知识地图。</div>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="kicker">Pocket Earth · execution detail</div>
+    <h1>一次请求如何穿过 Pocket Earth</h1>
+    <div class="subtitle">这页把主流程拆成可审查的代码路径：从三 Tab 入口，到 Router、端云双脑、子 agent，再到 Boundary 与地球图层。</div>
+    <div class="meta">代码口径<br/>当前日期：2026-06-15</div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>运行链路</h2>
+        <ol class="steps">
+          <li>用户在 <span class="code">MusicAgentRunPage</span>、通用 <span class="code">AgentChat</span>，或各 curator 运行页发起操作。</li>
+          <li>音乐对话层调用 <span class="code">runFrost(ctx)</span>，传入当前时间、用户文本和最近对话。</li>
+          <li><span class="code">switch-handler</span> 先做明确指令匹配：下一首、暂停、切城等不动用模型。</li>
+          <li>不是明确指令时，Router 调 <span class="code">edgeSafe.classify</span> 做端侧预分类；命中合法意图就直接 dispatch。</li>
+          <li>端侧没把握时，<span class="code">llmRoute</span> 走云脑 <span class="code">/api/frost-llm</span> 判意图、抽实体；云不可用则正则兜底。</li>
+          <li>意图通过 <span class="code">intentRegistry</span> 找到处理器，委派到 runtime agent 或页面内 curator 逻辑。</li>
+          <li>子 agent 返回 Frost 回复、结构化数据、trace，以及可选动作建议。</li>
+          <li><span class="code">validator.ts</span> 只放行已注册动作；未来 <span class="code">mark_place</span> 也按同一模式接校验器。</li>
+          <li>播放动作进入播放器；地理落点进入 <span class="code">userMarks / planets / geoStickers</span> 并触发地图刷新。</li>
+          <li>Memory 负责最近对话，Profile 负责长期口味摘要；Health 记录 edge/cloud 各步骤成败，让降级可见。</li>
+        </ol>
+      </div>
+
+      <div class="panel">
+        <h2>关键模块状态</h2>
+        <table>
+          <thead>
+            <tr><th>模块</th><th>代码位置</th><th>状态</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Shell / 人声守则</td><td class="code">frost-agent/harness/persona.ts</td><td><span class="status">已落地</span></td></tr>
+            <tr><td>Router</td><td class="code">harness/router.ts</td><td><span class="status">已落地</span></td></tr>
+            <tr><td>意图注册表</td><td class="code">harness/intentRegistry.ts</td><td><span class="status">已落地</span></td></tr>
+            <tr><td>动作校验注册表</td><td class="code">harness/validator.ts</td><td><span class="status">已落地</span></td></tr>
+            <tr><td>端侧 Selector</td><td class="code">edge/contract.ts · httpEdge.ts</td><td><span class="status edge">MNN / ollama / stub</span></td></tr>
+            <tr><td>云端 Brain</td><td class="code">brain.ts · httpBrain.ts · vite.config.ts</td><td><span class="status partial">DeepSeek 代理</span></td></tr>
+            <tr><td>长期画像</td><td class="code">harness/profile.ts</td><td><span class="status">已落地</span></td></tr>
+            <tr><td>地图联动 store</td><td class="code">data/userMarks.ts · planets.ts · geoStickers.ts</td><td><span class="status">已落地</span></td></tr>
+            <tr><td>Mapbox 地球</td><td class="code">components/MyMapTab.tsx · EarthMap.tsx</td><td><span class="status">已落地</span></td></tr>
+            <tr><td>Skill 四层架构</td><td class="code">ARCHITECTURE.md</td><td><span class="status future">演进目标</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid three" style="margin-top: 12px;">
+      <div class="panel">
+        <h2>端侧 Selector</h2>
+        <p>负责“挑和找”：意图分类、候选排序、嵌入检索、截图识别、照片价值打分。入口是 <span class="code">edgeSafe</span>，任何失败都会安全返回默认值。</p>
+        <div class="pill-row">
+          <span class="pill">classify</span><span class="pill">rank</span><span class="pill">embed</span><span class="pill">vision</span><span class="pill">health</span>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>云端 Brain</h2>
+        <p>负责“写”：歌单理由、城市文化回答、领域对话、圆桌发言、口味画像一句话摘要。密钥只在服务端，前端不持有。</p>
+        <div class="pill-row">
+          <span class="pill">DeepSeek</span><span class="pill">provider-compat</span><span class="pill">fallback</span><span class="pill">cleanVoice</span>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>统一地球索引</h2>
+        <p>音乐、照片、电影、书、行程、心情贴、主题星球都以经纬度回到同一颗地球；图层订阅 store，数据变化即时重绘。</p>
+        <div class="pill-row">
+          <span class="pill">userMarks</span><span class="pill">planets</span><span class="pill">geoStickers</span><span class="pill">source.setData()</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span>Pocket Earth · frost-agent 架构图 · runtime flow and code map</span>
+      <span class="code">/Users/zhangcheng/Desktop/Pocket Earth</span>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="kicker">Pocket Earth · agents inventory</div>
+    <h1>Agent 清单、输入输出与落地状态</h1>
+    <div class="subtitle">这页用于向评审或团队说明每个 agent 处理什么对象、在哪执行、产出什么，以及当前在代码中的成熟度。</div>
+    <div class="meta">对象：curator / runtime agent / pipeline<br/>状态：当前仓库代码</div>
+
+    <div class="grid" style="grid-template-columns: 1.12fr 1fr;">
+      <div class="panel">
+        <h2>Curator / Product Agents</h2>
+        <table>
+          <thead>
+            <tr><th>Agent</th><th>输入</th><th>核心处理</th><th>输出 / 落点</th><th>状态</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>music-curator</td><td>曲库 / 场景一句话</td><td>端侧排序 + 云写歌单理由</td><td>播放队列 + 音乐城市点</td><td><span class="status">已运行</span></td></tr>
+            <tr><td>books-curator</td><td>书架 / 新读完一本</td><td>截图认书、作者/故事地定位、画像增量</td><td>书点 + 藏书票</td><td><span class="status partial">运行页 + 契约</span></td></tr>
+            <tr><td>movies-curator</td><td>豆瓣影单 / 新观影</td><td>截图认片、国别/取景地归位、画像增量</td><td>电影点 + 票根</td><td><span class="status partial">运行页 + 契约</span></td></tr>
+            <tr><td>photos-curator</td><td>相册 / OSS 图池</td><td>端侧视觉评分、打标、重复清理</td><td>高价值照片点 + 日历</td><td><span class="status">已运行</span></td></tr>
+            <tr><td>travel-curator</td><td>目的地 + 喜好</td><td>端侧 POI 排序，逐日行程规划</td><td>完成后写 travel 足迹</td><td><span class="status">已运行</span></td></tr>
+            <tr><td>podcast-curator</td><td>城市播客库</td><td>城市列表 + 播客播放 + 城市对话</td><td>城市文化叙事</td><td><span class="status">已运行</span></td></tr>
+            <tr><td>planet-builder</td><td>一句主题</td><td>端侧解析主题 + Unsplash 抓图</td><td>主题星球圆点图层</td><td><span class="status">已运行</span></td></tr>
+            <tr><td>mood-curator</td><td>一句心情</td><td>端侧判地名，失败随机城市</td><td>心情贴钉经纬度</td><td><span class="status">已运行</span></td></tr>
+            <tr><td>council-room</td><td>议题 + 入场 agent</td><td>频道群聊回合引擎，云/端可切</td><td>圆桌 / 辩论 / 法庭 transcript</td><td><span class="status">已运行</span></td></tr>
+            <tr><td>public-plaza</td><td>长期画像</td><td>本机画像生成相似人示意</td><td>代理社交报告入口</td><td><span class="status future">前瞻入口</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Harness Runtime Agents</h2>
+        <table>
+          <thead>
+            <tr><th>Agent</th><th>职责</th><th>状态</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>switch-handler</td><td>播放 / 暂停 / 下一首 / 切城，纯规则秒回。</td><td><span class="status">已落地</span></td></tr>
+            <tr><td>tour-director</td><td>按城市时区计算此刻最临近日落的城市。</td><td><span class="status">已落地</span></td></tr>
+            <tr><td>open-dj-director</td><td>从书、心情、场景生成跨城歌单。</td><td><span class="status partial">端侧 + 云增强</span></td></tr>
+            <tr><td>radio-24h-director</td><td>从现在到午夜沿日落线编排节目表。</td><td><span class="status">纯本地</span></td></tr>
+            <tr><td>deep-answer</td><td>城市、作家、作品文化问答，RAG 接入位。</td><td><span class="status partial">Brain + fallback</span></td></tr>
+            <tr><td>chitchat</td><td>接闲聊和情绪表达，保持 Frost 声音。</td><td><span class="status partial">Brain + fallback</span></td></tr>
+            <tr><td>general</td><td>未知意图兜底，引导回可做能力。</td><td><span class="status partial">Brain + fallback</span></td></tr>
+          </tbody>
+        </table>
+
+        <h2 style="margin-top: 14px;">Offline / Data Pipelines</h2>
+        <table>
+          <thead>
+            <tr><th>Pipeline</th><th>产物</th><th>状态</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>writer-book</td><td>文化 RAG 分块语料，供 deep-answer 未来检索。</td><td><span class="status future">接入点</span></td></tr>
+            <tr><td>music-pipeline</td><td>曲目 URL / audio.db 写回。</td><td><span class="status partial">部分落地</span></td></tr>
+            <tr><td>script-tts-pipeline</td><td>DJ 口播稿、TTS 音频、字幕、写库。</td><td><span class="status partial">部分落地</span></td></tr>
+            <tr><td>edge-runtime</td><td>MNN × Qwen 编译、量化、sidecar、调优。</td><td><span class="status edge">部署包</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid three" style="margin-top: 12px;">
+      <div class="panel">
+        <h2>为什么是 Harness</h2>
+        <p>主 Frost 不吞原始噪声，只委派 curator，并只接收结构化结论。照片、书影、网页补全这类高噪声任务被隔离在子上下文里。</p>
+      </div>
+      <div class="panel">
+        <h2>为什么是地球</h2>
+        <p>地理坐标是所有对象的共同索引。书、电影、音乐、照片、行程与心情不再只是列表，而是回到“在哪里”。</p>
+      </div>
+      <div class="panel">
+        <h2>为什么端侧优先</h2>
+        <p>个人偏好、相册原图、截图识别、排序打分都尽量在端上完成；云端只接收最小上下文做高质量生成。</p>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span>端侧管挑和找 · 云端管写 · 地球是统一索引</span>
+      <span class="code">pocket-earth-agent-current-architecture-flow.html</span>
+    </div>
+  </section>
+</body>
+</html>
