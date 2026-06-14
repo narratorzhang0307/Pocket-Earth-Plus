@@ -109,7 +109,7 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startMode = 'music'
     else audio.pause();
   }, [audioUrl, isPlaying]);
 
-  useEffect(() => { if (!isOpen) { audioRef.current?.pause(); setIsPlaying(false); setMinimized(false); } }, [isOpen]);
+  useEffect(() => { if (!isOpen) { audioRef.current?.pause(); setIsPlaying(false); setMinimized(false); if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel(); } }, [isOpen]);
 
   // 播客背景乐：该城音乐低音量循环垫底
   useEffect(() => {
@@ -180,6 +180,22 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startMode = 'music'
     goItem(1);
   };
 
+  // frost 回答时穿插 TTS（端侧 Web Speech）：说话时把音乐压低，说完恢复（恢复到 DJ 态或正常音量）
+  const speakTTS = (text: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !text) return;
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'zh-CN';
+      const zh = window.speechSynthesis.getVoices().find((v) => /zh|Chinese|中文/i.test(v.lang) || /zh|Chinese|中文/i.test(v.name));
+      if (zh) u.voice = zh;
+      const main = audioRef.current;
+      u.onstart = () => { if (main) main.volume = 0.15; };          // 压低城市音乐 / 播客背景
+      const restore = () => { if (main) main.volume = intro ? DUCK_VOL : 1; };
+      u.onend = restore; u.onerror = restore;
+      window.speechSynthesis.speak(u);
+    } catch { /* TTS 不可用则静默降级 */ }
+  };
   const sendChat = async () => {
     const text = chatInput.trim();
     if (!text || chatBusy) return;
@@ -189,7 +205,7 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startMode = 'music'
     setChatBusy(true);
     try {
       const res = await runFrost({ now: new Date(), citySlug: city?.slug, userText: text, history });
-      if (res.reply) setChat((c) => [...c, { role: 'dj', text: res.reply }]);
+      if (res.reply) { setChat((c) => [...c, { role: 'dj', text: res.reply }]); speakTTS(res.reply); }
     } catch {
       setChat((c) => [...c, { role: 'dj', text: '我这边断了一下，再说一遍？' }]);
     } finally {
