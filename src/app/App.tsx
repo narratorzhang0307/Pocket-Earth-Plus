@@ -6,13 +6,14 @@ import MusicAgentsTab from './components/MusicAgentsTab';
 
 type Tab = 'photos' | 'earth' | 'agents';
 
-// 393×852 手机框 + 底部三 tab（照片 / 地球 / 智能体）
+// 430×932 手机框（iPhone 15 Pro Max 逻辑尺寸 · 19.5:9）+ 底部三 tab（照片 / 地球 / 智能体）
+// 用 aspect-ratio + max-w-full/max-h 等比自适应：窄屏按宽收，矮屏按高收，比例恒为 430:932
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('earth');
 
   return (
     <div className="min-h-screen w-full bg-[#dcdcdc] flex items-center justify-center p-4 overflow-auto">
-      <div className="relative w-[393px] h-[852px] shrink-0 bg-[#EAEAEA] overflow-hidden shadow-2xl flex flex-col">
+      <div className="relative shrink-0 bg-[#EAEAEA] overflow-hidden shadow-2xl flex flex-col" style={{ width: 'min(430px, 100vw, calc(100dvh * 430 / 932))', aspectRatio: '430 / 932' }}>
         {/* 内容区（底部留给 tab bar） */}
         <div className="flex-1 overflow-hidden relative pb-[84px]">
           {activeTab === 'photos' && <PhotosTab />}
