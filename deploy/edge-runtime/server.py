@@ -21,18 +21,17 @@ PRECISION = os.environ.get('MNN_PRECISION', 'low')       # low 换速度
 USE_MMAP = os.environ.get('MNN_USE_MMAP', 'true')        # 防大模型加载闪退
 
 _FENCE = re.compile(r'^\s*```[a-zA-Z]*\s*|\s*```\s*$')   # 去 Markdown 代码围栏
+_THINK = re.compile(r'<think>.*?</think>', re.S)         # 去思考块(Qwen3 思考模式残留)
 
 _models = {}  # name -> handle
 
 
 def _load(config_path: str):
-    """加载一份 MNN-LLM 模型。不同 MNN 版本 python API 可能不同，按需调整这一处。"""
-    import MNN.llm as mnnllm          # pymnn 的 LLM 运行时
+    """加载一份 MNN-LLM 模型：create(config) → set_config(端侧调优) → load()。"""
+    import MNN.llm as mnnllm          # pymnn 的 LLM 运行时(pip install MNN 即含)
     m = mnnllm.create(config_path)
-    # 端侧调优：低精度 + mmap + 绑大核（参数名以你这版 pymnn 为准）
     try:
-        m.set_config({'precision': PRECISION, 'thread_num': THREAD_NUM,
-                      'use_mmap': USE_MMAP == 'true'})
+        m.set_config({'precision': PRECISION, 'thread_num': THREAD_NUM, 'memory': 'low'})
     except Exception:
         pass
     m.load()
@@ -40,10 +39,23 @@ def _load(config_path: str):
 
 
 def _infer(model, prompt: str, images=None) -> str:
-    """单轮推理。images 为 base64/路径列表（视觉模型用）。按你这版 pymnn 的 response API 适配。"""
+    """单轮推理。文本直接 response；视觉把 base64 写临时文件、用 <img> 标签喂给 Qwen-VL。"""
     if images:
-        return model.response(prompt, images=images)
-    return model.response(prompt)
+        import base64, tempfile
+        tmp, tags = [], ''
+        try:
+            for img in images:
+                raw = img.split(',', 1)[1] if (img.strip().startswith('data:') and ',' in img) else img
+                fd, path = tempfile.mkstemp(suffix='.png')
+                with os.fdopen(fd, 'wb') as f:
+                    f.write(base64.b64decode(raw))
+                tmp.append(path); tags += f'<img>{path}</img>'
+            return str(model.response(tags + prompt, stream=False))
+        finally:
+            for p in tmp:
+                try: os.remove(p)
+                except OSError: pass
+    return str(model.response(prompt, stream=False))
 
 
 def _ensure(name: str):
@@ -57,7 +69,8 @@ def _ensure(name: str):
 
 
 def _strip_fence(t: str) -> str:
-    return _FENCE.sub('', (t or '').strip()).strip()
+    t = _THINK.sub('', t or '')              # 先去思考块
+    return _FENCE.sub('', t.strip()).strip()  # 再去代码围栏
 
 
 class H(BaseHTTPRequestHandler):

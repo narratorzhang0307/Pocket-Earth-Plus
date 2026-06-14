@@ -33,5 +33,18 @@ check "$MODELS_DIR/$(basename "$TEXT_REPO")" config.json llm.mnn llm.mnn.weight 
 echo "[fetch-models] 校验视觉模型(多一对视觉编码器权重)："
 check "$MODELS_DIR/$(basename "$VISION_REPO")" config.json llm.mnn llm.mnn.weight visual.mnn visual.mnn.weight || true
 
+# 端侧任务(分类/排序/打标)要快要简短，关掉 Qwen3 思考模式（默认开会先吐一大段 <think> 拖慢数十倍）
+echo "[fetch-models] 关闭思考模式(端侧提速)"
+for d in "$MODELS_DIR/$(basename "$TEXT_REPO")" "$MODELS_DIR/$(basename "$VISION_REPO")"; do
+  cfg="$d/config.json"
+  [ -f "$cfg" ] && python3 - "$cfg" <<'PY' 2>/dev/null || true
+import json,sys
+c=json.load(open(sys.argv[1]))
+c.setdefault("jinja",{}).setdefault("context",{})["enable_thinking"]=False
+json.dump(c,open(sys.argv[1],"w"),ensure_ascii=False,indent=4)
+PY
+done
+
 echo "[fetch-models] 完成。文本 config： $MODELS_DIR/$(basename "$TEXT_REPO")/config.json"
 echo "                视觉 config： $MODELS_DIR/$(basename "$VISION_REPO")/config.json"
+echo "[fetch-models] 起 sidecar： PYTHON=~/mnn-venv/bin/python bash serve.sh"

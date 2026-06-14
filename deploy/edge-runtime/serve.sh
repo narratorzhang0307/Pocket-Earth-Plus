@@ -14,4 +14,5 @@ export MNN_USE_MMAP="${MNN_USE_MMAP:-true}"    # 防大模型加载闪退
 echo "[serve] 文本模型: $MNN_TEXT_CONFIG"
 echo "[serve] 视觉模型: $MNN_VISION_CONFIG"
 echo "[serve] 端口: $MNN_PORT  线程: $MNN_THREAD_NUM  精度: $MNN_PRECISION  mmap: $MNN_USE_MMAP"
-exec python3 "$(dirname "$0")/server.py"
+# 用装了 MNN 的解释器（venv）。设 PYTHON 指向它，例如 PYTHON=~/mnn-venv/bin/python
+exec "${PYTHON:-python3}" "$(dirname "$0")/server.py"
