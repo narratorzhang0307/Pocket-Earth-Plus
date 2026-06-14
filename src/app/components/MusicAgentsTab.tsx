@@ -116,12 +116,8 @@ export default function MusicAgentsTab() {
 
       {/* 状态条 */}
       <div className="px-4 py-2.5 border-b-2 border-black bg-black text-[#00ff88] shrink-0">
-        <div className="font-pixel text-[8px] flex justify-between items-center tracking-wider">
-          <span>CURATORS: {GROUPS[0].items.length}</span>
-          <span className="opacity-50">|</span>
-          <span>RUNNABLE: {Object.keys(RUN_BY_NAME).length}</span>
-          <span className="opacity-50">|</span>
-          <span>EDGE+CLOUD</span>
+        <div className="font-pixel text-[9px] flex justify-center items-center tracking-widest">
+          <span>AGENTS: {Object.keys(RUN_BY_NAME).length}</span>
         </div>
       </div>
 
