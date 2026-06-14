@@ -155,7 +155,7 @@ export default function MusicAgentsTab() {
                     <span className={`shrink-0 font-pixel text-[6px] uppercase tracking-wider border border-black px-1.5 py-1 ${
                       runnable ? 'bg-black text-[#7CFF6B]' : 'bg-[#00ff88] text-black'
                     }`}>
-                      {runnable ? '▶ 运行' : a.status}
+                      {runnable ? '▶ RUN' : a.status}
                     </span>
                   </button>
                 );
@@ -182,7 +182,7 @@ export default function MusicAgentsTab() {
                     <div className="font-pixel text-[9px] tracking-wide truncate">{s.name}</div>
                     <div className="text-[11px] text-black/60 leading-tight mt-0.5 truncate">{s.desc || s.target}</div>
                   </div>
-                  <span className="shrink-0 font-pixel text-[6px] uppercase tracking-wider border border-black px-1.5 py-1 bg-black text-[#7CFF6B]">▶ 运行</span>
+                  <span className="shrink-0 font-pixel text-[6px] uppercase tracking-wider border border-black px-1.5 py-1 bg-black text-[#7CFF6B]">▶ RUN</span>
                 </button>
               ))}
             </div>
