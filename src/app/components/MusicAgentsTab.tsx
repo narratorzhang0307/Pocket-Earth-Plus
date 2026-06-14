@@ -1,7 +1,7 @@
 // 音乐 tab —— frost-agent 架构控制台：展示 v2.0 各 agent（curator / harness / pipeline）
 // 内容静态提炼自 frost-agent/ARCHITECTURE.md 与各 contract.md
 import { useState } from 'react';
-import MusicAgentRunPage from './MusicAgentRunPage';
+import MusicCuratorPage from './MusicCuratorPage';
 import PodcastRunPage from './PodcastRunPage';
 import MoviesRunPage from './MoviesRunPage';
 import BooksRunPage from './BooksRunPage';
@@ -47,7 +47,7 @@ const RUN_BY_NAME: Record<string, Running> = {
 
 export default function MusicAgentsTab() {
   const [running, setRunning] = useState<Running>(null);
-  if (running === 'music') return <MusicAgentRunPage onBack={() => setRunning(null)} />;
+  if (running === 'music') return <MusicCuratorPage onBack={() => setRunning(null)} />;
   if (running === 'podcast') return <PodcastRunPage onBack={() => setRunning(null)} />;
   if (running === 'movies') return <MoviesRunPage onBack={() => setRunning(null)} />;
   if (running === 'books') return <BooksRunPage onBack={() => setRunning(null)} />;

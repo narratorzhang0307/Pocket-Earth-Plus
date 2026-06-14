@@ -19,9 +19,10 @@ interface Turn {
 
 interface Props {
   onBack: () => void;
+  embedded?: boolean;   // 嵌入「曲库/对话」双 tab 时隐藏自身大头，仅留 24H 动作
 }
 
-export default function MusicAgentRunPage({ onBack }: Props) {
+export default function MusicAgentRunPage({ onBack, embedded }: Props) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -108,19 +109,28 @@ export default function MusicAgentRunPage({ onBack }: Props) {
 
   return (
     <div className="h-full flex flex-col bg-[#EAEAEA] font-sans relative overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b-2 border-black bg-white shrink-0">
-        <button onClick={onBack} className="w-8 h-8 border-2 border-black bg-white flex items-center justify-center shadow-[1px_1px_0_#000] active:translate-y-px">
-          <ChevronLeft className="w-4 h-4" strokeWidth={3} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="font-pixel text-[11px] tracking-wider truncate">MUSIC-CURATOR</div>
-          <div className="text-[9px] text-black/45 truncate">电台 agent · {RADIO_CITIES.length} 城在库</div>
+      {/* Header（嵌入双 tab 时只留 24H 动作，大头交给外层）*/}
+      {embedded ? (
+        <div className="flex items-center justify-between px-3 py-1.5 border-b-2 border-black bg-white shrink-0">
+          <span className="font-pixel text-[7px] text-black/40 tracking-widest">电台 agent · 和 FROST 对话</span>
+          <button onClick={generateDay} disabled={busy} className="flex items-center gap-1 border-2 border-black bg-black text-[#7CFF6B] px-2 py-1 font-pixel text-[7px] tracking-widest active:translate-y-px disabled:opacity-40">
+            <Radio className="w-3 h-3" strokeWidth={2.5} /> 24H
+          </button>
         </div>
-        <button onClick={generateDay} disabled={busy} className="flex items-center gap-1 border-2 border-black bg-black text-[#7CFF6B] px-2 py-1.5 font-pixel text-[7px] tracking-widest active:translate-y-px disabled:opacity-40">
-          <Radio className="w-3 h-3" strokeWidth={2.5} /> 24H
-        </button>
-      </div>
+      ) : (
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b-2 border-black bg-white shrink-0">
+          <button onClick={onBack} className="w-8 h-8 border-2 border-black bg-white flex items-center justify-center shadow-[1px_1px_0_#000] active:translate-y-px">
+            <ChevronLeft className="w-4 h-4" strokeWidth={3} />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="font-pixel text-[11px] tracking-wider truncate">MUSIC-CURATOR</div>
+            <div className="text-[9px] text-black/45 truncate">电台 agent · {RADIO_CITIES.length} 城在库</div>
+          </div>
+          <button onClick={generateDay} disabled={busy} className="flex items-center gap-1 border-2 border-black bg-black text-[#7CFF6B] px-2 py-1.5 font-pixel text-[7px] tracking-widest active:translate-y-px disabled:opacity-40">
+            <Radio className="w-3 h-3" strokeWidth={2.5} /> 24H
+          </button>
+        </div>
+      )}
 
       {/* 对话区 */}
       <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
