@@ -3,6 +3,11 @@
 // 换数据只换 douban-movies.json；坐标映射在下方 COUNTRY_COORDS。
 
 import raw from './douban-movies.json';
+import doubanRatings from './douban-ratings.json';
+
+// 豆瓣公开评分（0-10）：联网考证后入库，键为记录 id。票根上展示用，查不到则为 undefined。
+const RATINGS = doubanRatings as Record<string, number>;
+export const doubanRating = (id: number): number | undefined => RATINGS[String(id)];
 
 export interface MovieRecord {
   id: number;

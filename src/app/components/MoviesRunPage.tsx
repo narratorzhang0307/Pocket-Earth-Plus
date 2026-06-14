@@ -1,6 +1,6 @@
 import { useMemo, useReducer, useRef, useState, useEffect } from 'react';
 import { ChevronLeft, Film, Plus, Camera, Star } from 'lucide-react';
-import { movieRecords, movieTotal, movieMappedTotal, movieCountries, movieCountry, type MovieRecord } from '../data/movies';
+import { movieRecords, movieTotal, movieMappedTotal, movieCountries, movieCountry, doubanRating, type MovieRecord } from '../data/movies';
 import { addUserMark, getUserMarksByKind, subscribeUserMarks, spreadCoord } from '../data/userMarks';
 import { httpEdge } from '../../../frost-agent/edge/httpEdge';
 import { AnimatePresence } from 'motion/react';
@@ -16,7 +16,7 @@ const AMBER = '#ffb000';
 interface Ticket {
   key: string; title: string; original?: string; director?: string;
   country: string; year?: number | null; rating?: number | null; type?: string; date?: string;
-  synopsis?: string; pinned: boolean; user?: boolean;
+  synopsis?: string; douban?: number; pinned: boolean; user?: boolean;
 }
 
 const stars = (r?: number | null) => {
@@ -26,7 +26,7 @@ const stars = (r?: number | null) => {
 
 function fromRecord(m: MovieRecord): Ticket {
   return { key: 'd' + m.id, title: m.title, original: m.original, director: m.director, country: m.country,
-    year: m.year, rating: m.rating, type: m.type, date: m.date, synopsis: m.synopsis, pinned: !!movieCountry(m.country) };
+    year: m.year, rating: m.rating, type: m.type, date: m.date, synopsis: m.synopsis, douban: doubanRating(m.id), pinned: !!movieCountry(m.country) };
 }
 
 export default function MoviesRunPage({ onBack, embedded }: Props) {
@@ -190,10 +190,10 @@ export default function MoviesRunPage({ onBack, embedded }: Props) {
                   </span>
                 </div>
               </div>
-              {/* 撕票虚线 + 票根编号区 */}
+              {/* 撕票虚线 + 票根评分区（上：类型；下：豆瓣评分）*/}
               <div className="w-12 shrink-0 border-l-2 border-dashed border-black/40 flex flex-col items-center justify-center py-2">
                 <span className="font-pixel text-[6px] text-black/40">{t.type || '电影'}</span>
-                <span className="font-pixel text-[13px] leading-none mt-1" style={{ color: '#000' }}>{(t.year || '').toString().slice(-2) || '··'}</span>
+                <span className="font-pixel text-[14px] leading-none mt-1" style={{ color: '#000' }}>{t.douban != null ? t.douban.toFixed(1) : '··'}</span>
               </div>
             </div>
           </button>
