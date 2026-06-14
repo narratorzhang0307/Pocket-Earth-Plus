@@ -154,16 +154,17 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
       (Object.entries(KIND_COLOR) as [MarkerKind, string][]).forEach(([k, color]) => {
         const id = 'sq-' + k;
         if (map.hasImage(id)) return;
-        const s = k === 'movie' ? 11 : 18;       // 电影点小一点
-        const inner = k === 'movie' ? 5 : 6;
-        const off = Math.round((s - inner) / 2);
+        const px = 2;                            // 2x 画布更清晰
+        const base = k === 'movie' ? 9 : 12;     // 逻辑像素尺寸（小巧）
+        const sw = base * px;
+        const bw = Math.round(1.5 * px);         // 细黑边 1.5px（原来每边 6px 太粗）
         const cv = document.createElement('canvas');
-        cv.width = s; cv.height = s;
+        cv.width = sw; cv.height = sw;
         const ctx = cv.getContext('2d');
         if (!ctx) return;
-        ctx.fillStyle = '#000'; ctx.fillRect(0, 0, s, s);
-        ctx.fillStyle = color; ctx.fillRect(off, off, inner, inner);
-        map.addImage(id, ctx.getImageData(0, 0, s, s));
+        ctx.fillStyle = '#000'; ctx.fillRect(0, 0, sw, sw);
+        ctx.fillStyle = color; ctx.fillRect(bw, bw, sw - bw * 2, sw - bw * 2);
+        map.addImage(id, ctx.getImageData(0, 0, sw, sw), { pixelRatio: px });
       });
       map.addSource('marks', { type: 'geojson', data: buildMarksData() as never });
       map.addLayer({
@@ -172,6 +173,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
         source: 'marks',
         layout: {
           'icon-image': ['concat', 'sq-', ['get', 'kind']],
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 1, 0.65, 5, 0.85, 11, 1],
           'icon-allow-overlap': false,
           'text-field': ['case', ['==', ['get', 'kind'], 'music'], ['get', 'label'], ''],
           'text-font': ['Arial Unicode MS Regular'],

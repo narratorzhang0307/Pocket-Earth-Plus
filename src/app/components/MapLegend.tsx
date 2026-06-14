@@ -15,7 +15,7 @@ interface Props {
 
 export default function MapLegend({ visibleKinds, onToggle, planets = [], onTogglePlanet, onRemovePlanet }: Props) {
   return (
-    <div className="absolute bottom-3 left-3 z-20 bg-white/90 backdrop-blur-md border-2 border-black shadow-[2px_2px_0_#000] p-2 pointer-events-auto select-none max-w-[160px]">
+    <div className="absolute bottom-3 left-3 z-20 bg-white/90 backdrop-blur-md border border-black shadow-[1px_1px_0_rgba(0,0,0,0.5)] p-2 pointer-events-auto select-none max-w-[160px]">
       <div className="font-pixel text-[7px] tracking-widest mb-1.5 text-black/55">LAYERS · 图层</div>
       <div className="space-y-1">
         {MARKER_KINDS.map((k) => {
@@ -26,10 +26,8 @@ export default function MapLegend({ visibleKinds, onToggle, planets = [], onTogg
               onClick={() => onToggle(k.kind)}
               className={`flex items-center gap-2 w-full transition-opacity active:translate-y-px ${on ? '' : 'opacity-35'}`}
             >
-              {/* 方块（黑框 + 彩芯，呼应地图上的标记点）*/}
-              <div className="w-3 h-3 shrink-0 bg-black flex items-center justify-center border border-black" style={{ boxShadow: `1px 1px 0 ${k.color}` }}>
-                <div className="w-1.5 h-1.5" style={{ background: k.color }} />
-              </div>
+              {/* 方块（细黑边 + 满彩色，呼应地图上的标记点）*/}
+              <div className="w-3 h-3 shrink-0 border border-black" style={{ background: k.color }} />
               <span className="font-pixel text-[8px] leading-none">{k.label}</span>
               <span className="ml-auto pl-2 font-pixel text-[6px] text-black/40 leading-none">{on ? 'ON' : 'OFF'}</span>
             </button>
