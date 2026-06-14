@@ -87,19 +87,21 @@ export default function MarkerDetail({ data, onClose }: { data: MarkerDetailData
         {/* 藏书票 */}
         {data.kind === 'book' && (
           <div>
-            <div className="px-2.5 py-1.5 border-b-2" style={{ borderColor: '#b388ff' }}>
+            <div className="flex items-center justify-between px-2.5 py-1.5 border-b-2" style={{ borderColor: '#b388ff' }}>
               <span className="font-pixel text-[7px] tracking-widest" style={{ color: '#7a4dd6' }}>EX LIBRIS · 藏书票</span>
+              {data.rating != null && <span className="text-[11px] tracking-tight" style={{ color: '#7a4dd6' }}>{stars(data.rating)}</span>}
             </div>
             <div className="px-3 py-2.5">
               <div className="flex items-baseline gap-2">
                 <div className="text-[15px] font-bold leading-tight">{data.title}</div>
                 {data.year && <span className="font-pixel text-[8px] text-black/35">{data.year}</span>}
               </div>
-              <div className="text-[11px] text-black/55 mt-1">{data.author}</div>
-              {data.note && <div className="text-[12px] text-black/75 leading-relaxed mt-2 italic">「{data.note}」</div>}
+              <div className="text-[11px] text-black/60 mt-1">{[data.author, data.place].filter(Boolean).join(' · ')}</div>
+              {data.synopsis && <div className="text-[11px] text-black/75 leading-relaxed mt-2 max-h-[160px] overflow-y-auto">{data.synopsis}</div>}
+              {!data.synopsis && data.note && <div className="text-[12px] text-black/75 leading-relaxed mt-2 italic">「{data.note}」</div>}
               <div className="flex items-center gap-1.5 mt-2.5">
                 <span className="w-2 h-2" style={{ background: '#b388ff' }} />
-                <span className="font-pixel text-[7px] text-black/50 tracking-wider">已钉 {data.place || '故事之地'}</span>
+                <span className="font-pixel text-[7px] text-black/50 tracking-wider">已钉 {data.place || '故事之地'}{data.date ? ` · 读于 ${data.date}` : ''}</span>
               </div>
             </div>
           </div>

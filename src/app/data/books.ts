@@ -1,41 +1,77 @@
-// 读书数据源（解耦）：把读过的书钉到「故事发生地 / 作者之地」，在地球上铺成一张阅读地图。
-// 豆瓣「书.csv」当前为空，这里先给一组有明确地理归属的文学作品做种子；
-// 用户在「读书 agent」里记一本/截图书后，会作为用户落点实时并入地球（见 userMarks）。
+// 读书数据源（解耦）：豆瓣阅读记录(douban-books.json，已精简入库)→ 按作者国籍落到代表城市坐标，
+// 同国多本确定性散开，上地球（紫点），点开看 ≤100 字简介。做法对齐观影(movies.ts)。
+// 另保留少量「故事之地」种子(SEED_BOOKS)与文学城市表(BOOK_PLACES)给读书 agent 的「记一本」选地点用。
 
-export interface BookSeed {
-  id: string; title: string; author: string;
-  place: string; lng: number; lat: number;   // 故事/作者之地
-  year?: number; note?: string;               // 一句短评，比纯笔记更像「藏书票」
+import raw from './douban-books.json';
+
+export interface BookRecord {
+  id: number;
+  title: string;
+  author: string;
+  country: string;     // 作者国籍（已清洗主国）
+  type: string;
+  year: number | null;
+  rating: number | null;
+  date: string;        // 读完日期 YYYY-MM-DD
+  synopsis: string;    // ≤100 字简介
 }
 
-// 故事之地优先（马孔多→阿拉卡塔卡、雪国→越后汤泽），让地球上的点指向书里的世界
+const isYMD = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+export const bookRecords: BookRecord[] = (raw as BookRecord[]).map((b) => (isYMD(b.date) ? b : { ...b, date: '' }));
+export const bookTotal = bookRecords.length;
+
+// 作者国籍 → 代表城市坐标 [lng, lat]（文学之都 / 首都；美国取纽约）
+const COUNTRY_COORDS: Record<string, [number, number]> = {
+  中国大陆: [116.40, 39.90], 中国: [116.40, 39.90], 中国台湾: [121.56, 25.03], 中国香港: [114.17, 22.32],
+  美国: [-73.97, 40.78], 日本: [139.69, 35.68], 英国: [-0.12, 51.51], 法国: [2.35, 48.85],
+  德国: [13.40, 52.52], 意大利: [12.49, 41.90], 爱尔兰: [-6.26, 53.35], 瑞士: [8.54, 47.37],
+  智利: [-70.65, -33.46], 哥伦比亚: [-74.07, 4.71], 俄国: [37.62, 55.75], 俄罗斯: [37.62, 55.75], 苏联: [37.62, 55.75],
+  阿根廷: [-58.38, -34.60], 波兰: [21.01, 52.23], 加拿大: [-79.38, 43.65], 马来西亚: [101.69, 3.14],
+  韩国: [126.97, 37.56], 捷克: [14.42, 50.09], 墨西哥: [-99.13, 19.43], 荷兰: [4.90, 52.37],
+  葡萄牙: [-9.14, 38.72], 西班牙: [-3.70, 40.42], 瑞典: [18.07, 59.33], 塞尔维亚: [20.46, 44.79],
+  澳大利亚: [151.21, -33.87], 挪威: [10.75, 59.91], 古希腊: [23.73, 37.98], 希腊: [23.73, 37.98],
+  斯洛文尼亚: [14.51, 46.06], 印度: [72.88, 19.08], 奥地利: [16.37, 48.21], 芬兰: [24.94, 60.17],
+  南非: [18.42, -33.92], 罗马尼亚: [26.10, 44.43], 越南: [105.83, 21.03], 波斯: [51.39, 35.69], 伊朗: [51.39, 35.69],
+  丹麦: [12.57, 55.68], 土耳其: [28.98, 41.01],
+};
+export const bookCountry = (c: string): [number, number] | undefined => COUNTRY_COORDS[c];
+
+export interface BookPoint extends BookRecord { lng: number; lat: number }
+
+// 同国多本在城市附近散开（±2.5°），缩小一团、放大见分布；无坐标（国籍未收录）不落地球
+function hashStr(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function spread(id: number, lng: number, lat: number): [number, number] {
+  const h = hashStr('bk-' + id);
+  const dlng = ((h & 0xffff) / 0xffff - 0.5) * 2.5;
+  const dlat = (((h >>> 16) & 0xffff) / 0xffff - 0.5) * 2.5;
+  return [lng + dlng, lat + dlat];
+}
+
+export const bookPoints: BookPoint[] = bookRecords
+  .map((b) => {
+    const base = COUNTRY_COORDS[b.country];
+    if (!base) return null;
+    const [lng, lat] = spread(b.id, base[0], base[1]);
+    return { ...b, lng, lat };
+  })
+  .filter((b): b is BookPoint => !!b);
+export const bookMappedTotal = bookPoints.length;
+
+// ——————————————————————————————————————————————
+// 以下给「读书 agent · 记一本」选地点用：少量故事之地种子 + 常见文学城市表
+// ——————————————————————————————————————————————
+export interface BookSeed { id: string; title: string; author: string; place: string; lng: number; lat: number; year?: number; note?: string }
 export const SEED_BOOKS: BookSeed[] = [
   { id: 'b01', title: '百年孤独', author: '加西亚·马尔克斯', place: '阿拉卡塔卡 · 哥伦比亚', lng: -74.19, lat: 10.59, year: 1967, note: '马孔多的雨下了四年十一个月零两天。' },
-  { id: 'b02', title: '霍乱时期的爱情', author: '加西亚·马尔克斯', place: '卡塔赫纳 · 哥伦比亚', lng: -75.51, lat: 10.39, year: 1985, note: '爱情在等待里发酵了半个世纪。' },
   { id: 'b03', title: '老人与海', author: '海明威', place: '哈瓦那 · 古巴', lng: -82.38, lat: 23.13, year: 1952, note: '人可以被毁灭，但不能被打败。' },
-  { id: 'b04', title: '了不起的盖茨比', author: '菲茨杰拉德', place: '长岛 · 纽约', lng: -73.50, lat: 40.79, year: 1925, note: '码头尽头那盏绿灯。' },
-  { id: 'b05', title: '麦田里的守望者', author: 'J.D.塞林格', place: '纽约', lng: -73.97, lat: 40.78, year: 1951, note: '我只想做个麦田里的守望者。' },
   { id: 'b06', title: '挪威的森林', author: '村上春树', place: '东京', lng: 139.70, lat: 35.69, year: 1987, note: '每个人都有属于自己的一片森林。' },
-  { id: 'b07', title: '白夜行', author: '东野圭吾', place: '大阪', lng: 135.50, lat: 34.69, year: 1999, note: '我的天空里没有太阳，总是黑夜。' },
-  { id: 'b08', title: '雪国', author: '川端康成', place: '越后汤泽 · 新潟', lng: 138.81, lat: 36.93, year: 1948, note: '穿过县界长长的隧道，便是雪国。' },
-  { id: 'b09', title: '追忆似水年华', author: '普鲁斯特', place: '巴黎', lng: 2.35, lat: 48.85, year: 1913, note: '一块玛德琳点心唤回整个童年。' },
-  { id: 'b10', title: '局外人', author: '加缪', place: '阿尔及尔', lng: 3.06, lat: 36.75, year: 1942, note: '今天，妈妈死了。也许是昨天。' },
-  { id: 'b11', title: '尤利西斯', author: '詹姆斯·乔伊斯', place: '都柏林', lng: -6.26, lat: 53.35, year: 1922, note: '一座城市的一天，一部小说的一生。' },
-  { id: 'b12', title: '罪与罚', author: '陀思妥耶夫斯基', place: '圣彼得堡', lng: 30.34, lat: 59.93, year: 1866, note: '一桩谋杀背后的良心审判。' },
-  { id: 'b13', title: '城堡', author: '卡夫卡', place: '布拉格', lng: 14.42, lat: 50.09, year: 1926, note: '永远到不了的城堡。' },
   { id: 'b14', title: '1984', author: '乔治·奥威尔', place: '伦敦', lng: -0.12, lat: 51.51, year: 1949, note: '老大哥在看着你。' },
-  { id: 'b15', title: '围城', author: '钱锺书', place: '上海', lng: 121.47, lat: 31.23, year: 1947, note: '城外的人想进去，城里的人想出来。' },
-  { id: 'b16', title: '边城', author: '沈从文', place: '湘西凤凰', lng: 109.60, lat: 27.95, year: 1934, note: '这个人也许永远不回来了，也许明天回来。' },
-  { id: 'b17', title: '活着', author: '余华', place: '江南乡村', lng: 120.15, lat: 30.27, year: 1993, note: '活着本身就是活着的意义。' },
-  { id: 'b18', title: '三体', author: '刘慈欣', place: '北京', lng: 116.40, lat: 39.90, year: 2008, note: '不要回答，不要回答，不要回答。' },
 ];
 
-// 阅读地图坐标点（给 mapMarkers / 地球用）
-export interface BookPoint extends BookSeed { /* 已含 lng/lat */ }
-export const bookPoints: BookPoint[] = SEED_BOOKS;
-export const bookTotal = SEED_BOOKS.length;
-
-// 给「读书 agent」记一本时选地点用：常见文学之地（含上面用到的城市 + 几个补充）
 export const BOOK_PLACES: { name: string; lng: number; lat: number }[] = [
   { name: '北京', lng: 116.40, lat: 39.90 }, { name: '上海', lng: 121.47, lat: 31.23 },
   { name: '杭州', lng: 120.15, lat: 30.27 }, { name: '湘西凤凰', lng: 109.60, lat: 27.95 },

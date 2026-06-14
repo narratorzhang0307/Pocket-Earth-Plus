@@ -63,7 +63,7 @@ function resolveDetail(id: string, kind: MarkerKind, label: string): MarkerDetai
   }
   if (kind === 'photo') { const p = photoById.get(id); return p ? { kind, full: p.full, thumb: p.thumb, city: (p.city || '').split(',')[0] } : null; }
   if (kind === 'movie') { const m = movieById.get(id); return m ? { kind, title: m.title, original: m.original, director: m.director, country: m.country, year: m.year, rating: m.rating, date: m.date, synopsis: m.synopsis } : null; }
-  if (kind === 'book') { const b = bookById.get(id); return b ? { kind, title: b.title, author: b.author, place: b.place, year: b.year, note: b.note } : null; }
+  if (kind === 'book') { const b = bookById.get(id); return b ? { kind, title: b.title, author: b.author, place: b.country, year: b.year, synopsis: b.synopsis, date: b.date, rating: b.rating } : null; }
   if (kind === 'music') return { kind, title: label, city: label };
   return null;
 }
