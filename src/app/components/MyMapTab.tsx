@@ -1,15 +1,12 @@
 import { useEffect, useReducer, useState } from 'react';
 import type mapboxgl from 'mapbox-gl';
-import img2 from '../../imports/image-2.png';
-import img3 from '../../imports/image-3.png';
-import img4 from '../../imports/image-4.png';
-import img5 from '../../imports/image-5.png';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import EarthMap from './EarthMap';
 import { type MarkerKind, KIND_COLOR, toGeoJSON, MAP_MARKERS, photoById, movieById, bookById } from '../data/mapMarkers';
 import { getUserMarks, subscribeUserMarks } from '../data/userMarks';
 import { getPlanets, getVisiblePlanets, subscribePlanets, togglePlanet, removePlanet } from '../data/planets';
 import { trackDownload } from '../data/themePlanet';
+import { showcasePhotos } from '../data/photos';
 import { getMoodStickers, addMoodSticker, removeMoodSticker, subscribeMood, resolveMoodPlace, pickStickerColor, pickRot } from '../data/geoStickers';
 import { Plus, X } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
@@ -104,10 +101,10 @@ function centralAngleDeg(a: [number, number], b: [number, number]) {
 export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
   // 每个标定点固定到西湖周边真实经纬度（WGS84，源自 OpenStreetMap / Wikidata）
   const annotations = [
-    { id: 1, lng: 120.14703, lat: 30.260901, place: '断桥残雪', date: '03.14', text: '风卷着灰尘', dir: 'right', dx: 30, dy: -20, img: img2, imgProps: { w: 60, h: 80, rot: -5, dx: -20, dy: 30 } },
-    { id: 2, lng: 120.1416133, lat: 30.2542019, place: '平湖秋月', date: '03.15', text: '霓虹闪烁的夜晚', dir: 'left', dx: -40, dy: 20, img: img3, imgProps: { w: 70, h: 70, rot: 8, dx: 40, dy: -10 } },
-    { id: 3, lng: 120.1405, lat: 30.2408, place: '三潭印月', date: '03.18', text: '我听到心跳', dir: 'right', dx: 35, dy: 15, img: img4, imgProps: { w: 80, h: 60, rot: -3, dx: -50, dy: 40 } },
-    { id: 4, lng: 120.13739, lat: 30.23439, place: '花港观鱼', date: '03.20', text: '雨滴打在柏油路', dir: 'left', dx: -20, dy: -30, img: img5, imgProps: { w: 65, h: 85, rot: 6, dx: 25, dy: 35 } },
+    { id: 1, lng: 120.14703, lat: 30.260901, place: '断桥残雪', date: '03.14', text: '风卷着灰尘', dir: 'right', dx: 30, dy: -20, img: showcasePhotos[0]?.thumb, imgProps: { w: 60, h: 80, rot: -5, dx: -20, dy: 30 } },
+    { id: 2, lng: 120.1416133, lat: 30.2542019, place: '平湖秋月', date: '03.15', text: '霓虹闪烁的夜晚', dir: 'left', dx: -40, dy: 20, img: showcasePhotos[1]?.thumb, imgProps: { w: 70, h: 70, rot: 8, dx: 40, dy: -10 } },
+    { id: 3, lng: 120.1405, lat: 30.2408, place: '三潭印月', date: '03.18', text: '我听到心跳', dir: 'right', dx: 35, dy: 15, img: showcasePhotos[2]?.thumb, imgProps: { w: 80, h: 60, rot: -3, dx: -50, dy: 40 } },
+    { id: 4, lng: 120.13739, lat: 30.23439, place: '花港观鱼', date: '03.20', text: '雨滴打在柏油路', dir: 'left', dx: -20, dy: -30, img: showcasePhotos[3]?.thumb, imgProps: { w: 65, h: 85, rot: 6, dx: 25, dy: 35 } },
     { id: 5, lng: 120.14501, lat: 30.23388, place: '雷峰塔', date: '03.21', text: '沉默的公交站牌', dir: 'left', dx: -35, dy: -10 },
     { id: 6, lng: 120.12868, lat: 30.25217, place: '曲院风荷', date: '03.22', text: '远方的车灯', dir: 'right', dx: 25, dy: -25 },
   ];

@@ -41,6 +41,9 @@ const WORLD_PHOTOS: Photo[] = (worldPhotos as WorldPhoto[]).map((w) => ({
   author: w.author, authorLink: w.authorLink, photoLink: w.photoLink,
 }));
 
+// 给地图主展示页（annotations 手帐贴）用的几张好看照片：世界日落照片里取一小撮（缩略图已校验可用）
+export const showcasePhotos: Photo[] = WORLD_PHOTOS.slice(0, 8);
+
 const PHOTOS: Photo[] = [...PLACE_PHOTOS, ...WORLD_PHOTOS];
 
 // 署名反查：按图片 URL（缩略 / 高清）查 Unsplash 摄影师，灯箱据此显示「Photo by … on Unsplash」
