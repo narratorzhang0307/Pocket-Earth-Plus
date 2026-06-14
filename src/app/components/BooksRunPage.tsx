@@ -2,7 +2,7 @@ import { useMemo, useReducer, useRef, useState, useEffect } from 'react';
 import { ChevronLeft, BookOpen, Plus, Camera, Star } from 'lucide-react';
 import { bookRecords, bookTotal, bookMappedTotal, bookCountry, BOOK_PLACES, bookPlace, type BookRecord } from '../data/books';
 import { addUserMark, getUserMarksByKind, subscribeUserMarks, spreadCoord } from '../data/userMarks';
-import { httpEdge } from '../../../frost-agent/edge/httpEdge';
+import { edgeSafe } from '../../../frost-agent/edge/contract';
 import { recordSignals } from '../../../frost-agent/harness/profile';
 import { AnimatePresence } from 'motion/react';
 import MarkerDetail, { type MarkerDetailData } from './MarkerDetail';
@@ -100,7 +100,7 @@ export default function BooksRunPage({ onBack, embedded }: Props) {
       const dataUrl = await new Promise<string>((res, rej) => {
         const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(f);
       });
-      const text = await httpEdge.vision(dataUrl, '这是一张书封或书页截图，只回答书名，不要其他文字。');
+      const text = await edgeSafe.vision(dataUrl, '这是一张书封或书页截图，只回答书名，不要其他文字。');
       if (text && text.trim()) {
         const guess = text.trim().split('\n')[0].slice(0, 40);
         setTitle(guess); setVision('端侧识别：' + guess);

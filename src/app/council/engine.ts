@@ -3,7 +3,7 @@
 //   选下一个发言者 → 构造该 agent 看到的群聊上下文 → 调一次云脑(/api/frost-llm) → 追加发言 → 判断是否继续。
 // 收敛靠「固定发言序列（每人 N 轮）+ 用户可随时喊停(AbortSignal)」，天然不会无限互相回复。
 import { agentById, type CouncilAgent } from './agents';
-import { httpEdge } from '../../../frost-agent/edge/httpEdge';
+import { edgeSafe } from '../../../frost-agent/edge/contract';
 
 export type CouncilMode = 'roundtable' | 'debate' | 'courtroom' | 'brainstorm';
 export type CouncilBackend = 'cloud' | 'edge';  // 云端大模型(DeepSeek) / 端侧本地(Qwen via ollama)
@@ -46,7 +46,7 @@ async function cloudComplete(system: string, user: string, signal: AbortSignal):
 async function callLLM(system: string, user: string, signal: AbortSignal, backend: CouncilBackend): Promise<string> {
   if (backend === 'edge') {
     try {
-      const t = await httpEdge.chat(user, { system });
+      const t = await edgeSafe.chat(user, { system });
       if (t && t.trim()) return t.trim();
     } catch { /* 端侧不可用 → 回落云端 */ }
     if (signal.aborted) return '';

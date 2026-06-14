@@ -2,7 +2,7 @@ import { useReducer, useState, useEffect } from 'react';
 import { ChevronLeft, Plane, MapPin, Sparkles, Check } from 'lucide-react';
 import { DESTINATIONS, PREFERENCES, destination, planTrip, type Pref, type DayPlan } from '../data/travel';
 import { addUserMark, getUserMarksByKind, subscribeUserMarks, spreadCoord } from '../data/userMarks';
-import { httpEdge } from '../../../frost-agent/edge/httpEdge';
+import { edgeSafe } from '../../../frost-agent/edge/contract';
 
 // travel-curator 运行页 —— 行程 agent。
 // 输入目的地 + 喜好 → 端侧按喜好规划逐日路线；行程完成后，每个停留点自动钉到星球（与 tab1 联动）。
@@ -39,7 +39,7 @@ export default function TravelRunPage({ onBack }: Props) {
     let scores: number[] | undefined;
     try {
       const cand = dest.pois.map((p) => `${p.name}（${p.tag}）${p.note}`);
-      const s = await httpEdge.rank(`我的旅行偏好：${prefStr}`, cand);
+      const s = await edgeSafe.rank(`我的旅行偏好：${prefStr}`, cand);
       if (s.length === dest.pois.length && s.some((x) => x > 0)) scores = s;
     } catch { /* 端侧未就绪 → 本地 */ }
     setPlan(planTrip(dest, [...prefs], days, scores));
