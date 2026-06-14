@@ -9,6 +9,7 @@ import { runGeneral } from '../agents/general';
 import { getIntentHandler } from './intentRegistry';
 import { llmRoute } from './llmRoute';
 import { httpEdge } from '../edge/httpEdge';
+import { recordHealth } from './health';
 
 // 端侧可预分类的意图（switch 需抽城，留给正则秒回 / 云脑，不交端侧）
 const EDGE_INTENTS: FrostIntent[] = ['tour', 'open_dj', 'city_culture', 'chitchat', 'general'];
@@ -47,7 +48,8 @@ export async function runFrost(ctx: FrostContext): Promise<AgentResult & { inten
   } else {
     // ①bis 端侧意图预分类：端侧粗分挡在云路由前，命中合法意图就秒回、不动云脑（省 token + 提速）
     let edgeIntent = '';
-    try { edgeIntent = await httpEdge.classify(ctx.userText || '', EDGE_INTENTS as string[]); } catch { edgeIntent = ''; }
+    try { edgeIntent = await httpEdge.classify(ctx.userText || '', EDGE_INTENTS as string[]); recordHealth('route.edge', true); }
+    catch (e) { edgeIntent = ''; recordHealth('route.edge', false, String(e)); }
     if (edgeIntent && (EDGE_INTENTS as string[]).includes(edgeIntent)) {
       intent = edgeIntent as FrostIntent;
       result = await dispatch(intent, ctx);
@@ -55,6 +57,7 @@ export async function runFrost(ctx: FrostContext): Promise<AgentResult & { inten
     } else {
       // ② 云脑路由（端侧未就绪 / 没把握时的长尾）
       const lr = await llmRoute(ctx);
+      recordHealth('route.cloud', !!lr, lr ? undefined : '云脑不可用');
       if (lr) {
         intent = lr.intent;
         result = await dispatch(intent, ctx, lr.city);
