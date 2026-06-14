@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Pause, ChevronDown, Music2 } from 'lucide-react';
+import { Play, Pause, ChevronDown, Music2, Maximize2 } from 'lucide-react';
 import { groupSongs, songs, songTotal, GROUP_LABELS, type GroupKey, type Song } from '../data/musicCatalog';
 import { resolveTracksByIds, type ResolvedTrack } from '../../../frost-agent/data/radio';
+import { RadioStage } from './radio/RadioStage';
 
 // 音乐曲库视图（music-curator 的「曲库」tab）：把所有歌曲做成条目，按 地域/城市/歌手/流派 归类。
 // 点条目即播放（真实音源不可达时回落到示例音源，保证出声）。对话 tab 完全独立、不受影响。
@@ -16,6 +17,7 @@ export default function MusicLibraryView() {
   const [curId, setCurId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [srcMode, setSrcMode] = useState<'real' | 'fallback'>('real');
+  const [stageTrackId, setStageTrackId] = useState<string | null>(null); // 进入沉浸式电台（音乐形态）
   const audioRef = useRef<HTMLAudioElement>(null);
   const playingRef = useRef(false);
   useEffect(() => { playingRef.current = playing; }, [playing]);
@@ -120,9 +122,14 @@ export default function MusicLibraryView() {
             <div className="font-pixel text-[6px] text-[#7CFF6B]/70 tracking-wider truncate mt-0.5">{cur.cityNameZh}{srcMode === 'fallback' ? ' · 示例音源' : ''}</div>
           </div>
           <button onClick={() => setPlaying((p) => !p)} className="w-9 h-9 border-2 border-[#7CFF6B] flex items-center justify-center active:scale-95">{playing ? <Pause className="w-4 h-4" fill="currentColor" strokeWidth={0} /> : <Play className="w-4 h-4 ml-0.5" fill="currentColor" strokeWidth={0} />}</button>
+          {/* 进入沉浸式电台（城市封面 + DJ 开关 + 与 frost 对话） */}
+          <button onClick={() => { setPlaying(false); setStageTrackId(curId); }} title="进入电台（沉浸播放）" className="w-9 h-9 border-2 border-[#7CFF6B] flex items-center justify-center active:scale-95"><Maximize2 className="w-4 h-4" strokeWidth={2.5} /></button>
         </div>
       )}
       <audio ref={audioRef} onEnded={() => setPlaying(false)} />
+
+      {/* 沉浸式电台播放台（音乐形态进入；可切 DJ 开/关、音乐/播客） */}
+      <RadioStage isOpen={!!stageTrackId} onClose={() => setStageTrackId(null)} startTrackId={stageTrackId ?? undefined} startMode="music" />
     </div>
   );
 }

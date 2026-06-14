@@ -16,11 +16,12 @@ interface RadioStageProps {
   isOpen: boolean;
   onClose: () => void;
   startCitySlug?: string;          // 从城市播客点进来：定位到该城
-  startMode?: Mode;                // 进入时的形态（播客入口给 'podcast'）
+  startTrackId?: string;           // 从音乐曲库点「放大」进来：定位到那座城 + 那首歌
+  startMode?: Mode;                // 进入时的形态（播客入口给 'podcast'，音乐入口给 'music'）
   tourCities?: RadioCity[] | null; // 给定顺序则按此连续播放，否则全量（按时区）
 }
 
-export function RadioStage({ isOpen, onClose, startCitySlug, startMode = 'music', tourCities }: RadioStageProps) {
+export function RadioStage({ isOpen, onClose, startCitySlug, startTrackId, startMode = 'music', tourCities }: RadioStageProps) {
   const cities = tourCities && tourCities.length ? tourCities : RADIO_CITIES;
   const [cityIndex, setCityIndex] = useState(0);
   const [mode, setMode] = useState<Mode>(startMode);
@@ -68,18 +69,25 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startMode = 'music'
     ? { text: segTextTrim, progress: durSec > 0 ? Math.min(1, playSec / durSec) : 0 }
     : null;
 
-  // 进入 / startCitySlug 变化 → 定位城市
+  // 进入 → 定位城市（音乐入口按曲目 id 定位到那座城 + 那首歌；播客入口按城市 slug）
   useEffect(() => {
     if (!isOpen) return;
-    const i = startCitySlug ? cities.findIndex((c) => c.slug === startCitySlug) : -1;
-    setCityIndex(i >= 0 ? i : 0);
-    setItemIndex(0);
+    let ci = -1, ti = 0;
+    if (startTrackId) {
+      for (let k = 0; k < cities.length; k++) {
+        const idx = cities[k].tracks.findIndex((t) => t.id === startTrackId);
+        if (idx >= 0) { ci = k; ti = idx; break; }
+      }
+    }
+    if (ci < 0 && startCitySlug) ci = cities.findIndex((c) => c.slug === startCitySlug);
+    setCityIndex(ci >= 0 ? ci : 0);
+    setItemIndex(ti);
     setMode(startMode);
     setIntro(false);
     setPlaySec(0); setDurSec(0);
     setIsPlaying(true);
     setMinimized(false);
-  }, [isOpen, startCitySlug, startMode]);
+  }, [isOpen, startCitySlug, startTrackId, startMode]);
 
   // 时钟
   useEffect(() => {
