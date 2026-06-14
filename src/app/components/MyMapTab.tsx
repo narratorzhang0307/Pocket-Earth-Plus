@@ -487,14 +487,15 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
           if (zoom < 5 && centralAngleDeg(mapCenter, [s.lng, s.lat]) > 78) return null;
           const pt = map.project([s.lng, s.lat]);
           if (zoom < 6.5) {
-            // 小图钉：居中锚定在落点（与方块标记同机制），点它飞过去展开
+            // 小图钉：居中锚定在落点（与方块标记同机制），尺寸随缩放走，地球尺度下和方块点一样小
+            const sz = Math.max(6, Math.min(13, Math.round(2 + zoom * 1.7)));
             return (
               <button
                 key={s.id}
                 title={s.text}
                 onClick={() => map.flyTo({ center: [s.lng, s.lat], zoom: 8 })}
-                className="absolute z-[18] -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-black shadow-[1px_1px_0_rgba(0,0,0,0.5)] pointer-events-auto active:scale-90"
-                style={{ left: `${pt.x}px`, top: `${pt.y}px`, background: '#ff00ff' }}
+                className="absolute z-[18] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black shadow-[1px_1px_0_rgba(0,0,0,0.4)] pointer-events-auto active:scale-90"
+                style={{ left: `${pt.x}px`, top: `${pt.y}px`, width: `${sz}px`, height: `${sz}px`, background: '#ff00ff' }}
               />
             );
           }
