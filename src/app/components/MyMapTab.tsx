@@ -8,6 +8,7 @@ import { getPlanets, getVisiblePlanets, subscribePlanets, togglePlanet, removePl
 import { trackDownload } from '../data/themePlanet';
 import { showcasePhotos } from '../data/photos';
 import { getMoodStickers, addMoodSticker, removeMoodSticker, updateMoodStickerPos, commitStickers, seedStickers, subscribeMood, resolveMoodPlace, pickStickerColor, pickRot } from '../data/geoStickers';
+import { applyOverride, setOverride, commitOverrides, subscribeOverrides } from '../data/markerOverrides';
 import { Plus, X } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import MapLegend from './MapLegend';
@@ -18,9 +19,10 @@ function planetsToGeoJSON() {
   const features = [];
   for (const pl of getVisiblePlanets()) {
     for (const ph of pl.photos) {
+      const [lng, lat] = applyOverride(ph.id, ph.lng, ph.lat); // 拖动校正后的落点
       features.push({
         type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [ph.lng, ph.lat] },
+        geometry: { type: 'Point' as const, coordinates: [lng, lat] },
         properties: { id: ph.id, planetId: pl.id, color: pl.color },
       });
     }
@@ -35,12 +37,21 @@ function planetPhotoById(id: string) {
 // 合并：静态标记（音乐/照片/电影/书）+ 用户运行时落点（各 agent 写入），实时给地球图层
 function buildMarksData() {
   const base = toGeoJSON();
-  const extra = getUserMarks().map((m) => ({
-    type: 'Feature' as const,
-    geometry: { type: 'Point' as const, coordinates: [m.lng, m.lat] },
-    properties: { kind: m.kind, label: m.label || '', id: m.id },
-  }));
-  return { type: 'FeatureCollection' as const, features: [...base.features, ...extra] };
+  // 静态标记：应用拖动校正后的落点
+  const baseFeats = base.features.map((f) => {
+    const c = f.geometry.coordinates as [number, number];
+    const [lng, lat] = applyOverride(String(f.properties.id), c[0], c[1]);
+    return { ...f, geometry: { ...f.geometry, coordinates: [lng, lat] as [number, number] } };
+  });
+  const extra = getUserMarks().map((m) => {
+    const [lng, lat] = applyOverride(m.id, m.lng, m.lat);
+    return {
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [lng, lat] },
+      properties: { kind: m.kind, label: m.label || '', id: m.id },
+    };
+  });
+  return { type: 'FeatureCollection' as const, features: [...baseFeats, ...extra] };
 }
 
 // 照片标记（含 thumb/full，已带散开坐标）—— 放大后做缩略预览用
@@ -132,29 +143,48 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
   // 点击标记后的详情弹层
   const [selected, setSelected] = useState<MarkerDetailData | null>(null);
 
-  // 便贴拖动：记录当前被拖的便贴 id 与「光标↔图钉」初始偏移，拖动中用 unproject 把它重钉到光标处
-  const dragRef = useRef<{ id: string; ox: number; oy: number; moved: boolean } | null>(null);
-  const onStickerDown = (e: React.PointerEvent, id: string, pin: { x: number; y: number }) => {
+  // 刷新 mapbox 两个源（拖动落点后让底层方块/圆点跟到新位置；不在拖动每帧调用，避免大量要素重建卡顿）
+  const refreshMapSources = () => {
+    if (!map) return;
+    const ms = map.getSource('marks') as mapboxgl.GeoJSONSource | undefined;
+    if (ms) ms.setData(buildMarksData() as never);
+    const ps = map.getSource('planets') as mapboxgl.GeoJSONSource | undefined;
+    if (ps) ps.setData(planetsToGeoJSON() as never);
+  };
+
+  // 通用 DOM 拖动：便贴与照片拍立得共用。记录被拖 id、「光标↔锚点」初始偏移、update/commit 回调。
+  // 拖动中只走 update（更新内存 + 重渲染重投影），松手才 commit 落盘并刷新底层源。
+  const dragRef = useRef<{ id: string; ox: number; oy: number; moved: boolean; update: (id: string, lat: number, lng: number) => void; commit: () => void } | null>(null);
+  const suppressClick = useRef(false); // 拖动过则吞掉随后那次 click（避免误开详情/灯箱）
+  const beginDrag = (e: React.PointerEvent, id: string, anchor: { x: number; y: number }, update: (id: string, lat: number, lng: number) => void, commit: () => void) => {
     if (!map) return;
     e.stopPropagation();
+    suppressClick.current = false;
     const r = map.getContainer().getBoundingClientRect();
-    dragRef.current = { id, ox: e.clientX - r.left - pin.x, oy: e.clientY - r.top - pin.y, moved: false };
+    dragRef.current = { id, ox: e.clientX - r.left - anchor.x, oy: e.clientY - r.top - anchor.y, moved: false, update, commit };
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
   };
-  const onStickerMove = (e: React.PointerEvent) => {
+  const onDragMove = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d || !map) return;
     d.moved = true;
     const r = map.getContainer().getBoundingClientRect();
     const ll = map.unproject([e.clientX - r.left - d.ox, e.clientY - r.top - d.oy]);
-    updateMoodStickerPos(d.id, ll.lat, ll.lng);
+    d.update(d.id, ll.lat, ll.lng);
   };
-  const onStickerUp = (e: React.PointerEvent) => {
-    if (!dragRef.current) return;
+  const onDragEnd = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-    if (dragRef.current.moved) commitStickers(); // 仅真正拖动过才落盘
+    if (d.moved) { d.commit(); refreshMapSources(); suppressClick.current = true; }
     dragRef.current = null;
   };
+  // 便贴拖动入口（update 用经纬度顺序 lat,lng → 心情贴存储）
+  const stickerDragStart = (e: React.PointerEvent, id: string, anchor: { x: number; y: number }) =>
+    beginDrag(e, id, anchor, updateMoodStickerPos, commitStickers);
+  // 照片拖动入口（update 转成覆盖存储的 lng,lat 顺序）
+  const photoDragStart = (e: React.PointerEvent, id: string, anchor: { x: number; y: number }) =>
+    beginDrag(e, id, anchor, (pid, lat, lng) => setOverride(pid, lng, lat), commitOverrides);
 
   // 一次性把「已有的白色 LOC_SYNC 卡片」种入便贴库 → 解耦成可拖动的白卡片便贴
   useEffect(() => {
@@ -275,6 +305,8 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
 
   // 心情贴变化 → 重渲染（DOM 叠层，钉地理坐标）
   useEffect(() => subscribeMood(() => tick()), []);
+  // 位置覆盖变化（拖动校对落点）→ 重渲染：DOM 照片即时重投影；底层方块/圆点在松手时由 refreshMapSources 刷新
+  useEffect(() => subscribeOverrides(() => tick()), []);
 
   // 点击标记 → 弹出详情；悬停变手型
   useEffect(() => {
@@ -477,31 +509,39 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
           const out: React.ReactNode[] = [];
           const phash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); };
           // 拍立得照片贴：白边 + 紫钉（星球用星球色钉）+ 方形/竖版随机 + 黑白，触碰变彩色
-          const polaroid = (key: string, lng: number, lat: number, thumb: string, h: number, pin: string, onClick: () => void) => {
-            const pt = map.project([lng, lat]);
+          // 拍立得照片贴：可鼠标拖动重新摆放（解耦校对落点）；未拖动则点击看大图
+          const polaroid = (key: string, oid: string, lng: number, lat: number, thumb: string, h: number, pin: string, onClick: () => void) => {
+            const [olng, olat] = applyOverride(oid, lng, lat); // 拖动校正后的落点
+            const pt = map.project([olng, olat]);
             const tall = h % 2 === 0; const rot = (h % 7) - 3;
             return (
-              <button key={key} onClick={onClick}
-                className="absolute z-[15] bg-white p-1 pb-2.5 border border-black/50 shadow-[2px_3px_6px_rgba(0,0,0,0.4)] active:scale-95"
+              <button key={key}
+                onPointerDown={(e) => photoDragStart(e, oid, pt)}
+                onPointerMove={onDragMove}
+                onPointerUp={onDragEnd}
+                onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } onClick(); }}
+                className="absolute z-[15] bg-white p-1 pb-2.5 border border-black/50 shadow-[2px_3px_6px_rgba(0,0,0,0.4)] active:scale-95 cursor-grab active:cursor-grabbing touch-none select-none"
                 style={{ left: `${pt.x}px`, top: `${pt.y}px`, width: '58px', transform: `translate(-50%,-50%) rotate(${rot}deg)` }}>
                 <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full border border-black" style={{ background: pin }} />
                 <div className={`w-full ${tall ? 'aspect-[3/4]' : 'aspect-square'} overflow-hidden bg-[#d8d8d6]`}>
-                  <img src={thumb} className="w-full h-full object-cover grayscale hover:grayscale-0 active:grayscale-0 transition-all duration-500" loading="lazy" />
+                  <img src={thumb} className="w-full h-full object-cover grayscale hover:grayscale-0 active:grayscale-0 transition-all duration-500" loading="lazy" draggable={false} />
                 </div>
               </button>
             );
           };
           for (const m of PHOTO_MARKERS) {
             if (!m.thumb) continue;
-            if (!b || !b.contains([m.lng, m.lat])) continue;
-            out.push(polaroid('pv-' + m.id, m.lng, m.lat, m.thumb, phash(m.id), '#ff00ff',
+            const [mlng, mlat] = applyOverride(m.id, m.lng, m.lat);
+            if (!b || !b.contains([mlng, mlat])) continue;
+            out.push(polaroid('pv-' + m.id, m.id, m.lng, m.lat, m.thumb, phash(m.id), '#ff00ff',
               () => setSelected({ kind: 'photo', full: m.full, thumb: m.thumb, city: (m.label || '').split(',')[0], authorName: m.author, authorLink: m.authorLink, photoLink: m.photoLink })));
             if (out.length >= 70) break;
           }
           for (const pl of getVisiblePlanets()) {
             for (const ph of pl.photos) {
-              if (!b || !b.contains([ph.lng, ph.lat])) continue;
-              out.push(polaroid('pp-' + ph.id, ph.lng, ph.lat, ph.thumb, phash(ph.id), pl.color,
+              const [plng, plat] = applyOverride(ph.id, ph.lng, ph.lat);
+              if (!b || !b.contains([plng, plat])) continue;
+              out.push(polaroid('pp-' + ph.id, ph.id, ph.lng, ph.lat, ph.thumb, phash(ph.id), pl.color,
                 () => { setSelected({ kind: 'photo', full: ph.full, thumb: ph.thumb, city: ph.alt || '照片', authorName: ph.author, authorLink: ph.authorUrl, photoLink: ph.link }); trackDownload(ph.downloadLocation); }));
               if (out.length >= 130) break;
             }
@@ -534,9 +574,9 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
               key={s.id}
               className="absolute z-[18] -translate-x-1/2 -translate-y-full group pointer-events-auto cursor-grab active:cursor-grabbing select-none touch-none"
               style={{ left: `${pt.x}px`, top: `${pt.y}px` }}
-              onPointerDown={(e) => onStickerDown(e, s.id, pt)}
-              onPointerMove={onStickerMove}
-              onPointerUp={onStickerUp}
+              onPointerDown={(e) => stickerDragStart(e, s.id, pt)}
+              onPointerMove={onDragMove}
+              onPointerUp={onDragEnd}
             >
               <div
                 className={`relative border-2 border-black shadow-[2px_3px_0_rgba(0,0,0,0.6)] px-2 py-1.5 max-w-[160px] ${isCard ? 'bg-white' : ''}`}
