@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import EarthMap from './EarthMap';
@@ -126,6 +126,12 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
   // 地图标记图层：哪些类型可见（音乐 / 照片），由左下角图例开关控制
   const [visibleKinds, setVisibleKinds] = useState<Set<MarkerKind>>(() => new Set<MarkerKind>(['music', 'photo', 'movie', 'book', 'travel']));
+  // 状态条实时统计：当前可见图层的标记数 + 去重城市数（随左下角图层开关变化）
+  const visibleMarkers = useMemo(() => MAP_MARKERS.filter((m) => visibleKinds.has(m.kind)), [visibleKinds]);
+  const cityCount = useMemo(
+    () => new Set(visibleMarkers.filter((m) => m.kind === 'music' || m.kind === 'photo').map((m) => (m.label || '').split(',')[0].trim()).filter(Boolean)).size,
+    [visibleMarkers],
+  );
   const toggleKind = (k: MarkerKind) =>
     setVisibleKinds((prev) => {
       const next = new Set(prev);
@@ -468,12 +474,10 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
 
       {/* Stat Strip */}
       <div className="px-4 py-2.5 border-b-2 border-black bg-black text-[#00ff88]">
-        <div className="font-pixel text-[8px] flex justify-between items-center tracking-wider">
-          <span>TREES: 47</span>
-          <span className="opacity-50">|</span>
-          <span>CITY LIT: 23%</span>
-          <span className="opacity-50">|</span>
-          <span>DISTRICTS: 5</span>
+        <div className="font-pixel text-[9px] flex justify-center items-center gap-3 tracking-widest">
+          <span>MARKERS: {visibleMarkers.length}</span>
+          <span className="opacity-50">·</span>
+          <span>CITIES: {cityCount}</span>
         </div>
       </div>
 
