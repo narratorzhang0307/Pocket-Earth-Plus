@@ -174,7 +174,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
         source: 'marks',
         layout: {
           'icon-image': ['concat', 'sq-', ['get', 'kind']],
-          'icon-size': ['interpolate', ['linear'], ['zoom'], 1, 0.65, 5, 0.85, 11, 1],
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 1, 0.28, 4, 0.42, 7, 0.7, 11, 1],
           'icon-allow-overlap': false,
           'text-field': ['case', ['==', ['get', 'kind'], 'music'], ['get', 'label'], ''],
           'text-font': ['Arial Unicode MS Regular'],
