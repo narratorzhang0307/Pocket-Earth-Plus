@@ -1,13 +1,13 @@
-// 城市电台播放器 —— 全屏播放台（像素风）。两种播放形态：
+// 城市电台播放器 —— 全屏播放台（像素风）。音乐 / 播客共用同一套 UI：
+//  中间是城市/日落封面，下面 FROST 字幕一个字一个字蹦出来。
 //  ① 音乐：封面 + 进度 + 上/下城 + 播放 + DJ（解说叠在音乐上、音乐压低做背景）+ 与 frost 对话
-//  ② 播客：翻面成城市大图 + 稿子随音频逐字浮现（见 RadioPodcastView）
+//  ② 播客：同一布局，把这一集的稿子作为 FROST 字幕、随主音频进度逐字浮现（不整篇透露）
 // 一首/一段放完自动续播下一首；最后一首放完切到下一座城。对话接 frost-agent 的 runFrost。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Minus, Maximize2, ChevronLeft, ChevronRight, SkipBack, SkipForward, Play, Pause } from 'lucide-react';
 import { RADIO_CITIES, RadioCity, formatTime, frostOpening, cityClock } from '../../../../frost-agent/data/radio';
 import { runFrost } from '../../../../frost-agent/harness/router';
-import { RadioPodcastView } from './RadioPodcastView';
 import { RadioChat, ChatMsg } from './RadioChat';
 
 type Mode = 'music' | 'podcast';
@@ -40,6 +40,7 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startMode = 'music'
   const bgAudioRef = useRef<HTMLAudioElement>(null);
   const djAudioRef = useRef<HTMLAudioElement>(null);
   const lastIntroIdRef = useRef<string | null>(null);
+  const lastSegIdRef = useRef<string | null>(null);
 
   const city: RadioCity | undefined = cities[cityIndex];
   const hasPodcast = !!city && city.podcast.length > 0;
@@ -56,11 +57,15 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startMode = 'music'
   const bgMusicUrl = mode === 'podcast' && segment && city ? (city.tracks[0]?.audioUrl || '') : '';
 
   const panelText = track ? `现在播放 ${track.title} — ${track.artist}`
-    : segment ? (segment.text || segment.title) : '';
+    : segment ? `城市播客 · ${segment.title}` : '';
 
+  // 字幕跟随：音乐开 DJ 时跟 DJ 声音；播客时整段稿子跟主音频进度逐字浮现
   const introTextTrim = track?.introText?.trim() || '';
+  const segTextTrim = segment?.text?.trim() || '';
   const voiceSync = mode === 'music' && intro && introTextTrim
     ? { text: introTextTrim, progress: djDur > 0 ? Math.min(1, djSec / djDur) : 0 }
+    : mode === 'podcast' && segTextTrim
+    ? { text: segTextTrim, progress: durSec > 0 ? Math.min(1, playSec / durSec) : 0 }
     : null;
 
   // 进入 / startCitySlug 变化 → 定位城市
@@ -87,7 +92,7 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startMode = 'music'
 
   // 打开 / 切城市 → 重置对话为开场白
   useEffect(() => {
-    if (isOpen && city) { setChat([{ role: 'dj', text: frostOpening(new Date(), city), auto: true }]); lastIntroIdRef.current = null; }
+    if (isOpen && city) { setChat([{ role: 'dj', text: frostOpening(new Date(), city), auto: true }]); lastIntroIdRef.current = null; lastSegIdRef.current = null; }
   }, [isOpen, cityIndex]);
 
   // 换歌（音乐模式）→ 把这首歌的解说稿追加到对话（打字机自走）
@@ -99,6 +104,16 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startMode = 'music'
     const it = track?.introText?.trim();
     if (it) setChat((c) => [...c, { role: 'dj', text: it, auto: true }]);
   }, [isOpen, mode, track?.id]);
+
+  // 进入播客段落 → 把这一集的稿子作为 FROST 字幕追加（随主音频进度逐字浮现，见 voiceSync）
+  useEffect(() => {
+    if (!isOpen || mode !== 'podcast') return;
+    const sid = segment?.id;
+    if (!sid || sid === lastSegIdRef.current) return;
+    lastSegIdRef.current = sid;
+    const st = segment?.text?.trim();
+    if (st) setChat((c) => [...c, { role: 'dj', text: st, auto: true }]);
+  }, [isOpen, mode, segment?.id]);
 
   // 换源 / 播放
   useEffect(() => {
@@ -315,8 +330,8 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startMode = 'music'
                       <img src={curCover} alt={curCityZh} className="absolute inset-0 w-full h-full object-cover grayscale" draggable={false} referrerPolicy="no-referrer" />
                       <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/85 to-transparent pointer-events-none" />
                       <div className="absolute left-3 right-3 bottom-2.5 text-left">
-                        <div className="text-[17px] text-white font-bold leading-tight drop-shadow truncate">{track?.title || city.cityNameZh}</div>
-                        <div className="font-pixel text-[7px] tracking-[0.22em] uppercase text-white/60 mt-1 truncate">{track?.artist || `${city.station.name} ${city.station.freq.toFixed(1)}`}</div>
+                        <div className="text-[17px] text-white font-bold leading-tight drop-shadow truncate">{track?.title || segment?.title || city.cityNameZh}</div>
+                        <div className="font-pixel text-[7px] tracking-[0.22em] uppercase text-white/60 mt-1 truncate">{track?.artist || (segment ? `PODCAST · CH ${city.station.freq.toFixed(1)}` : `${city.station.name} ${city.station.freq.toFixed(1)}`)}</div>
                       </div>
                       <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
                         <div className="w-1.5 h-1.5 bg-red-600 animate-pulse shadow-[0_0_4px_red]" />
@@ -362,29 +377,6 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startMode = 'music'
               <div className="h-4 flex items-center justify-center shrink-0 mb-1 relative z-10">
                 <span className="font-pixel text-[6px] uppercase tracking-[0.4em] opacity-40">{cities.length} CITIES · ALL NIGHT</span>
               </div>
-
-              {/* 播客全屏视图：翻到播客时覆盖音乐界面 */}
-              <AnimatePresence>
-                {mode === 'podcast' && (
-                  <RadioPodcastView
-                    cityNameZh={curCityZh}
-                    stationFreq={city.station.freq}
-                    cover={curCover}
-                    title={segment?.title || curCityZh}
-                    text={segment?.text || ''}
-                    playSec={playSec}
-                    durSec={durSec}
-                    isPlaying={isPlaying}
-                    onTogglePlay={() => setIsPlaying((p) => !p)}
-                    onSeek={onSeek}
-                    onClose={() => setMode('music')}
-                    chat={chat.filter((m) => !m.auto)}
-                    chatInput={chatInput}
-                    onChatInput={setChatInput}
-                    onSendChat={sendChat}
-                  />
-                )}
-              </AnimatePresence>
             </motion.div>
           </motion.div>
         )}
