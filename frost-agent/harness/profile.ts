@@ -7,6 +7,7 @@
 // 端侧 Selector（/api/edge）一律不接触本模块，画像不出端到端侧模型。
 
 import type { FrostBrain } from './types';
+import { HUMAN_VOICE, cleanVoice } from './persona';
 
 export type ProfileDomain = 'books' | 'movies' | 'music' | 'photos' | 'travel';
 
@@ -147,10 +148,10 @@ export async function summarizeTaste(brain: FrostBrain): Promise<string> {
       if (raw) { const c = JSON.parse(raw); if (c && c.fp === fp && typeof c.text === 'string' && c.text) return c.text; }
     }
   } catch { /* ignore */ }
-  const prompt = `${summary}\n用一句不超过 40 字的中文，概括这个人的整体口味气质（第二人称「你」，不罗列、不客套）。`;
+  const prompt = `${summary}\n用一句不超过 40 字的中文，概括这个人的整体口味气质（第二人称「你」，不罗列、不客套）。\n${HUMAN_VOICE}`;
   let text = '';
   try { text = (await brain.complete(prompt)) || ''; } catch { text = ''; }
-  text = text.trim().replace(/^[「"]|["」]$/g, '').trim();
+  text = cleanVoice(text).replace(/^[「"]|["」]$/g, '').trim();
   if (text) {
     try { if (typeof localStorage !== 'undefined') localStorage.setItem(NARR_KEY, JSON.stringify({ fp, text })); } catch { /* ignore */ }
   }

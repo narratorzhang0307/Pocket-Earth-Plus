@@ -3,7 +3,7 @@
 import { RADIO_CITIES } from '../../harness/domain';
 import { AgentResult, FrostContext, PlaylistEntry } from '../../harness/types';
 import { getFrostBrain } from '../../harness/brain';
-import { cleanVoice } from '../../harness/persona';
+import { cleanVoice, HUMAN_VOICE } from '../../harness/persona';
 import { formatHistory } from '../../harness/memory';
 import { edgeSafe } from '../../edge/contract';
 
@@ -67,6 +67,7 @@ function buildPrompt(text: string, history: string, pool: typeof CANDIDATES): st
     '  · 先落到这首歌本身——它的质感、年代、城市气质，或一句代表性的歌词/段落；',
     '  · 再用 DJ 的口吻把它和用户这次说的话呼应起来，说清它为什么此刻贴合。',
     '  要具体、有画面感、像深夜 DJ 在跟你低声介绍，不要套话、不要"已接入OSS"这类系统话术。',
+    HUMAN_VOICE,
     '只能用上面出现过的 trackId。返回严格 JSON：',
     '{"reply":"80-160字，用 Frost 声音说明这份策展方向","picks":[{"trackId":"...","note":"80-150字推荐理由"}]}',
   ].join('\n');

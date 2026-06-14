@@ -2,7 +2,7 @@
 // 优先真实大脑作答；stub/出错时给 Frost 声音的体面 fallback，并自然引到能做的事。
 import { AgentResult, FrostContext } from '../../harness/types';
 import { getFrostBrain } from '../../harness/brain';
-import { FROST_PERSONA, NO_STAGE_DIRECTION, cleanVoice } from '../../harness/persona';
+import { FROST_PERSONA, NO_STAGE_DIRECTION, HUMAN_VOICE, cleanVoice } from '../../harness/persona';
 import { formatHistory } from '../../harness/memory';
 
 // Frost 这座电台能做的事（喂给大脑当自我认知，也用于 fallback 引导）
@@ -21,7 +21,7 @@ const buildPrompt = (text: string, history: string) =>
   (history ? history + '（结合上面的对话，别前后矛盾）\n' : '') +
   `用户问了一个没有现成功能直接对应的问题。请用一到三句话、用你的声音回应：` +
   `能答就答（世界、城市、音乐、夜晚、心情都能聊）；若他其实是想让你做点什么、而你能做的是上面那些，就自然把他引过去。` +
-  `不要罗列功能清单，像深夜 DJ 那样说话。${NO_STAGE_DIRECTION}\n用户：${text}\n${FROST_PERSONA.name}：`;
+  `不要罗列功能清单，像深夜 DJ 那样说话。${NO_STAGE_DIRECTION}\n${HUMAN_VOICE}\n用户：${text}\n${FROST_PERSONA.name}：`;
 
 const FALLBACKS = [
   '这事我先记在频率里了。眼下我能做的，是顺着日落给你排一整夜的歌，或者你说个城、说本书，我来挑。',
