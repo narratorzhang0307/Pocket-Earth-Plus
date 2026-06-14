@@ -61,7 +61,7 @@ function resolveDetail(id: string, kind: MarkerKind, label: string): MarkerDetai
     if (kind === 'photo') return { kind, full: String(meta.full || ''), thumb: String(meta.thumb || ''), city: String(meta.city || um.label || '') };
     return { kind: 'music', title: um.label };
   }
-  if (kind === 'photo') { const p = photoById.get(id); return p ? { kind, full: p.full, thumb: p.thumb, city: (p.city || '').split(',')[0] } : null; }
+  if (kind === 'photo') { const p = photoById.get(id); return p ? { kind, full: p.full, thumb: p.thumb, city: (p.city || '').split(',')[0], authorName: p.author, authorLink: p.authorLink, photoLink: p.photoLink } : null; }
   if (kind === 'movie') { const m = movieById.get(id); return m ? { kind, title: m.title, original: m.original, director: m.director, country: m.country, year: m.year, rating: m.rating, date: m.date, synopsis: m.synopsis } : null; }
   if (kind === 'book') { const b = bookById.get(id); return b ? { kind, title: b.title, author: b.author, place: b.country, year: b.year, synopsis: b.synopsis, date: b.date, rating: b.rating } : null; }
   if (kind === 'music') return { kind, title: label, city: label };
@@ -467,7 +467,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
             if (!m.thumb) continue;
             if (!b || !b.contains([m.lng, m.lat])) continue;
             out.push(polaroid('pv-' + m.id, m.lng, m.lat, m.thumb, phash(m.id), '#ff00ff',
-              () => setSelected({ kind: 'photo', full: m.full, thumb: m.thumb, city: (m.label || '').split(',')[0] })));
+              () => setSelected({ kind: 'photo', full: m.full, thumb: m.thumb, city: (m.label || '').split(',')[0], authorName: m.author, authorLink: m.authorLink, photoLink: m.photoLink })));
             if (out.length >= 70) break;
           }
           for (const pl of getVisiblePlanets()) {

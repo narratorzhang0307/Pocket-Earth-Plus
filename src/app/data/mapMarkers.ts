@@ -17,6 +17,7 @@ export interface MapMarker {
   label?: string;   // 地球档显示的名字（如城市名）
   thumb?: string;
   full?: string;
+  author?: string; authorLink?: string; photoLink?: string;  // Unsplash 署名（世界照片）
 }
 
 // 图例 / 开关用的类型配置：标签 + 颜色（绿=音乐，青=照片，琥珀=电影，紫=书，玫红=行程）
@@ -52,7 +53,8 @@ const musicMarkers: MapMarker[] = (musicCities as MusicCity[]).map((c) => {
 
 const photoMarkers: MapMarker[] = photoPoints.map((p) => {
   const [lat, lng] = jitter('p-' + p.id, p.lat, p.lng);
-  return { id: 'p-' + p.id, kind: 'photo', lat, lng, label: (p.city || '').split(',')[0], thumb: p.thumb, full: p.full };
+  return { id: 'p-' + p.id, kind: 'photo', lat, lng, label: (p.city || '').split(',')[0], thumb: p.thumb, full: p.full,
+    author: p.author, authorLink: p.authorLink, photoLink: p.photoLink };
 });
 
 // 电影点：豆瓣观影记录按国家落到代表城市（坐标与散开已在 movies.ts 算好），琥珀色小点

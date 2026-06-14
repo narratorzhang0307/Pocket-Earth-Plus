@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronLeft, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { timelineGroups, calendarMonths, magazineYears, hasPhotos } from '../data/photos';
+import { timelineGroups, calendarMonths, magazineYears, hasPhotos, photoCredit } from '../data/photos';
 import MagazineBook from './MagazineBook';
 
 // 照片 tab —— 同一批照片以「时间 / 日历 / 杂志」三种方式分布。
@@ -269,6 +269,14 @@ export default function PhotosTab() {
               <div className="py-2 text-center">
                 <div className="font-pixel text-[9px] tracking-widest">{lightbox.caption}</div>
                 {lightbox.sub && <div className="text-[10px] text-black/45 mt-0.5">{lightbox.sub}</div>}
+                {(() => {
+                  const c = photoCredit(lightbox.img);
+                  return c?.author ? (
+                    <div className="text-[10px] text-black/45 mt-0.5">
+                      Photo by <a href={c.photoLink || c.authorLink} target="_blank" rel="noopener noreferrer" className="underline">{c.author}</a> on <a href="https://unsplash.com/?utm_source=pocket_earth&utm_medium=referral" target="_blank" rel="noopener noreferrer" className="underline">Unsplash</a>
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </motion.div>
           </motion.div>

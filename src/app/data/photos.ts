@@ -6,6 +6,7 @@
 
 import places from './photo-places.json';
 import dates from './photo-dates.json';
+import worldPhotos from './world-photos.json';
 
 interface Place { id: string; city: string; lat: number; lng: number }
 const PLACES = places as Place[];
@@ -21,17 +22,36 @@ const IMG_POOL = Object.entries(fullMods)
   .sort(([a], [b]) => a.localeCompare(b))
   .map(([k, v]) => ({ thumb: thumbBy[baseName(k)] || (v as string), full: v as string }));
 
-export interface Photo { id: string; city: string; lat: number; lng: number; thumb?: string; full?: string; date: string }
+export interface Photo { id: string; city: string; lat: number; lng: number; thumb?: string; full?: string; date: string; author?: string; authorLink?: string; photoLink?: string }
+interface WorldPhoto { id: string; city: string; lat: number; lng: number; thumb: string; full: string; date: string; author: string; authorLink: string; photoLink: string }
 
 // 时间戳缺失时的确定性兜底（2020–2025），保证任何情况下每张都有 date
 const pad = (n: number) => String(n).padStart(2, '0');
 const fallbackDate = (i: number) => `${2020 + (i % 6)}-${pad(1 + ((i * 7) % 12))}-${pad(1 + ((i * 13) % 28))}`;
 
 // 一条照片记录 = 真实坐标 + 图池里的一张（demo 循环）+ 伪造时间戳
-const PHOTOS: Photo[] = PLACES.map((pl, i) => {
+const PLACE_PHOTOS: Photo[] = PLACES.map((pl, i) => {
   const img = IMG_POOL.length ? IMG_POOL[i % IMG_POOL.length] : undefined;
   return { id: pl.id, city: pl.city, lat: pl.lat, lng: pl.lng, thumb: img?.thumb, full: img?.full, date: DATES[i] || fallbackDate(i) };
 });
+
+// 世界日落照片（sunset-radio 精选，缩略+高清 + 真实经纬度 + Unsplash 署名 + 随机分布的日期）
+const WORLD_PHOTOS: Photo[] = (worldPhotos as WorldPhoto[]).map((w) => ({
+  id: w.id, city: w.city, lat: w.lat, lng: w.lng, thumb: w.thumb, full: w.full, date: w.date,
+  author: w.author, authorLink: w.authorLink, photoLink: w.photoLink,
+}));
+
+const PHOTOS: Photo[] = [...PLACE_PHOTOS, ...WORLD_PHOTOS];
+
+// 署名反查：按图片 URL（缩略 / 高清）查 Unsplash 摄影师，灯箱据此显示「Photo by … on Unsplash」
+export interface PhotoCredit { author?: string; authorLink?: string; photoLink?: string }
+const CREDIT = new Map<string, PhotoCredit>();
+for (const w of WORLD_PHOTOS) {
+  const c: PhotoCredit = { author: w.author, authorLink: w.authorLink, photoLink: w.photoLink };
+  if (w.full) CREDIT.set(w.full, c);
+  if (w.thumb) CREDIT.set(w.thumb, c);
+}
+export const photoCredit = (url?: string): PhotoCredit | undefined => (url ? CREDIT.get(url) : undefined);
 
 // 给地图用的照片坐标点（即使图池缺失也有，靠 photo-places 入库的坐标）
 export const photoPoints = PHOTOS;
