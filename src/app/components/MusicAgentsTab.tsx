@@ -87,8 +87,8 @@ export default function MusicAgentsTab() {
   return (
     <div className="h-full flex flex-col bg-[#EAEAEA] font-sans">
       {/* 顶栏状态 */}
-      <div className="flex justify-center items-center px-4 py-2 border-b-2 border-black bg-[#EAEAEA] shrink-0">
-        <div className="font-pixel text-[8px] uppercase tracking-widest">POCKET EARTH</div>
+      <div className="flex justify-center items-center h-[30px] px-4 border-b-2 border-black bg-[#EAEAEA] shrink-0">
+        <div className="font-pixel text-[10.4px] uppercase tracking-widest leading-none">POCKET EARTH</div>
       </div>
 
       {/* 标题 */}
