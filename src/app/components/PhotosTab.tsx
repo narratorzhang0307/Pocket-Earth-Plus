@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronLeft, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { timelineGroups, calendarMonths, magazineYears, hasPhotos } from '../data/photos';
+import MagazineBook from './MagazineBook';
 
 // 照片 tab —— 同一批照片以「时间 / 日历 / 杂志」三种方式分布。
 // 数据全部来自解耦的 photos 数据源（换照片只换数据源，这里不动）。
@@ -170,17 +171,37 @@ export default function PhotosTab() {
                   {magMode === 'single' ? (
                     /* 单页大图：一年一页，照片撑满整页（无文字，仅角落年份）*/
                     <div className="flex-1 overflow-y-auto snap-y snap-mandatory px-4 py-3 space-y-4">
-                      {magazineYears.map((y) => (
+                      {magazineYears.map((y, i) => (
                         <button
                           key={y.year}
                           onClick={() => setOpenYear(y.year)}
-                          className="snap-center block w-full h-[70vh] min-h-[440px] max-h-[640px] relative border-2 border-black shadow-[6px_6px_0_#000] overflow-hidden bg-[#d8d8d6] active:translate-y-px"
+                          className="snap-center block w-full h-[72vh] min-h-[460px] max-h-[660px] relative border-2 border-black shadow-[6px_6px_0_#000] overflow-hidden bg-[#d8d8d6] active:translate-y-px text-left"
                         >
-                          <img src={y.photos[0]?.full || y.cover} onError={onImgErr} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all" />
-                          <div className="absolute bottom-0 inset-x-0 h-24 bg-gradient-to-t from-black/80 to-transparent" />
-                          <div className="absolute bottom-3 left-4 flex items-end gap-2">
-                            <span className="font-pixel text-4xl text-[#7CFF6B] drop-shadow-[2px_2px_0_#000]">{y.year}</span>
-                            <span className="font-pixel text-[8px] text-white/80 mb-1.5">{y.photos.length} 张 ▶</span>
+                          <img src={y.photos[0]?.full || y.cover} onError={onImgErr} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-500" />
+                          {/* 封面暗角，让杂志排版清晰 */}
+                          <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 28%, rgba(0,0,0,0) 52%, rgba(0,0,0,0.8) 100%)' }} />
+                          {/* 刊头 */}
+                          <div className="absolute top-0 inset-x-0 px-4 pt-3 flex justify-between items-start">
+                            <div>
+                              <div className="font-pixel text-[15px] text-white tracking-wider drop-shadow-[1px_1px_0_#000] leading-none">POCKET EARTH</div>
+                              <div className="font-pixel text-[7px] text-white/70 tracking-[0.3em] mt-1.5">光 阴 志 · 月 刊</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="font-pixel text-[6px] text-white/60 tracking-widest">ISSUE</div>
+                              <div className="font-pixel text-[13px] text-[#7CFF6B] drop-shadow-[1px_1px_0_#000]">№{String(magazineYears.length - i).padStart(2, '0')}</div>
+                            </div>
+                          </div>
+                          {/* 主视觉：大年份 + 本期专题 + 翻开 + 条码 */}
+                          <div className="absolute bottom-0 inset-x-0 px-4 pb-4">
+                            <div className="font-pixel text-[7px] text-white/75 tracking-wider mb-1.5 truncate">本期 · {y.photos.length} 帧 · {[...new Set(y.photos.map((p) => p.city).filter(Boolean))].slice(0, 3).join(' / ') || '环球'}</div>
+                            <div className="flex items-end justify-between">
+                              <span className="font-pixel text-[58px] leading-[0.8] text-white drop-shadow-[3px_3px_0_#000]">{y.year}</span>
+                              <span className="font-pixel text-[9px] text-black bg-[#7CFF6B] border-2 border-black px-2 py-1 shadow-[2px_2px_0_#000] mb-1">翻开 ▶</span>
+                            </div>
+                            <div className="mt-2.5 flex items-center gap-2">
+                              <div className="h-4 flex-1 max-w-[96px]" style={{ background: 'repeating-linear-gradient(90deg,#fff 0 1px,transparent 1px 2px,#fff 2px 4px,transparent 4px 5px,#fff 5px 8px,transparent 8px 9px)' }} />
+                              <span className="font-pixel text-[6px] text-white/55 tracking-widest">PE-{y.year}-光阴</span>
+                            </div>
                           </div>
                         </button>
                       ))}
@@ -207,25 +228,12 @@ export default function PhotosTab() {
                   )}
                 </div>
               ) : (
-                <div className="px-4 pt-3 pb-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <button onClick={() => setOpenYear(null)} className="w-7 h-7 border-2 border-black bg-white flex items-center justify-center shadow-[1px_1px_0_#000] active:translate-y-px">
-                      <ChevronLeft className="w-3.5 h-3.5" strokeWidth={3} />
-                    </button>
-                    <h2 className="font-pixel text-base tracking-wider">{openYear} 相册</h2>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {magazineYears.find((y) => y.year === openYear)!.photos.map((p, i) => (
-                      <button
-                        key={p.id}
-                        onClick={() => setLightbox({ img: p.full, caption: `${openYear} · #${i + 1}` })}
-                        className="aspect-square border-2 border-black overflow-hidden shadow-[1px_1px_0_#000] active:translate-y-px bg-[#d8d8d6]"
-                      >
-                        <img src={p.thumb} onError={onImgErr} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <MagazineBook
+                  year={openYear}
+                  photos={magazineYears.find((y) => y.year === openYear)?.photos || []}
+                  onBack={() => setOpenYear(null)}
+                  onOpen={(img, caption) => setLightbox({ img, caption })}
+                />
               )
             )}
           </>

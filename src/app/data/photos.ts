@@ -53,7 +53,7 @@ export interface TimelinePhoto { id: string; cap: string; img: string; full: str
 export interface TimelineGroup { id: string; title: string; sub?: string; special?: boolean; photos: TimelinePhoto[] }
 export interface CalendarCell { thumb: string; full: string; count: number }
 export interface CalendarMonth { label: string; dim: number; days: Record<number, CalendarCell> }
-export interface MagazinePhoto { id: string; thumb: string; full: string }
+export interface MagazinePhoto { id: string; thumb: string; full: string; date: string; city: string }
 export interface MagazineYear { year: number; cover: string; photos: MagazinePhoto[] }
 
 const ROTS = [-6, 5, -3, 7, -4, 6, -5, 4];
@@ -89,5 +89,5 @@ const magMap = new Map<string, Photo[]>();
 for (const p of WITHIMG) bucket(magMap, yr(p.date), p);
 export const magazineYears: MagazineYear[] = [...magMap.keys()].sort((a, b) => b.localeCompare(a)).map((k) => {
   const ps = magMap.get(k)!;
-  return { year: Number(k), cover: ps[0]?.thumb || '', photos: ps.map((p, i) => ({ id: `${p.id}-${k}-${i}`, thumb: p.thumb!, full: p.full! })) };
+  return { year: Number(k), cover: ps[0]?.thumb || '', photos: ps.map((p, i) => ({ id: `${p.id}-${k}-${i}`, thumb: p.thumb!, full: p.full!, date: p.date, city: cityShort(p.city) })) };
 });
