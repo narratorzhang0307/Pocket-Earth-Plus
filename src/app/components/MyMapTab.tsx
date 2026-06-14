@@ -479,10 +479,22 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
           return out;
         })()}
 
-        {/* 心情贴（自带经纬度，钉地理坐标，缩放/平移不跟屏幕跑）*/}
+        {/* 心情贴：缩小时收成小图钉（和标记点一样钉在地球，不浮动），放大才展开成卡片 */}
         {map && getMoodStickers().map((s) => {
           if (zoom < 5 && centralAngleDeg(mapCenter, [s.lng, s.lat]) > 78) return null;
           const pt = map.project([s.lng, s.lat]);
+          if (zoom < 6.5) {
+            // 小图钉：居中锚定在落点（与方块标记同机制），点它飞过去展开
+            return (
+              <button
+                key={s.id}
+                title={s.text}
+                onClick={() => map.flyTo({ center: [s.lng, s.lat], zoom: 8 })}
+                className="absolute z-[18] -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-black shadow-[1px_1px_0_rgba(0,0,0,0.5)] pointer-events-auto active:scale-90"
+                style={{ left: `${pt.x}px`, top: `${pt.y}px`, background: '#ff00ff' }}
+              />
+            );
+          }
           return (
             <div key={s.id} className="absolute z-[18] -translate-x-1/2 -translate-y-full group pointer-events-auto" style={{ left: `${pt.x}px`, top: `${pt.y}px` }}>
               <div className="relative border-2 border-black shadow-[2px_3px_0_rgba(0,0,0,0.6)] px-2 py-1.5 max-w-[150px]" style={{ background: s.color, transform: `rotate(${s.rot}deg)` }}>
