@@ -3,8 +3,10 @@
 //   选下一个发言者 → 构造该 agent 看到的群聊上下文 → 调一次云脑(/api/frost-llm) → 追加发言 → 判断是否继续。
 // 收敛靠「固定发言序列（每人 N 轮）+ 用户可随时喊停(AbortSignal)」，天然不会无限互相回复。
 import { agentById, type CouncilAgent } from './agents';
+import { httpEdge } from '../../../frost-agent/edge/httpEdge';
 
 export type CouncilMode = 'roundtable' | 'debate' | 'courtroom' | 'brainstorm';
+export type CouncilBackend = 'cloud' | 'edge';  // 云端大模型(DeepSeek) / 端侧本地(Qwen via ollama)
 
 export interface CouncilModeDef { id: CouncilMode; label: string; emoji: string; blurb: string; tone: string }
 export const COUNCIL_MODES: CouncilModeDef[] = [
@@ -22,12 +24,13 @@ interface RunOpts {
   agentIds: string[];
   topic: string;
   rounds: number;                         // 每个 agent 发言几轮
+  backend: CouncilBackend;                // 云端 / 端侧
   onMessage: (m: CouncilMsg) => void;
   onSpeaker: (id: string | null) => void; // 当前正在「思考」的发言者（null = 结束）
   signal: AbortSignal;
 }
 
-async function callLLM(system: string, user: string, signal: AbortSignal): Promise<string> {
+async function cloudComplete(system: string, user: string, signal: AbortSignal): Promise<string> {
   try {
     const r = await fetch('/api/frost-llm', {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -37,6 +40,18 @@ async function callLLM(system: string, user: string, signal: AbortSignal): Promi
     const d = await r.json();
     return typeof d?.text === 'string' ? d.text.trim() : '';
   } catch { return ''; }
+}
+
+// 端侧优先时：先调本地 Qwen(/api/edge)；端侧未就绪(空) → 在线则回落云端，保证可用。
+async function callLLM(system: string, user: string, signal: AbortSignal, backend: CouncilBackend): Promise<string> {
+  if (backend === 'edge') {
+    try {
+      const t = await httpEdge.chat(user, { system });
+      if (t && t.trim()) return t.trim();
+    } catch { /* 端侧不可用 → 回落云端 */ }
+    if (signal.aborted) return '';
+  }
+  return cloudComplete(system, user, signal);
 }
 
 // 发言顺序：法庭 = 正/反交替 + 庭长收尾；其余 = 轮流
@@ -82,7 +97,7 @@ export async function runCouncil(o: RunOpts): Promise<void> {
     const user =
       `${recent ? `【目前的讨论】\n${recent}\n\n` : ''}现在轮到你（${a.name}）发言` +
       `${step.role === '庭长裁断' ? '，请综合各方做出简短的裁断 / 总结' : ''}。`;
-    let text = await callLLM(system, user, o.signal);
+    let text = await callLLM(system, user, o.signal, o.backend);
     if (o.signal.aborted) break;
     if (!text) text = '（一时语塞，先过。）';
     const msg: CouncilMsg = { id: `cm${idx}`, speakerId: a.id, name: a.name, color: a.color, text, idx, role: step.role };

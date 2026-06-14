@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Play, Square, RotateCcw, Check } from 'lucide-react';
 import PixelAvatar from './PixelAvatar';
 import { COUNCIL_AGENTS } from '../council/agents';
-import { COUNCIL_MODES, modeDef, runCouncil, type CouncilMode, type CouncilMsg } from '../council/engine';
+import { COUNCIL_MODES, modeDef, runCouncil, type CouncilMode, type CouncilMsg, type CouncilBackend } from '../council/engine';
 
 // 圆桌议事运行页（我们的像素风）：选谁入场 + 选讨论模式 + 出题 → 多 agent 轮流发言。
 // 机制仿 openhanako 频道群聊（见 council/engine.ts），UI 完全是 Pocket Earth 风格；与各 curator 解耦。
@@ -16,6 +16,7 @@ export default function CouncilPage({ onBack }: Props) {
   const [mode, setMode] = useState<CouncilMode>('roundtable');
   const [topic, setTopic] = useState('');
   const [rounds, setRounds] = useState(2);
+  const [backend, setBackend] = useState<CouncilBackend>('cloud');
   const [messages, setMessages] = useState<CouncilMsg[]>([]);
   const [speaking, setSpeaking] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -31,7 +32,7 @@ export default function CouncilPage({ onBack }: Props) {
     setMessages([]); setPhase('run'); setRunning(true);
     const ac = new AbortController(); abortRef.current = ac;
     const ids = COUNCIL_AGENTS.filter((a) => selected.has(a.id)).map((a) => a.id);
-    await runCouncil({ mode, agentIds: ids, topic, rounds, onMessage: (m) => setMessages((prev) => [...prev, m]), onSpeaker: setSpeaking, signal: ac.signal });
+    await runCouncil({ mode, agentIds: ids, topic, rounds, backend, onMessage: (m) => setMessages((prev) => [...prev, m]), onSpeaker: setSpeaking, signal: ac.signal });
     setRunning(false); setSpeaking(null);
   };
   const stop = () => { abortRef.current?.abort(); setRunning(false); setSpeaking(null); };
@@ -98,14 +99,24 @@ export default function CouncilPage({ onBack }: Props) {
             {mode === 'courtroom' && <div className="text-[9px] text-black/45 mt-1.5">⚖️ 法庭模式：在场的人前一半为正方、后一半为反方，最后由「庭长」裁断（没选庭长也会自动请来收尾）。</div>}
           </div>
 
-          {/* 轮数 */}
-          <div className="flex items-center gap-2">
+          {/* 轮数 + 大脑（云端 / 端侧） */}
+          <div className="flex items-center gap-2 flex-wrap">
             <div className="font-pixel text-[9px] tracking-widest text-black/55">每人轮数</div>
             <div className="flex border-2 border-black">
               {[1, 2, 3].map((r) => (
                 <button key={r} onClick={() => setRounds(r)} className={`px-3 py-1 text-[11px] font-bold ${rounds === r ? 'text-black' : 'text-black/40'}`} style={rounds === r ? { background: ACCENT } : undefined}>{r}</button>
               ))}
             </div>
+            <div className="font-pixel text-[9px] tracking-widest text-black/55 ml-1">大脑</div>
+            <div className="flex border-2 border-black">
+              <button onClick={() => setBackend('cloud')} className={`px-2.5 py-1 text-[11px] font-bold ${backend === 'cloud' ? 'text-black' : 'text-black/40'}`} style={backend === 'cloud' ? { background: ACCENT } : undefined}>☁ 云端</button>
+              <button onClick={() => setBackend('edge')} className={`px-2.5 py-1 text-[11px] font-bold ${backend === 'edge' ? 'text-black' : 'text-black/40'}`} style={backend === 'edge' ? { background: ACCENT } : undefined}>🖥 端侧</button>
+            </div>
+          </div>
+          <div className="text-[9px] text-black/45 leading-snug">
+            {backend === 'cloud'
+              ? '☁ 云端：DeepSeek 大模型，辩论质量最好（需联网 + DEEPSEEK_API_KEY）。'
+              : '🖥 端侧：本地 Qwen（需装 ollama），离线可用、隐私不出端；未就绪时自动回落云端。'}
           </div>
 
           {/* 开始 */}
@@ -121,6 +132,7 @@ export default function CouncilPage({ onBack }: Props) {
           <div className="px-3 py-2 border-b-2 border-black bg-black shrink-0 flex items-center gap-2" style={{ color: ACCENT }}>
             <span className="font-pixel text-[8px] tracking-wider shrink-0">{modeDef(mode).emoji} {modeDef(mode).label}</span>
             <span className="text-[11px] text-white truncate flex-1">{topic || '自由发挥'}</span>
+            <span className="font-pixel text-[7px] tracking-wider shrink-0 opacity-80">{backend === 'cloud' ? '☁ 云端' : '🖥 端侧'}</span>
           </div>
 
           {/* 讨论流 */}
