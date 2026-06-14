@@ -134,12 +134,12 @@ export default function MusicAgentsTab() {
                 const runnable = !!target;
                 const plaza = a.name === 'public-plaza';   // 代理社交：克制的区分色（石板蓝灰）
                 const dot = plaza ? '#6b7a8f' : '#00ff88';
-                const isMusic = a.name === 'music-curator';  // 音乐：用地球上「电影」那种橙做底色，和别的 agent 区分
+                const isMusic = a.name === 'music-curator';  // 音乐：用淡橙底色，和别的 agent 区分（低饱和、不刺眼）
                 return (
                   <button
                     key={a.name}
                     onClick={runnable ? () => setRunning(target) : undefined}
-                    style={isMusic ? { background: '#ffb000' } : undefined}
+                    style={isMusic ? { background: '#ffe3c2' } : undefined}
                     className={`w-full text-left flex items-center gap-3 bg-white border-2 border-black p-2.5 shadow-[2px_2px_0_rgba(0,0,0,0.85)] transition-colors ${
                       runnable ? (isMusic ? 'active:translate-y-px' : plaza ? 'hover:bg-[#6b7a8f]/10 active:translate-y-px' : 'hover:bg-[#00ff88]/10 active:translate-y-px') : 'cursor-default'
                     }`}
