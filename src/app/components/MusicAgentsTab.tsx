@@ -1,7 +1,6 @@
 // 音乐 tab —— frost-agent 架构控制台：展示 v2.0 各 agent（curator / harness / pipeline）
 // 内容静态提炼自 frost-agent/ARCHITECTURE.md 与各 contract.md
 import { useState, useEffect } from 'react';
-import { getSuggestion, subscribeHeartbeat, adoptSuggestion, type Suggestion } from '../../../frost-agent/harness/heartbeat';
 import MusicCuratorPage from './MusicCuratorPage';
 import PodcastCuratorPage from './PodcastCuratorPage';
 import MoviesCuratorPage from './MoviesCuratorPage';
@@ -82,10 +81,6 @@ const RUN_BY_NAME: Record<string, Running> = {
 
 export default function MusicAgentsTab() {
   const [running, setRunning] = useState<Running>(null);
-  // P2-H：heartbeat 今日推荐（suggest-then-confirm）
-  const [sug, setSug] = useState<Suggestion | null>(() => getSuggestion());
-  useEffect(() => subscribeHeartbeat(() => setSug(getSuggestion())), []);
-  const adopt = () => { const s = adoptSuggestion(); const t = s?.target ? RUN_BY_NAME[s.target] : null; if (t) setRunning(t); };
   // P2-I：已学技能（点击=路由到其目标 agent）
   const [learned, setLearned] = useState<LearnedSkill[]>(getLearnedSkills());
   useEffect(() => subscribeSkills(() => setLearned([...getLearnedSkills()])), []);
@@ -125,22 +120,6 @@ export default function MusicAgentsTab() {
         </div>
       </div>
 
-      {/* P2-H · 今日推荐（frost 主动按你的画像建议；与下面 agent 卡同款，点开即用） */}
-      {sug && (
-        <div className="px-4 pt-3 shrink-0">
-          <button onClick={adopt} className="w-full text-left flex items-center gap-3 bg-white border-2 border-black p-2.5 shadow-[2px_2px_0_rgba(0,0,0,0.85)] transition-colors hover:bg-[#00ff88]/10 active:translate-y-px">
-            <div className="w-3 h-3 shrink-0 bg-black flex items-center justify-center border border-black shadow-[1px_1px_0px_#00ff88]">
-              <div className="w-1.5 h-1.5 bg-[#00ff88]" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="font-pixel text-[9px] tracking-wide text-[#00aa55]">今日推荐</div>
-              <div className="text-[11px] text-black/70 leading-tight mt-0.5 truncate">{sug.text}</div>
-            </div>
-            <span className="shrink-0 font-pixel text-[6px] uppercase tracking-wider border border-black px-1.5 py-1 bg-black text-[#7CFF6B]">▶ 运行</span>
-          </button>
-        </div>
-      )}
-
       {/* agent 分组列表（可滚动） */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
         {GROUPS.map((g) => (
@@ -155,12 +134,14 @@ export default function MusicAgentsTab() {
                 const runnable = !!target;
                 const plaza = a.name === 'public-plaza';   // 代理社交：克制的区分色（石板蓝灰）
                 const dot = plaza ? '#6b7a8f' : '#00ff88';
+                const isMusic = a.name === 'music-curator';  // 音乐：用地球上「电影」那种橙做底色，和别的 agent 区分
                 return (
                   <button
                     key={a.name}
                     onClick={runnable ? () => setRunning(target) : undefined}
+                    style={isMusic ? { background: '#ffb000' } : undefined}
                     className={`w-full text-left flex items-center gap-3 bg-white border-2 border-black p-2.5 shadow-[2px_2px_0_rgba(0,0,0,0.85)] transition-colors ${
-                      runnable ? (plaza ? 'hover:bg-[#6b7a8f]/10 active:translate-y-px' : 'hover:bg-[#00ff88]/10 active:translate-y-px') : 'cursor-default'
+                      runnable ? (isMusic ? 'active:translate-y-px' : plaza ? 'hover:bg-[#6b7a8f]/10 active:translate-y-px' : 'hover:bg-[#00ff88]/10 active:translate-y-px') : 'cursor-default'
                     }`}
                   >
                     {/* 方块（呼应地图标记）；代理社交用区分色 */}
