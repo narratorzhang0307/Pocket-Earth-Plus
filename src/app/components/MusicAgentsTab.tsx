@@ -1,6 +1,7 @@
 // 音乐 tab —— frost-agent 架构控制台：展示 v2.0 各 agent（curator / harness / pipeline）
 // 内容静态提炼自 frost-agent/ARCHITECTURE.md 与各 contract.md
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getSuggestion, subscribeHeartbeat, adoptSuggestion, dismissSuggestion, type Suggestion } from '../../../frost-agent/harness/heartbeat';
 import MusicCuratorPage from './MusicCuratorPage';
 import PodcastCuratorPage from './PodcastCuratorPage';
 import MoviesCuratorPage from './MoviesCuratorPage';
@@ -72,6 +73,10 @@ const RUN_BY_NAME: Record<string, Running> = {
 
 export default function MusicAgentsTab() {
   const [running, setRunning] = useState<Running>(null);
+  // P2-H：heartbeat 今日推荐（suggest-then-confirm）
+  const [sug, setSug] = useState<Suggestion | null>(() => getSuggestion());
+  useEffect(() => subscribeHeartbeat(() => setSug(getSuggestion())), []);
+  const adopt = () => { const s = adoptSuggestion(); const t = s?.target ? RUN_BY_NAME[s.target] : null; if (t) setRunning(t); };
 
   if (running === 'music') return <MusicCuratorPage onBack={() => setRunning(null)} />;
   if (running === 'podcast') return <PodcastCuratorPage onBack={() => setRunning(null)} />;
@@ -105,6 +110,24 @@ export default function MusicAgentsTab() {
           <span>AGENTS: {Object.keys(RUN_BY_NAME).length}</span>
         </div>
       </div>
+
+      {/* P2-H · 今日推荐（frost 主动按你的画像建议；采纳才落地） */}
+      {sug && (
+        <div className="px-4 pt-3 shrink-0">
+          <div className="border-2 border-black bg-white p-2.5 shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
+            <div className="font-pixel text-[8px] tracking-widest text-[#00aa55] mb-1">◍ FROST · 今日推荐</div>
+            <div className="text-[12px] text-black/80 leading-snug mb-2">{sug.text}</div>
+            <div className="flex gap-2">
+              <button onClick={adopt} className="flex-1 border-2 border-black bg-black text-[#7CFF6B] font-pixel text-[8px] uppercase tracking-wider py-1.5 active:translate-y-px">
+                {sug.cta || '采纳'}
+              </button>
+              <button onClick={() => dismissSuggestion()} className="flex-1 border-2 border-black bg-white text-black font-pixel text-[8px] uppercase tracking-wider py-1.5 active:translate-y-px">
+                忽略
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* agent 分组列表（可滚动） */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
