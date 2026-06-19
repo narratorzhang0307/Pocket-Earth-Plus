@@ -30,6 +30,7 @@ export interface Verdict {
   dissent: string;                   // 保留的分歧（刻意存异）
   ruleEstablished: string;           // 本案确立的裁判要旨
   critique: string;                  // 复核意见（Critic）
+  criticalViolations?: string[];     // 确定性核验抓到的 critical 违规（如疑似杜撰证据）；非空则不入判例库、UI 标红
   createdAt: string;
   transcriptDigest: string;          // 庭审纪要摘要
   geo?: { lat: number; lng: number; place: string };  // 地理锚点（可空；带则可钉地球）

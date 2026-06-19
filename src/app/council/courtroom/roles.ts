@@ -37,3 +37,15 @@ export function assignSidesByPosition(agentIds: string[]): { proIds: string[]; c
   const mid = Math.ceil(rest.length / 2);
   return { proIds: rest.slice(0, mid), conIds: rest.slice(mid), judgeId: 'chair' };
 }
+
+// P1 手动分边：用户在 UI 里逐个点选谁正方/谁反方时调这里。
+// 规则：过滤掉庭长、去重、只保留真正在场(agentIds 内)的人；同一人不得同时正反（反方去掉已在正方者）。
+// 只有「两侧都非空」才采信手动指定；否则（未传 / 传了但一边为空）退回位置二分，保持向后兼容。
+export function resolveSides(agentIds: string[], proIds?: string[], conIds?: string[]): { proIds: string[]; conIds: string[]; judgeId: string } {
+  const present = new Set(agentIds);
+  const clean = (arr?: string[]) => [...new Set((arr || []).filter((id) => id !== 'chair' && present.has(id)))];
+  const pro = clean(proIds);
+  const con = clean(conIds).filter((id) => !pro.includes(id));
+  if (pro.length && con.length) return { proIds: pro, conIds: con, judgeId: 'chair' };
+  return assignSidesByPosition(agentIds);
+}

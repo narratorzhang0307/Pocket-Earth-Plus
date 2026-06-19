@@ -26,6 +26,8 @@ interface RunOpts {
   topic: string;
   rounds: number;                         // 每个 agent 发言几轮
   backend: CouncilBackend;                // 云端 / 端侧
+  proIds?: string[];                      // 法庭：用户手动指定的正方（两侧都非空才采信，否则位置二分）
+  conIds?: string[];                      // 法庭：用户手动指定的反方
   onMessage: (m: CouncilMsg) => void;
   onSpeaker: (id: string | null) => void; // 当前正在「思考」的发言者（null = 结束）
   signal: AbortSignal;
@@ -56,12 +58,23 @@ async function callLLM(system: string, user: string, signal: AbortSignal, backen
 }
 
 // 发言顺序：法庭 = 正/反交替 + 庭长收尾；其余 = 轮流
-function buildOrder(mode: CouncilMode, agents: CouncilAgent[], rounds: number): { id: string; role?: string }[] {
+// proIds/conIds：用户手动指定正反方时按指定排（两侧都非空才采信）；否则退回位置二分（向后兼容）。
+function buildOrder(mode: CouncilMode, agents: CouncilAgent[], rounds: number, proIds?: string[], conIds?: string[]): { id: string; role?: string }[] {
   const seq: { id: string; role?: string }[] = [];
   if (mode === 'courtroom') {
     const rest = agents.filter((a) => a.id !== 'chair');
-    const mid = Math.ceil(rest.length / 2);
-    const pro = rest.slice(0, mid), con = rest.slice(mid);
+    const present = new Set(rest.map((a) => a.id));
+    const pickIds = (ids?: string[]) => [...new Set((ids || []).filter((id) => present.has(id)))];
+    const pIds = pickIds(proIds);
+    const cIds = pickIds(conIds).filter((id) => !pIds.includes(id));
+    let pro: CouncilAgent[], con: CouncilAgent[];
+    if (pIds.length && cIds.length) {
+      pro = pIds.map((id) => rest.find((a) => a.id === id)!);
+      con = cIds.map((id) => rest.find((a) => a.id === id)!);
+    } else {
+      const mid = Math.ceil(rest.length / 2);
+      pro = rest.slice(0, mid); con = rest.slice(mid);
+    }
     for (let r = 0; r < rounds; r++) {
       for (let i = 0; i < Math.max(pro.length, con.length); i++) {
         if (pro[i]) seq.push({ id: pro[i].id, role: '正方' });
@@ -79,7 +92,7 @@ function buildOrder(mode: CouncilMode, agents: CouncilAgent[], rounds: number): 
 export async function runCouncil(o: RunOpts): Promise<void> {
   const agents = o.agentIds.map(agentById).filter(Boolean) as CouncilAgent[];
   if (!agents.length) { o.onSpeaker(null); return; }
-  const order = buildOrder(o.mode, agents, Math.max(1, o.rounds));
+  const order = buildOrder(o.mode, agents, Math.max(1, o.rounds), o.proIds, o.conIds);
   const names = agents.map((a) => a.name).join('、');
   const tone = modeDef(o.mode).tone;
   const transcript: CouncilMsg[] = [];
@@ -91,9 +104,14 @@ export async function runCouncil(o: RunOpts): Promise<void> {
     o.onSpeaker(a.id);
     const recent = transcript.slice(-8).map((m) => `${m.name}：${m.text}`).join('\n');
     const roleLine = step.role ? `你在本场的身份：${step.role}。` : '';
+    // 庭长裁断时多叮嘱一句：正反证据可能有偏颇/夸大，采信前先掂量可靠性，明显站不住的要点出来。
+    const judgeCaution = step.role === '庭长裁断'
+      ? '裁断时注意：正反双方的证据可能有偏颇或夸大，采信前先掂量其可靠性，明显站不住的论据在裁断里点出来、不要被气势带偏。\n'
+      : '';
     const system =
       `你是「${a.name}」（${a.handle}）。${a.persona}\n` +
       `${tone}\n议题：「${o.topic || '（自由发挥）'}」。在座：${names}。${roleLine}\n` +
+      judgeCaution +
       `规则：用你的身份视角和说话风格发言；可以回应、补充或反驳前面的人；简短有观点（80-130 字）；不要复读别人、不要写旁白、不要"我是…"式自我介绍，直接说观点。\n${HUMAN_VOICE}`;
     const user =
       `${recent ? `【目前的讨论】\n${recent}\n\n` : ''}现在轮到你（${a.name}）发言` +

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Play, Square, RotateCcw, Check, Gavel, Archive, MapPin } from 'lucide-react';
 import PixelAvatar from './PixelAvatar';
-import { COUNCIL_AGENTS } from '../council/agents';
+import { COUNCIL_AGENTS, agentById } from '../council/agents';
 import { COUNCIL_MODES, modeDef, runCouncil, type CouncilMode, type CouncilMsg, type CouncilBackend } from '../council/engine';
 import { runCourtroom } from '../council/courtroom/stages';
 import { saveCase } from '../council/courtroom/caseStore';
@@ -18,6 +18,7 @@ interface Props { onBack: () => void }
 export default function CouncilPage({ onBack }: Props) {
   const [phase, setPhase] = useState<'setup' | 'run'>('setup');
   const [selected, setSelected] = useState<Set<string>>(() => new Set(['bookworm', 'reel', 'vinyl', 'contra']));
+  const [sides, setSides] = useState<Record<string, 'pro' | 'con'>>({});   // 法庭：用户手动指定的正反方覆盖（未指定者按位置默认）
   const [mode, setMode] = useState<CouncilMode>('roundtable');
   const [topic, setTopic] = useState('');
   const [rounds, setRounds] = useState(2);
@@ -36,9 +37,17 @@ export default function CouncilPage({ onBack }: Props) {
 
   const toggle = (id: string) => setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  // 法庭模式需正反各一人，故要求「庭长以外」≥2；其余模式 ≥2 即可
-  const nonChairCount = [...selected].filter((id) => id !== 'chair').length;
-  const canStart = mode === 'courtroom' ? nonChairCount >= 2 : selected.size >= 2;
+  // 法庭分边：在场的「庭长以外」成员（保持花名册顺序），默认前一半正方、后一半反方，用户可逐个改。
+  const nonChairSelected = COUNCIL_AGENTS.filter((a) => selected.has(a.id) && a.id !== 'chair').map((a) => a.id);
+  const defaultSideOf = (id: string): 'pro' | 'con' => nonChairSelected.indexOf(id) < Math.ceil(nonChairSelected.length / 2) ? 'pro' : 'con';
+  const sideOf = (id: string): 'pro' | 'con' => sides[id] ?? defaultSideOf(id);
+  const setSideOf = (id: string, s: 'pro' | 'con') => setSides((p) => ({ ...p, [id]: s }));
+  const proCount = nonChairSelected.filter((id) => sideOf(id) === 'pro').length;
+  const conCount = nonChairSelected.filter((id) => sideOf(id) === 'con').length;
+
+  // 法庭模式需正反各一人：「庭长以外」≥2 且两侧各至少 1；其余模式 ≥2 即可
+  const nonChairCount = nonChairSelected.length;
+  const canStart = mode === 'courtroom' ? (nonChairCount >= 2 && proCount >= 1 && conCount >= 1) : selected.size >= 2;
 
   const start = async () => {
     if (!canStart) return;
@@ -50,7 +59,11 @@ export default function CouncilPage({ onBack }: Props) {
       // 法庭走新的流水线庭审引擎：议题里若能识别出城市，则带上地理锚点（裁决可钉地球）
       const g = geocodeCity(topic);
       const geo = g ? { lat: g.lat, lng: g.lng, place: g.place } : undefined;
-      await runCourtroom({ agentIds: ids, topic, rounds, backend, geo, onMessage, onSpeaker: setSpeaking, onStage: setStage, onVerdict: setVerdict, signal: ac.signal });
+      // 用户手动分边：按当前正反点选传入（每人都有默认侧，故两侧总非空，runCourtroom 直接采信）
+      const nonChairIds = ids.filter((id) => id !== 'chair');
+      const proIds = nonChairIds.filter((id) => sideOf(id) === 'pro');
+      const conIds = nonChairIds.filter((id) => sideOf(id) === 'con');
+      await runCourtroom({ agentIds: ids, proIds, conIds, topic, rounds, backend, geo, onMessage, onSpeaker: setSpeaking, onStage: setStage, onVerdict: setVerdict, signal: ac.signal });
     } else {
       // 其余三模式仍走旧引擎，零改动
       await runCouncil({ mode, agentIds: ids, topic, rounds, backend, onMessage, onSpeaker: setSpeaking, signal: ac.signal });
@@ -59,10 +72,12 @@ export default function CouncilPage({ onBack }: Props) {
   };
   const stop = () => { abortRef.current?.abort(); setRunning(false); setSpeaking(null); setStage(null); };
 
+  // critical 违规（如疑似杜撰证据）：既不自动入库，也禁止手动存判例 / 钉地球，避免污染先例语料与地球
+  const blockedByCritical = !!verdict?.criticalViolations?.length;
   // 存为判例（端侧判例库）
-  const onSaveCase = () => { if (verdict) { saveCase(verdict); setSaved(true); } };
-  // 钉到地球（仅议题带地理锚点 + 置信≥0.6；suggest-then-confirm）
-  const canPin = !!verdict?.geo && (verdict?.confidence ?? 0) >= 0.6;
+  const onSaveCase = () => { if (verdict && !blockedByCritical) { saveCase(verdict); setSaved(true); } };
+  // 钉到地球（仅议题带地理锚点 + 置信≥0.6 + 无 critical；suggest-then-confirm）
+  const canPin = !!verdict?.geo && (verdict?.confidence ?? 0) >= 0.6 && !blockedByCritical;
   const onPin = () => {
     if (!verdict?.geo) return;
     const id = 'council-' + verdict.id;
@@ -131,8 +146,36 @@ export default function CouncilPage({ onBack }: Props) {
                 );
               })}
             </div>
-            {mode === 'courtroom' && <div className="text-[9px] text-black/45 mt-1.5">⚖️ 法庭模式：在场的人前一半为正方、后一半为反方，最后由「庭长」裁断（没选庭长也会自动请来收尾）。</div>}
           </div>
+
+          {/* 法庭分边：给每个在场（庭长以外）成员点选正方 / 反方 */}
+          {mode === 'courtroom' && (
+            <div>
+              <div className="font-pixel text-[9px] tracking-widest text-black/55 mb-1.5">分边 · 谁是正方 / 谁是反方</div>
+              {nonChairSelected.length < 2 ? (
+                <div className="text-[9px] text-black/45">先在上方选至少两名「庭长以外」的人，再来分边。</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {nonChairSelected.map((id) => {
+                    const a = agentById(id)!;
+                    const side = sideOf(id);
+                    return (
+                      <div key={id} className="flex items-center gap-2 border-2 border-black bg-white px-2 py-1 shadow-[1px_1px_0_#000]">
+                        <PixelAvatar spec={a.avatar} size={24} ring={a.color} />
+                        <span className="text-[11px] font-bold flex-1 truncate">{a.name}</span>
+                        <div className="flex border-2 border-black shrink-0">
+                          <button onClick={() => setSideOf(id, 'pro')} className={`px-2.5 py-0.5 text-[10px] font-bold ${side === 'pro' ? 'bg-[#00b050] text-white' : 'text-black/40'}`}>正方</button>
+                          <button onClick={() => setSideOf(id, 'con')} className={`px-2.5 py-0.5 text-[10px] font-bold ${side === 'con' ? 'bg-[#d23b3b] text-white' : 'text-black/40'}`}>反方</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="text-[9px] text-black/45 leading-snug">⚖️ 默认前一半正方、后一半反方，可逐个改；最后由「庭长」裁断（没选也会自动请来收尾）。</div>
+                  {(proCount < 1 || conCount < 1) && <div className="text-[9px] text-[#d23b3b] font-bold">正反两方各需至少一人，否则无法对辩。</div>}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 轮数 + 大脑（云端 / 端侧） */}
           <div className="flex items-center gap-2 flex-wrap">
@@ -207,11 +250,16 @@ export default function CouncilPage({ onBack }: Props) {
                   {verdict.dissent && <div className="text-[10px] text-black/55 leading-snug">保留分歧 · {verdict.dissent}</div>}
                   {verdict.ruleEstablished && <div className="text-[11px] text-black/65 italic border-l-2 pl-2" style={{ borderColor: '#caa64a' }}>裁判要旨 · {verdict.ruleEstablished}</div>}
                   {verdict.critique && <div className="text-[10px] text-[#a05a2c] leading-snug">复核 · {verdict.critique}</div>}
+                  {blockedByCritical && (
+                    <div className="border-2 border-[#d23b3b] bg-[#fff0f0] px-2 py-1.5 text-[10px] text-[#d23b3b] font-bold leading-snug">
+                      ⚠ 严重违规（不入判例库）· {verdict.criticalViolations!.join('；')}
+                    </div>
+                  )}
                   {!running && (
                     <div className="flex gap-2 pt-1">
-                      <button onClick={onSaveCase} disabled={saved}
+                      <button onClick={onSaveCase} disabled={saved || blockedByCritical}
                         className="flex-1 flex items-center justify-center gap-1 border-2 border-black bg-white px-2 py-1.5 text-[11px] font-bold shadow-[1px_1px_0_#000] active:translate-y-px disabled:opacity-50">
-                        <Archive className="w-3.5 h-3.5" strokeWidth={2.5} /> {saved ? '已存判例' : '存为判例'}
+                        <Archive className="w-3.5 h-3.5" strokeWidth={2.5} /> {blockedByCritical ? '严重违规·不可入库' : saved ? '已存判例' : '存为判例'}
                       </button>
                       {canPin && (
                         <button onClick={onPin} disabled={pinned}

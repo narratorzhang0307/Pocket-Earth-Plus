@@ -5,7 +5,7 @@
 import { agentById, type CouncilAgent } from '../agents';
 import { edgeSafe } from '../../../../frost-agent/edge/contract';
 import { cleanVoice } from '../../../../frost-agent/harness/persona';
-import { buildRoleSystem, assignSidesByPosition } from './roles';
+import { buildRoleSystem, resolveSides } from './roles';
 import { shouldPass } from './clerk';
 import { verifyVerdict } from './courtVerify';
 import { newVerdictId, clamp01, type Verdict, type CourtStage, type ArgPoint, type CourtRole } from './types';
@@ -14,6 +14,8 @@ import type { CouncilMsg } from '../engine';
 
 export interface CourtroomOpts {
   agentIds: string[];
+  proIds?: string[];          // 用户手动指定的正方（可选）；两侧都非空才采信，否则退回位置二分
+  conIds?: string[];          // 用户手动指定的反方（可选）
   topic: string;
   rounds: number;
   backend: 'cloud' | 'edge';
@@ -80,7 +82,7 @@ export async function runCourtroom(o: CourtroomOpts): Promise<void> {
   if (agents.length < 2) { o.onSpeaker(null); o.onVerdict(null); return; }
   const names = agents.map((a) => a.name).join('、');
   const topic = o.topic;
-  const { proIds, conIds, judgeId } = assignSidesByPosition(o.agentIds);
+  const { proIds, conIds, judgeId } = resolveSides(o.agentIds, o.proIds, o.conIds);
   const judge = agentById(judgeId) || agentById('chair')!;
   // 边界：法庭需正反各至少一人。否则会单方庭审（辩方全程缺席），裁决严重偏颇——直接如实提前结束。
   if (!proIds.length || !conIds.length) {
@@ -147,6 +149,7 @@ export async function runCourtroom(o: CourtroomOpts): Promise<void> {
     .join('\n');
   const verdictObj = await cloudJSON(
     '你是审判长，综合整场庭审做出结构化裁决。只输出一个 JSON 对象，忠实于庭审公开记录、不要引入记录中没出现的证据。'
+    + '正反双方的证据可能有偏颇或夸大，采信前先掂量其可靠性，明显站不住的论据在 verdict 里点出来、不要被其气势带偏。'
     + '字段：issues(争点数组)、proArgs(正方论据数组,每条{claim,evidenceRef证据引用,reasoning推理})、conArgs(反方论据数组,同结构)、'
     + 'verdict(裁断文本,给出倾向与理由)、confidence(0到1的置信度数字)、dissent(保留的合理分歧)、ruleEstablished(本案确立的一句裁判要旨)。'
     + (precedentDigest ? '若本案裁断偏离下方【类案参照】的先例要旨，须在 dissent 字段说明为何偏离。' : ''),
@@ -167,25 +170,29 @@ export async function runCourtroom(o: CourtroomOpts): Promise<void> {
   push(judge, 'judge', `合议裁断：${verdict.verdict}（置信 ${Math.round(verdict.confidence * 100)}%）`);
 
   // —— 阶段⑤：复核（Critic 证伪 + 确定性验证器；违规则降置信、记入 critique）——
+  // 核验先于 abort 判断算出来：它是确定性纯逻辑（无网络），critical 关系到「能否入库」，须始终可得。
+  const check = verifyVerdict(verdict, { evidenceMentions: sideText() });
+  const hasCritical = check.critical.length > 0;
+  if (hasCritical) verdict.criticalViolations = check.critical.map((c) => c.msg);   // 透出给 UI 标红
   if (!o.signal.aborted) {
     o.onStage?.('复核');
-    const check = verifyVerdict(verdict, { evidenceMentions: sideText() });
     // 复核官只在「已入场」成员里选：抬杠侠 contra 入场则优先，否则辩方/正方首人，最后庭长。
     // （不再无条件 agentById('contra') 拉入未入场的人发言）
     const critic = o.agentIds.includes('contra') ? agentById('contra')!
       : (conA[0] || proA[0] || judge);
     o.onSpeaker(critic.id);
     const cSys = buildRoleSystem('critic', critic, ctx);
-    const cText = await speak(cSys, `这是本案裁断：「${verdict.verdict}」。确定性核验发现的问题：${check.violations.join('；') || '无'}。请用一两句指出裁断最可能的薄弱处（证据不足/推理跳步/越级），没有就说「程序无明显瑕疵」。`, o.signal, o.backend);
+    const cText = await speak(cSys, `这是本案裁断：「${verdict.verdict}」。确定性核验发现的问题：${check.messages.join('；') || '无'}。请用一两句指出裁断最可能的薄弱处（证据不足/推理跳步/越级），没有就说「程序无明显瑕疵」。`, o.signal, o.backend);
     if (!o.signal.aborted) {
-      verdict.critique = (cleanVoice(cText) || '程序无明显瑕疵。') + (check.violations.length ? `（自动核验：${check.violations.join('；')}）` : '');
-      if (check.violations.length) verdict.confidence = clamp01(verdict.confidence - 0.15 * Math.min(2, check.violations.length));
+      verdict.critique = (cleanVoice(cText) || '程序无明显瑕疵。') + (check.messages.length ? `（自动核验：${check.messages.join('；')}）` : '');
+      if (check.messages.length) verdict.confidence = clamp01(verdict.confidence - 0.15 * Math.min(2, check.messages.length));
       push(critic, 'critic', verdict.critique);
     }
   }
 
-  // 自动入库判例（置信达阈且有裁判要旨）：让判例库有料可被「类案参照」检索，不再只靠用户手点存为判例（按 id 幂等去重）
-  if (verdict.confidence >= 0.6 && verdict.ruleEstablished) saveCase(verdict);
+  // 自动入库判例：置信达阈 + 有裁判要旨 + 无 critical 违规（疑似杜撰证据等）才入库。
+  // 让判例库有料可被「类案参照」检索，又绝不让「证据可能是编的」裁决污染先例语料（按 id 幂等去重）。
+  if (verdict.confidence >= 0.6 && verdict.ruleEstablished && !hasCritical) saveCase(verdict);
   o.onVerdict(verdict);
   done(o);
 }
