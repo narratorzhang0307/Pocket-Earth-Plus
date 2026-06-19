@@ -1,6 +1,7 @@
 // 感知层：把一张 File 解成「带置信度的便宜信号小结论」PhotoFeatures。
 // 认知漏斗：解码→EXIF金信号→像素废片→资料投票→dHash。原图/canvas 跑完即释放（修 OOM）。
 import { clamp01, type PhotoFeatures } from './types';
+import { decode, dHash } from '../skills/browserVision';   // 通用图像原语（解码缩图 / 感知哈希）收口到 skill
 
 let exifrMod: any = null;
 
@@ -31,38 +32,6 @@ export async function readExif(file: File): Promise<ExifInfo> {
   if (capDate && capDate.getFullYear() < 1995) suspectExif = true;                        // 时间在出生前
   if (softwareIsScreenshot) suspectExif = true;                                           // 截图工具
   return { capDate, hasCameraFields, hasGPS, lat, lng, softwareIsScreenshot, suspectExif };
-}
-
-// ── 解码 + 缩图（方向归一化：createImageBitmap from-image / <img> 兜底兼容 Safari HEIC）──
-export async function decode(file: File, maxSize: number): Promise<{ canvas: HTMLCanvasElement; w: number; h: number } | null> {
-  let bw = 0, bh = 0;
-  let draw: (ctx: CanvasRenderingContext2D, dw: number, dh: number) => void;
-  // 统一释放：不论从哪条提前返回路径（退化宽高 / 无 ctx / <img> 解码失败）都释放 bmp/objectURL，杜绝批处理 OOM。
-  let cleanup: () => void = () => {};
-  try {
-    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions);
-    bw = bmp.width; bh = bmp.height;
-    draw = (ctx, dw, dh) => { ctx.drawImage(bmp, 0, 0, dw, dh); };
-    cleanup = () => (bmp as ImageBitmap).close?.();
-  } catch {
-    const url = URL.createObjectURL(file);
-    cleanup = () => URL.revokeObjectURL(url);
-    try {
-      const img = await new Promise<HTMLImageElement>((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
-      bw = img.naturalWidth; bh = img.naturalHeight;
-      draw = (ctx, dw, dh) => { ctx.drawImage(img, 0, 0, dw, dh); };
-    } catch { cleanup(); return null; }
-  }
-  if (!bw || !bh) { cleanup(); return null; }
-  const s = Math.min(1, maxSize / Math.max(bw, bh));
-  const dw = Math.max(1, Math.round(bw * s)), dh = Math.max(1, Math.round(bh * s));
-  const canvas = document.createElement('canvas');
-  canvas.width = dw; canvas.height = dh;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) { cleanup(); return null; }
-  draw(ctx, dw, dh);
-  cleanup();
-  return { canvas, w: bw, h: bh };
 }
 
 // ── 像素质量（清晰/曝光/色彩/对比/亮度）——只服务废片闸 + 簇内选优，不单独决定留/钉 ──
@@ -136,30 +105,6 @@ function utilityVote(data: Uint8ClampedArray, w: number, h: number, m: { contras
   // 也封顶 0.3、不武断判资料。aspectScreenHit 单独命中不再解除封顶（修：16:9/4:3 实拍横图被误判资料）。
   if (!hardScreenish) s = Math.min(s, 0.3);
   return { isUtilityProb: clamp01(s), aspectScreenHit };
-}
-
-// ── 感知哈希 dHash（9×8 灰度，归一化缩图上算）──
-export function dHash(canvas: HTMLCanvasElement): string {
-  const c = document.createElement('canvas');
-  c.width = 9; c.height = 8;
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return '';
-  ctx.drawImage(canvas, 0, 0, 9, 8);
-  const d = ctx.getImageData(0, 0, 9, 8).data;
-  let bits = '';
-  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
-    const i = (y * 9 + x) * 4, j = (y * 9 + x + 1) * 4;
-    bits += (d[i] + d[i + 1] + d[i + 2]) > (d[j] + d[j + 1] + d[j + 2]) ? '1' : '0';
-  }
-  let hex = '';
-  for (let k = 0; k < 64; k += 4) hex += parseInt(bits.slice(k, k + 4), 2).toString(16);
-  return hex;
-}
-export function hamming(a: string, b: string): number {
-  if (a.length !== b.length || !a) return 64;
-  let d = 0;
-  for (let i = 0; i < a.length; i++) { let x = parseInt(a[i], 16) ^ parseInt(b[i], 16); while (x) { d += x & 1; x >>= 1; } }
-  return d;
 }
 
 // ── 感知层主入口：解一张图 → PhotoFeatures（小结论）+ canvas（caller 用完即弃，修 OOM）──

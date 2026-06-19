@@ -1,7 +1,7 @@
 // 推理层：PhotoFeatures + 可选 CLIP → photoType + valueScore + verdict ⟂ pinnable。
 // 类型先行（先分清是什么，再谈值不值/钉不钉）；质量分只管废片过滤 + 簇内选优。
 import { clamp01, ym, type PhotoFeatures, type PhotoResult, type PhotoType, type Verdict } from './types';
-import { hamming } from './features';
+import { hamming } from '../skills/browserVision';
 import type { VisionResult } from './vision';
 
 // ── 类型判定（EXIF 金信号 + 资料投票 +（可选）CLIP 纠偏）──
