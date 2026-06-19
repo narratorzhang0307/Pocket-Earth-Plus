@@ -11,15 +11,24 @@ const TRACK_LOOKUP = new Map(
   RADIO_CITIES.flatMap((c) => c.tracks.map((t) => [t.id, { title: t.title, artist: t.artist, cityNameZh: c.cityNameZh }] as const))
 );
 
-// 候选曲库：每城取前 2 首，控制提示长度
+// 候选曲库：全量摊平（每首都带城市标签）。原来每城只取前 2 首，"放日本的音乐"这种按国家/风格点歌
+// 就只能看到东京/大阪的头两首、凑不出像样歌单——放宽到全量，让大脑能真正按国家/城市/风格/心情策展。
 const CANDIDATES = RADIO_CITIES.flatMap((c) =>
-  c.tracks.slice(0, 2).map((t) => ({ id: t.id, title: t.title, artist: t.artist, city: c.cityNameZh }))
+  c.tracks.map((t) => ({ id: t.id, title: t.title, artist: t.artist, city: c.cityNameZh }))
 );
 
 function extractAnchor(text: string): string {
   const m: [RegExp, string][] = [
-    [/海明威/, '海明威'], [/马尔克斯/, '马尔克斯'], [/博尔赫斯/, '博尔赫斯'],
-    [/失眠|睡不着/, '失眠'], [/海边|海岸/, '海边'], [/异乡|想家|漂泊/, '漂泊'],
+    // 国家 / 地域
+    [/日本|日语|日文/, '日本'], [/韩国|韩语|韩文/, '韩国'], [/法国|法语/, '法国'], [/欧洲/, '欧洲'],
+    [/拉丁|拉美|拉美洲/, '拉丁'], [/非洲/, '非洲'], [/印度/, '印度'], [/中东/, '中东'],
+    // 风格流派
+    [/爵士|jazz/i, '爵士'], [/嘻哈|说唱|hip ?hop|rap/i, '嘻哈'], [/民谣|folk/i, '民谣'],
+    [/电子|electronic|techno|house/i, '电子'], [/摇滚|rock/i, '摇滚'], [/古典/, '古典'], [/金属|metal/i, '金属'],
+    // 心情 / 场景 / 文学锚点
+    [/慵懒|松弛|放松|chill/i, '慵懒'], [/伤感|悲伤|难过|emo/i, '伤感'], [/兴奋|嗨|燃|带劲/, '高能'],
+    [/海明威/, '海明威'], [/马尔克斯/, '马尔克斯'], [/博尔赫斯/, '博尔赫斯'], [/村上/, '村上春树'],
+    [/失眠|睡不着|深夜/, '失眠'], [/海边|海岸/, '海边'], [/异乡|想家|漂泊/, '漂泊'],
     [/老电影|电影/, '电影感'], [/开车|自驾|公路/, '公路'], [/上班|工作|专注/, '专注'], [/读|看书|小说/, '阅读'],
   ];
   for (const [re, tag] of m) if (re.test(text)) return tag;
@@ -39,16 +48,19 @@ function buildTrace(anchor: string, n: number, viaLLM: boolean, edgeUsed: boolea
   ];
 }
 
-function buildPrompt(text: string, history: string, pool: typeof CANDIDATES): string {
+function buildPrompt(text: string, anchor: string, history: string, pool: typeof CANDIDATES): string {
   const lib = pool.map((c) => `${c.id} | ${c.title} — ${c.artist} · ${c.city}`).join('\n');
   return [
     '你是 Frost（弗洛斯特），深夜电台的开放式 DJ。声音冷静克制、带黄昏与远方，不像产品说明。',
     history,
     `用户请求：${text}`,
+    `这次的方向锚点：「${anchor}」——据此判断 ta 想听的国家 / 地域 / 风格 / 心情，围绕它选歌。`,
+    '注意："放 / 放下 / 放一下 / 来点 / 放首 + 某类音乐" 都表示「想听这类音乐」（"放下日本的音乐"="放一下日本的音乐"，是想听、不是想舍弃）。',
     '',
     '可选曲库（格式：trackId | 歌名 — 歌手 · 城市）：',
     lib,
     '',
+    '若用户点名了国家 / 地域 / 城市 / 风格（如"日本""欧洲""爵士""慵懒"），只从对应的歌里挑——城市标签能帮你判断国家与地域（如东京·大阪=日本，巴黎·马赛=法国/欧洲）；歌手名能帮你判断风格。挑不满也别硬塞不相干的。',
     '请从中挑 5-8 首最贴合用户场景/心情/文学锚点的歌，按"进入状态→展开→收束"排列。',
     '为每首写一段推荐理由 note（80-150 字，不要超过 150 字）：',
     '  · 先落到这首歌本身——它的质感、年代、城市气质，或一句代表性的歌词/段落；',
@@ -83,7 +95,7 @@ export async function runOpenDjDirector(
 
   // 云「写」：从候选里精选并写每首的贴合理由
   let raw = '';
-  try { raw = (await getFrostBrain().complete(buildPrompt(text, formatHistory(ctx.history), pool), { json: true })).trim(); } catch { raw = ''; }
+  try { raw = (await getFrostBrain().complete(buildPrompt(text, anchor, formatHistory(ctx.history), pool), { json: true })).trim(); } catch { raw = ''; }
 
   if (raw) {
     try {
