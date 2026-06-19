@@ -9,6 +9,8 @@ export { planTrip, rankPOIs, cloudRankPOIs } from './plan';
 export { runPlan, confirmTrip, pinManualStop, runArchive, confirmArchive } from './agent';
 export { buildTripLines, getTrip, removeTripMarks } from './trip';
 export type { TripView, TripStop } from './trip';
+export { getTravelStats } from './stats';
+export type { TravelStats } from './stats';
 export { geocodeViaOSM, poiViaOSM, weatherViaOSM } from './mcp';
 
 import type { PlanMode } from './types';

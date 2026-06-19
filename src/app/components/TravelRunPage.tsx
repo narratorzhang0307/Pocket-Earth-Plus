@@ -2,7 +2,7 @@ import { useReducer, useState, useEffect, useRef } from 'react';
 import { ChevronLeft, Plane, MapPin, Sparkles, Check, PenLine, Camera } from 'lucide-react';
 import {
   DESTINATIONS, PREFERENCES, runPlan, confirmTrip, pinManualStop, runArchive, confirmArchive,
-  MODE_LABEL, MODE_COLOR, TRIP_MODES, type Pref, type TripPlan, type TripMode, type TripArchive,
+  MODE_LABEL, MODE_COLOR, TRIP_MODES, getTravelStats, type Pref, type TripPlan, type TripMode, type TripArchive,
 } from '../lib/travel';
 import { getUserMarksByKind, subscribeUserMarks } from '../data/userMarks';
 
@@ -36,6 +36,7 @@ export default function TravelRunPage({ onBack }: Props) {
 
   const completed = getUserMarksByKind('travel');
   const tripCities = new Set(completed.map((m) => String((m.meta || {}).city || ''))).size;
+  const stats = getTravelStats();   // P2 旅行档案（城市/类别/季节 + 跨 agent 重叠）
 
   const togglePref = (p: Pref) => setPrefs((prev) => {
     const next = new Set(prev); next.has(p) ? next.delete(p) : next.add(p); return next;
@@ -256,6 +257,44 @@ export default function TravelRunPage({ onBack }: Props) {
             </div>
           )}
         </div>
+
+        {/* P2 旅行档案：统计 + 跨 agent 联动 */}
+        {stats.spots > 0 && (
+          <div className="border-2 border-black bg-white shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
+            <div className="px-2.5 py-1.5 bg-black"><span className="font-pixel text-[8px] tracking-widest" style={{ color: ROSE }}>旅行档案</span></div>
+            <div className="px-3 py-2.5 space-y-2.5">
+              <div className="flex justify-around text-center">
+                {[[stats.cities, '城市'], [stats.trips, '趟行程'], [stats.spots, '足迹点']].map(([n, label]) => (
+                  <div key={label as string}>
+                    <div className="text-[18px] font-bold leading-none" style={{ color: ROSE }}>{n as number}</div>
+                    <div className="text-[9px] text-black/45 mt-0.5">{label as string}</div>
+                  </div>
+                ))}
+              </div>
+              {stats.topTags.length > 0 && (
+                <div>
+                  <div className="font-pixel text-[7px] text-black/40 tracking-wider mb-1">最爱</div>
+                  <div className="flex flex-wrap gap-1">
+                    {stats.topTags.map((t) => <span key={t.tag} className="text-[10px] border border-black/40 px-1.5 py-0.5 bg-[#EAEAEA]">{t.tag} ×{t.n}</span>)}
+                  </div>
+                </div>
+              )}
+              {stats.seasons.length > 0 && (
+                <div className="text-[10.5px] text-black/60">偏好季节：{stats.seasons.map((s) => `${s.season}(${s.n})`).join(' · ')}</div>
+              )}
+              {stats.overlaps.length > 0 && (
+                <div>
+                  <div className="font-pixel text-[7px] text-black/40 tracking-wider mb-1">在这些城市，你的世界交汇</div>
+                  <div className="space-y-0.5">
+                    {stats.overlaps.slice(0, 6).map((o) => (
+                      <div key={o.city} className="text-[10.5px] text-black/70">📍 {o.city} <span className="text-black/45">· 也留下了 {o.kinds.join('、')}</span></div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* 已钉足迹 */}
         {completed.length > 0 && (
