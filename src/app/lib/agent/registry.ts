@@ -24,9 +24,13 @@ export function getCustomAgent(id: string): AgentManifest | undefined { return a
 export function subscribeCustomAgents(fn: () => void): () => void { subs.add(fn); return () => { subs.delete(fn); }; }
 
 function slug(name: string): string {
-  // 中文名也能得到稳定 id：先尝试英数 slug，空则用时间戳基数。
+  // 先尝试英数 slug；纯中文名等无英数字符时，用名字的【确定性哈希】生成可区分的可读 id，
+  // 不再统一兜底成 'agent'（否则「精酿足迹」「观鸟助手」都变 agent / agent-2，难辨认）。
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  return base || 'agent';
+  if (base) return base;
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) { h ^= name.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return 'a-' + (h >>> 0).toString(36);   // 如「精酿足迹」→ a-1x9k2f（稳定、同名同 id，重名由 install 的 while 兜底）
 }
 
 /** 安装一份 manifest：过安全闸 → 落地。返回审查结果（不 ok 则未安装）。 */

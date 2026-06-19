@@ -3,10 +3,12 @@
  *   - 导航请求：network-first，离线回退到缓存的 index.html（SPA 壳）
  *   - 同源静态资源（/assets、图标、字体…）：stale-while-revalidate（秒开 + 后台更新）
  *   - /api/*：一律走网络，绝不缓存（云脑 / 端侧 / 抓图都是动态）
- *   - 跨域（地图瓦片 / Unsplash / 字体）：放行交给浏览器，避免缓存膨胀与瓦片过期
- * 升级：改 VERSION 即弃用旧缓存。
+ *   - 跨域（地图瓦片 / Unsplash / 字体 / 端侧模型权重）：放行交给浏览器，避免缓存膨胀与瓦片过期
+ * 升级：改 VERSION 即弃用旧缓存（只弃用本应用自己的旧缓存，见 activate）。
+ * 注意：清理缓存只删 `pocket-earth-*` 旧版本，绝不碰 WebLLM 端侧模型缓存（webllm/*，约 400MB）
+ *       与 mapbox-tiles —— 否则每次部署都会清掉用户已下的 Qwen 端侧模型，逼其重下。
  */
-const VERSION = 'pe-v7';
+const VERSION = 'pe-v8';
 const CACHE = `pocket-earth-${VERSION}`;
 const SHELL = [
   '/',
@@ -25,7 +27,8 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      // 只清理本应用自己的旧版本缓存（pocket-earth-*）；webllm/* 端侧模型与 mapbox-tiles 一律保留。
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('pocket-earth-') && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
