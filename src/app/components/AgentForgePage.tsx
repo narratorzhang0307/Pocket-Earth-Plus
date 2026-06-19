@@ -56,7 +56,7 @@ export default function AgentForgePage({ onBack }: { onBack: () => void }) {
           <ChevronLeft className="w-4 h-4" strokeWidth={3} />
         </button>
         <div className="flex-1 min-w-0">
-          <div className="font-pixel text-[11px] tracking-wider truncate">AGENT-FORGE · 造物主</div>
+          <div className="font-pixel text-[11px] tracking-wider truncate">AGENT-FORGE</div>
           <div className="text-[9px] text-black/45 leading-tight mt-0.5">说一句话，让 frost 造一个新 agent</div>
         </div>
         <Hammer className="w-4 h-4" strokeWidth={2.5} style={{ color: ACCENT }} />

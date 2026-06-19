@@ -115,6 +115,9 @@ export default function MusicAgentsTab() {
 
       {/* agent 分组列表（可滚动） */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+        {/* 端侧引擎开关（基础设施·非 agent）：默认收起的小开关，紧贴状态条；点开才展开加载面板 */}
+        <OnDeviceBrainPanel />
+
         {/* 置顶：总 agent FROST —— 统领所有子 agent 的宠物入口（点进去跟它对话）*/}
         <button
           onClick={() => setRunning('frost')}
@@ -129,9 +132,6 @@ export default function MusicAgentsTab() {
           <span className="shrink-0 font-pixel text-[6px] uppercase tracking-wider border border-black bg-black text-[#7CFF6B] px-1.5 py-1">▶ RUN</span>
         </button>
 
-        {/* 端侧大脑：一键把 Qwen3 加载进浏览器（WebGPU），意图/选择本地跑、不出端 */}
-        <OnDeviceBrainPanel />
-
         {/* 造物主：一个能造 agent 的 agent —— 说一句话长出新的 curator */}
         <button
           onClick={() => setRunning('agentforge')}
@@ -143,7 +143,7 @@ export default function MusicAgentsTab() {
             <div className="w-1.5 h-1.5" style={{ background: '#ff8a3d' }} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="font-pixel text-[11px] tracking-wider text-black">AGENT-FORGE · 造物主</div>
+            <div className="font-pixel text-[11px] tracking-wider text-black">AGENT-FORGE</div>
             <div className="text-[10px] text-black/60 leading-snug mt-0.5">说一句话，让 frost 造一个新 agent（端侧/云 Qwen 拟稿 → 安全闸 → 钉地球）</div>
           </div>
           <span className="shrink-0 font-pixel text-[6px] uppercase tracking-wider border border-black bg-black text-[#ff8a3d] px-1.5 py-1">▶ RUN</span>
