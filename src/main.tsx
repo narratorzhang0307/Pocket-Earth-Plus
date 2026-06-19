@@ -1,3 +1,4 @@
+import './demoReset';   // Demo 重置：必须最先执行，在任何应用 store 读 localStorage 之前清空运行时数据
 import { createRoot } from "react-dom/client";
 import App from "./app/App";
 import "./styles/index.css";
