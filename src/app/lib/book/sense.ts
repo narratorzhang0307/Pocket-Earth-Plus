@@ -1,5 +1,5 @@
 // 感知层：三种输入归一成「候选书名 + 可选评分」。书封截图只走端侧 vision（原图不出端）。
-import { edgeSafe } from '../../../../frost-agent/edge/contract';
+import { visionExtract } from '../skills/visionExtract';
 
 const CN_NUM: Record<string, number> = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5 };
 
@@ -30,11 +30,10 @@ export function parseTitle(text: string): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 
+// 截图认书：解耦进 [visionExtract]（原图只进端侧 VL→脱敏→按 schema 结构化）。端侧未就绪→''（手填兜底）。
 export async function ocrTitle(imageDataUrl: string): Promise<string> {
-  try {
-    const text = await edgeSafe.vision(imageDataUrl, '这是一张书封或书页截图，只回答书名，不要其他文字。');
-    return (text || '').trim().split('\n')[0].replace(/《|》/g, '').slice(0, 40).trim();
-  } catch { return ''; }
+  const r = await visionExtract({ imageDataUrl, domain: '书', fields: [{ key: 'title', label: '书名' }] });
+  return (r.fields.title || '').replace(/《|》/g, '').slice(0, 40).trim();
 }
 
 export interface Sensed { title: string; rating?: number; from: 'quote' | 'ocr' | 'manual' }

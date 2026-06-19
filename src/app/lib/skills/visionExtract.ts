@@ -15,14 +15,16 @@
 //   电影传 {片名,导演,主演,年份}、书传 {书名,作者,译者}、自建 agent 直接传 manifest.tagFields。
 //   同一个 skill、不同 schema → 自然适配任意领域。新增 agent 白得「拍图入库」能力、零改本 skill。
 //
-// 组合（书 §3.12：skill 可组合 skill，无层级）：本 skill 内部复用 [enrichEntity] 做第②步结构化。
-//   调用方（各 curator 的 sense / 造物主引擎）复用本 skill。
+// 组合（书 §3.12：skill 可组合 skill，无层级）：本 skill = 底层原语 [visionRead]（① 端侧读图→脱敏文本）
+//   + [enrichEntity]（② 结构化）。调用方（各 curator 的 sense / 造物主引擎）复用本 skill。
+//   想要纯文本再自行做嵌套结构化的（如旅行的 segments/stays/spots）→ 直接用 [visionRead]，不必经本 skill。
 //
-// 解耦/可打包：核心（脱敏 + 提示词构造 + 两段编排 + 按 schema 取字段）自包含；对外只依赖两处清晰边界——
-//   端侧视觉 `edgeSafe.vision(image, prompt)` 与 结构化 `enrichJSON`/端侧 `edgeSafe.chat`。
+// 解耦/可打包：核心（提示词构造 + 两段编排 + 按 schema 取字段）自包含；「原图只进端侧」的隐私边界
+//   收在 [visionRead] 一处；结构化对外只依赖 `enrichJSON`/端侧 `edgeSafe.chat`。
 // ════════════════════════════════════════════════════════════════════════════
 import { edgeSafe } from '../../../../frost-agent/edge/contract';
 import { enrichJSON, extractJSON } from './enrichEntity';
+import { visionRead } from './visionRead';
 
 /** 一个目标字段：key=JSON 键，label=给模型看的中文名，hint=可选补充说明。 */
 export interface FieldSpec { key: string; label: string; hint?: string }
@@ -42,14 +44,6 @@ export interface VisionExtractResult {
   structuredVia: 'edge' | 'cloud' | 'none';  // 结构化走端侧文本模型还是云 Qwen
   onDevice: boolean;                         // 是否全程端侧（视觉+结构化都端侧）
 }
-
-// 端侧脱敏（确定性机制，不靠模型自觉）：长卡号 → 证件(18,含X) → 手机(11)。顺序避免互吃字。
-const REDACT: [RegExp, string][] = [
-  [/\d{16,19}/g, '***卡号***'],
-  [/\d{17}[\dXx]/g, '***证件***'],
-  [/1[3-9]\d{9}/g, '***手机***'],
-];
-function redactText(s: string): string { let t = s || ''; for (const [re, rep] of REDACT) t = t.replace(re, rep); return t; }
 
 // ① 视觉提示词：让端侧 VL 只读图上确有的字段、逐行输出，禁编造、禁输出敏感号。
 function visionPrompt(domain: string, fields: FieldSpec[]): string {
@@ -79,10 +73,8 @@ export async function visionExtract(input: VisionExtractInput): Promise<VisionEx
   const none: VisionExtractResult = { fields: {}, raw: '', ok: false, visionVia: 'none', structuredVia: 'none', onDevice: false };
   if (!input.imageDataUrl || !input.fields.length) return none;
 
-  // ① 端侧视觉：原图只进端侧 VL，绝不出端。读不出/未就绪 → none（不把原图送云）。
-  let raw = '';
-  try { raw = (await edgeSafe.vision(input.imageDataUrl, visionPrompt(input.domain, input.fields))) || ''; } catch { raw = ''; }
-  raw = ((input.redact ?? true) ? redactText(raw) : raw).slice(0, 1200).trim();
+  // ① 端侧视觉：复用底层原语 [visionRead]（原图只进端侧→脱敏，隐私收口）。读不出/未就绪 → none（不把原图送云）。
+  const raw = await visionRead(input.imageDataUrl, visionPrompt(input.domain, input.fields), { max: 1200, redact: input.redact });
   if (!raw) return none;
 
   // ② 结构化：只把【脱敏文本】喂模型。端侧文本模型优先；不行再云 Qwen（原图全程不参与第②步）。
@@ -98,7 +90,14 @@ export async function visionExtract(input: VisionExtractInput): Promise<VisionEx
   } catch { /* 落到云 */ }
   if (!obj) { obj = await enrichJSON<Record<string, string>>({ prompt: sp }); if (obj) structuredVia = 'cloud'; }
 
+  // 单字段兜底：结构化两头都没出、而 schema 只有一个字段时——端侧读出的（脱敏）文本本身就是答案，
+  // 取首行冒号后的值，避免「白读一次端侧却丢结果」（如电影/书认片）。全程没上云 → 仍算端侧完成。
+  if (!obj && input.fields.length === 1) {
+    const v = raw.split('\n')[0].replace(/^[^：:]*[：:]\s*/, '').trim();
+    if (v) { obj = { [input.fields[0].key]: v }; structuredVia = 'none'; }
+  }
+
   const fields: Record<string, string> = {};
   if (obj) for (const f of input.fields) { const v = obj[f.key]; if (typeof v === 'string' && v.trim()) fields[f.key] = v.trim(); }
-  return { fields, raw, ok: Object.keys(fields).length > 0, visionVia: 'edge', structuredVia, onDevice: structuredVia === 'edge' };
+  return { fields, raw, ok: Object.keys(fields).length > 0, visionVia: 'edge', structuredVia, onDevice: structuredVia !== 'cloud' };
 }

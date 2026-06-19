@@ -93,7 +93,14 @@ export async function visionExtract(input: VisionExtractInput, deps: VisionExtra
     if (obj) structuredVia = deps.structureOnDevice ? 'edge' : 'cloud';
   } catch { /* obj 仍为 null */ }
 
+  // 单字段兜底：结构化没出、而 schema 只有一个字段时，端侧读出的（脱敏）文本本身就是答案——
+  // 取首行冒号后的值，避免「白读一次端侧却丢结果」。全程没上云 → 仍算端侧完成。
+  if (!obj && input.fields.length === 1) {
+    const v = raw.split('\n')[0].replace(/^[^：:]*[：:]\s*/, '').trim();
+    if (v) { obj = { [input.fields[0].key]: v }; structuredVia = 'none'; }
+  }
+
   const fields: Record<string, string> = {};
   if (obj) for (const f of input.fields) { const v = obj[f.key]; if (typeof v === 'string' && v.trim()) fields[f.key] = v.trim(); }
-  return { fields, raw, ok: Object.keys(fields).length > 0, visionVia: 'edge', structuredVia, onDevice: structuredVia === 'edge' };
+  return { fields, raw, ok: Object.keys(fields).length > 0, visionVia: 'edge', structuredVia, onDevice: structuredVia !== 'cloud' };
 }

@@ -1,6 +1,6 @@
 // 感知层：把三种输入归一成「候选片名 + 可选用户评分」。
-// 截图只走端侧 vision（原图不出端，与照片 agent 同纪律）；一句话用确定性正则抽取，不耗云端。
-import { edgeSafe } from '../../../../frost-agent/edge/contract';
+// 截图认片解耦进 [visionExtract] skill（原图只进端侧 VL→脱敏→结构化）；一句话用确定性正则抽取，不耗云端。
+import { visionExtract } from '../skills/visionExtract';
 
 const CN_NUM: Record<string, number> = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
 
@@ -33,12 +33,10 @@ export function parseTitle(text: string): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 
-// 截图认片（端侧 Qwen-VL）：原图只进端侧；端侧未就绪返回 ''（调用方走手填兜底）。
+// 截图认片：解耦进 [visionExtract]（原图只进端侧 Qwen-VL→脱敏→按 schema 结构化）。端侧未就绪→''（手填兜底）。
 export async function ocrTitle(imageDataUrl: string): Promise<string> {
-  try {
-    const text = await edgeSafe.vision(imageDataUrl, '这是一张电影信息截图，只回答电影的中文片名，不要其他文字。');
-    return (text || '').trim().split('\n')[0].replace(/《|》/g, '').slice(0, 40).trim();
-  } catch { return ''; }
+  const r = await visionExtract({ imageDataUrl, domain: '电影', fields: [{ key: 'title', label: '片名', hint: '电影的中文名' }] });
+  return (r.fields.title || '').replace(/《|》/g, '').slice(0, 40).trim();
 }
 
 // 统一感知入口：返回候选片名与（可选）评分
