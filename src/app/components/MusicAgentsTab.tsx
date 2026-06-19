@@ -138,7 +138,10 @@ export default function MusicAgentsTab() {
           className="w-full text-left flex items-center gap-2.5 border-2 border-black p-2.5 shadow-[3px_3px_0_rgba(0,0,0,0.85)] active:translate-y-px"
           style={{ background: '#fff1e6' }}
         >
-          <div className="shrink-0 w-10 h-10 border-2 border-black flex items-center justify-center text-[20px]" style={{ background: '#ff8a3d' }}>🛠</div>
+          {/* 小橙方块（与 curator 同款，只是橙色）——不用大图标 */}
+          <div className="w-3 h-3 shrink-0 bg-black flex items-center justify-center border border-black" style={{ boxShadow: '1px 1px 0px #ff8a3d' }}>
+            <div className="w-1.5 h-1.5" style={{ background: '#ff8a3d' }} />
+          </div>
           <div className="min-w-0 flex-1">
             <div className="font-pixel text-[11px] tracking-wider text-black">AGENT-FORGE · 造物主</div>
             <div className="text-[10px] text-black/60 leading-snug mt-0.5">说一句话，让 frost 造一个新 agent（端侧/云 Qwen 拟稿 → 安全闸 → 钉地球）</div>
