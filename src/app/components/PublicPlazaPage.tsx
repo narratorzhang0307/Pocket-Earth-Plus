@@ -141,8 +141,8 @@ export default function PublicPlazaPage({ onBack }: Props) {
           <div className="flex items-start gap-3">
             {/* 你的特使：活的 FROST 线条形象。白天轮换装束（外出社交中），夜间安静发光归来 */}
             <div className="shrink-0 flex items-center justify-center overflow-hidden"
-              style={{ width: 86, height: 74, border: '2px solid #000', background: phase === 'night' ? '#0d1522' : '#eef1f4' }}>
-              <FrostBuddy state="idle" cycle={phase === 'day'} color={phase === 'night' ? undefined : '#1d3e57'} glow={phase === 'night'} size={10} />
+              style={{ width: 86, height: 74, border: '2px solid #000', background: '#fff' }}>
+              <FrostBuddy state="idle" cycle={phase === 'day'} color="#1d3e57" glow={false} size={10} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 mb-1">
@@ -196,7 +196,7 @@ export default function PublicPlazaPage({ onBack }: Props) {
             className="border-2 border-black bg-white p-3 shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
             <div className="flex items-center gap-2.5">
               {/* 别人的 FROST 特使：穿着你俩共同兴趣的装、各自配色 */}
-              <div className="shrink-0 flex items-center justify-center overflow-hidden" style={{ width: 42, height: 42, border: '2px solid #000', background: '#eef1f4' }}>
+              <div className="shrink-0 flex items-center justify-center overflow-hidden" style={{ width: 42, height: 42, border: '2px solid #000', background: '#fff' }}>
                 <FrostBuddy state="idle" theme={n.theme} color={n.color} glow={false} size={6} />
               </div>
               <div className="min-w-0 flex-1">
@@ -220,14 +220,14 @@ export default function PublicPlazaPage({ onBack }: Props) {
               <span className="font-pixel text-[8px] tracking-widest text-black/60">今晚的报告 · 由你决定</span>
             </div>
 
-            {/* FROST 归来复盘（叙事 · 夜色卡，活的发光 buddy） */}
-            <div className="border-2 border-black p-2.5 shadow-[2px_2px_0_rgba(0,0,0,0.85)] flex items-start gap-2.5" style={{ background: '#0d1522' }}>
-              <div className="shrink-0 flex items-center justify-center overflow-hidden" style={{ width: 54, height: 52 }}>
-                <FrostBuddy state="idle" glow size={7} />
+            {/* FROST 归来复盘（叙事 · 白底黑线，简洁干净） */}
+            <div className="border-2 border-black bg-white p-2.5 shadow-[2px_2px_0_rgba(0,0,0,0.85)] flex items-start gap-2.5">
+              <div className="shrink-0 flex items-center justify-center overflow-hidden" style={{ width: 54, height: 52, border: '2px solid #000', background: '#fff' }}>
+                <FrostBuddy state="idle" color="#1d3e57" glow={false} size={7} />
               </div>
               <div className="min-w-0 flex-1 pt-0.5">
-                <div className="font-pixel text-[7px] tracking-widest mb-1" style={{ color: '#7fa8c9' }}>◍ FROST · 今晚归来</div>
-                <div className="text-[11px] leading-snug" style={{ color: '#dfe7ee' }}>
+                <div className="font-pixel text-[7px] tracking-widest mb-1" style={{ color: ACCENT }}>◍ FROST · 今晚归来</div>
+                <div className="text-[11px] leading-snug text-black/75">
                   {nightLoading && !night ? '正在整理今天的见闻…' : (night?.recap || '今晚没遇到特别投缘的人。')}
                 </div>
               </div>
@@ -238,7 +238,7 @@ export default function PublicPlazaPage({ onBack }: Props) {
                 <motion.div key={n.tag} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
                   className="border-2 border-black bg-white p-3 shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
                   <div className="flex items-center gap-2.5 mb-1.5">
-                    <div className="shrink-0 flex items-center justify-center overflow-hidden" style={{ width: 42, height: 42, border: '2px solid #000', background: '#eef1f4' }}>
+                    <div className="shrink-0 flex items-center justify-center overflow-hidden" style={{ width: 42, height: 42, border: '2px solid #000', background: '#fff' }}>
                       <FrostBuddy state="idle" theme={n.theme} color={n.color} glow={false} size={6} />
                     </div>
                     <div className="min-w-0 flex-1">
