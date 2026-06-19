@@ -4,6 +4,7 @@
 // ② 地理子 agent：纯端上，取景地→故事地→国家逐级 geocode，返回 GeoTarget{kind} 让 UI 显示落点精度。
 import { geocodeCity } from '../../data/geoStickers';
 import { movieCountry } from '../../data/movies';
+import { enrichJSON } from '../skills/enrichEntity';
 import type { GeoTarget } from './types';
 
 // 云脑补全子 agent 的原始产出（全部可缺，缺则空）
@@ -20,20 +21,6 @@ export interface EnrichRaw {
 }
 const EMPTY: EnrichRaw = { director: '', cast: [], genre: '', movement: '', plot: '', country: '', year: null, filmingPlace: '', storyPlace: '' };
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('timeout')), ms); p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); }); });
-}
-
-// 从 LLM 文本里抠出第一个 JSON 对象（容忍 ```json 包裹与前后废话）
-function extractJSON(text: string): unknown | null {
-  if (!text) return null;
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const body = fence ? fence[1] : text;
-  const s = body.indexOf('{'); const e = body.lastIndexOf('}');
-  if (s < 0 || e <= s) return null;
-  try { return JSON.parse(body.slice(s, e + 1)); } catch { return null; }
-}
-
 const str = (x: unknown) => (typeof x === 'string' ? x.trim() : '');
 const strArr = (x: unknown) => Array.isArray(x) ? x.map(str).filter(Boolean).slice(0, 5) : (typeof x === 'string' && x ? x.split(/[、,，/]/).map((s) => s.trim()).filter(Boolean).slice(0, 5) : []);
 
@@ -47,23 +34,17 @@ export async function enrichTags(title: string, hint?: { director?: string; coun
     + '重要：不确定的字段一律留空字符串或空数组，绝对不要编造演员或地点。';
   const hintStr = hint ? `已知线索（可纠正/补充）：导演=${hint.director || '?'}，国家=${hint.country || '?'}，年份=${hint.year || '?'}。` : '';
   const prompt = `片名：《${title}》。${hintStr}请输出 JSON。`;
-  try {
-    const r = await withTimeout(fetch('/api/frost-llm', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, system, json: true }),
-    }), 20000);
-    const data = await r.json();
-    const obj = extractJSON(String(data?.text || '')) as Record<string, unknown> | null;
-    if (!obj) return { raw: EMPTY, ok: false };
-    const yearN = typeof obj.year === 'number' ? obj.year : (typeof obj.year === 'string' && /^\d{4}$/.test(obj.year) ? +obj.year : null);
-    return {
-      raw: {
-        director: str(obj.director), cast: strArr(obj.cast), genre: str(obj.genre), movement: str(obj.movement),
-        plot: str(obj.plot).slice(0, 60), country: str(obj.country), year: yearN,
-        filmingPlace: str(obj.filmingPlace), storyPlace: str(obj.storyPlace),
-      }, ok: true,
-    };
-  } catch { return { raw: EMPTY, ok: false }; }
+  // 调云脑要结构化 JSON 走 enrichEntity skill（共享 plumbing：超时+稳健解析）；字段映射是电影领域专属，留在此。
+  const obj = await enrichJSON<Record<string, unknown>>({ prompt, system });
+  if (!obj) return { raw: EMPTY, ok: false };
+  const yearN = typeof obj.year === 'number' ? obj.year : (typeof obj.year === 'string' && /^\d{4}$/.test(obj.year) ? +obj.year : null);
+  return {
+    raw: {
+      director: str(obj.director), cast: strArr(obj.cast), genre: str(obj.genre), movement: str(obj.movement),
+      plot: str(obj.plot).slice(0, 60), country: str(obj.country), year: yearN,
+      filmingPlace: str(obj.filmingPlace), storyPlace: str(obj.storyPlace),
+    }, ok: true,
+  };
 }
 
 // 地理子 agent：取景地 > 故事地 > 国家，逐级落坐标。纯本地，不联网。
