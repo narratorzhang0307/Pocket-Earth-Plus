@@ -6,6 +6,7 @@
 import { getFrostBrain } from '../../../../frost-agent/harness/brain';
 import { edgeSafe } from '../../../../frost-agent/edge/contract';
 import { GEO_STRATEGIES, ALLOWED_TOOLS, CARD_STYLES, type AgentManifest } from './manifest';
+import { extractJSON } from '../skills/enrichEntity';
 
 function buildPrompt(desc: string): string {
   return [
@@ -27,14 +28,6 @@ function buildPrompt(desc: string): string {
   ].join('\n');
 }
 
-function parseJson(raw: string): Partial<AgentManifest> | null {
-  if (!raw) return null;
-  try {
-    const m = raw.match(/\{[\s\S]*\}/);
-    return JSON.parse(m ? m[0] : raw) as Partial<AgentManifest>;
-  } catch { return null; }
-}
-
 /** 拟一份待审查的 manifest（失败返回 null）。onEdge 且端侧就绪时用浏览器内 Qwen。 */
 export async function proposeManifest(desc: string, opts?: { onEdge?: boolean }): Promise<{ draft: Partial<AgentManifest> | null; via: 'edge' | 'cloud' | 'none' }> {
   const d = desc.trim();
@@ -43,12 +36,12 @@ export async function proposeManifest(desc: string, opts?: { onEdge?: boolean })
 
   if (opts?.onEdge && (await edgeSafe.available())) {
     const raw = await edgeSafe.chat(prompt, { json: true });
-    const draft = parseJson(raw);
+    const draft = extractJSON<Partial<AgentManifest>>(raw);
     if (draft) return { draft, via: 'edge' };
     // 端侧吐不出合法 JSON → 回退云脑
   }
   let raw = '';
   try { raw = (await getFrostBrain().complete(prompt, { json: true })) || ''; } catch { raw = ''; }
-  const draft = parseJson(raw);
+  const draft = extractJSON<Partial<AgentManifest>>(raw);
   return { draft, via: draft ? 'cloud' : 'none' };
 }

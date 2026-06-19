@@ -5,6 +5,7 @@
 // 工程纪律（书里反复强调）：硬步数上限防死循环、动作去重、JSON 约束、每步舱壁降级、进度持久化（断点续传）。
 import { getFrostBrain } from '../../../../frost-agent/harness/brain';
 import { resolvePlace } from '../skills/resolvePlace';
+import { extractJSON } from '../skills/enrichEntity';
 import type { AgentManifest } from './manifest';
 import { GEO_LABEL } from './manifest';
 import type { CustomDraft } from './engine';
@@ -27,11 +28,7 @@ export interface MapDraft {
 }
 export type OnResearchPhase = (msg: string) => void;
 
-// ——— 工具层（§7.3）：JSON 解析兜底 ———
-function parseJson<T>(raw: string): T | null {
-  if (!raw) return null;
-  try { const m = raw.match(/\{[\s\S]*\}/); return JSON.parse(m ? m[0] : raw) as T; } catch { return null; }
-}
+// JSON 解析走 enrichEntity skill 的 extractJSON（统一一处稳健解析）
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/\s+/g, '');
 
 // ——— 规划器（§7.2）：主题 → 一批子查询 + 目标数量 ———
@@ -41,7 +38,7 @@ async function planMap(manifest: AgentManifest, goal: string): Promise<{ queries
     `请把它拆成 4-8 个具体的搜索查询（覆盖不同子区域/子类别，便于联网搜到真实条目），并给一个合理的目标落点数量。\n` +
     `只输出 JSON：{"queries":["查询1","查询2",...],"target":数字}`;
   const raw = await getFrostBrain().complete(prompt, { json: true });
-  const r = parseJson<{ queries: string[]; target: number }>(raw);
+  const r = extractJSON<{ queries: string[]; target: number }>(raw);
   const queries = Array.isArray(r?.queries) ? r!.queries.filter((q) => typeof q === 'string' && q.trim()).slice(0, 8) : [];
   return { queries: queries.length ? queries : [goal], target: Math.min(30, Math.max(4, Number(r?.target) || 12)) };
 }
@@ -57,7 +54,7 @@ async function runQuery(manifest: AgentManifest, query: string): Promise<MapReco
     `若搜不到可靠条目，records 给空数组。`;
   // search:true → 服务端给 Qwen 开联网搜索（enable_search）；不支持时退化为模型知识，仍出 JSON。
   const raw = await getFrostBrain().complete(prompt, { json: true, search: true });
-  const r = parseJson<{ records: MapRecord[] }>(raw);
+  const r = extractJSON<{ records: MapRecord[] }>(raw);
   if (!r || !Array.isArray(r.records)) return [];
   return r.records
     .filter((x) => x && typeof x.label === 'string' && x.label.trim())
@@ -75,7 +72,7 @@ async function reflectGaps(manifest: AgentManifest, goal: string, found: string[
     `判断是否已覆盖该主题下的主要对象。若还明显缺重要的，给 1-4 个新的补充搜索查询；若够全了就 done=true。\n` +
     `只输出 JSON：{"done":true或false,"more":["补充查询",...]}`;
   const raw = await getFrostBrain().complete(prompt, { json: true });
-  const r = parseJson<{ done: boolean; more: string[] }>(raw);
+  const r = extractJSON<{ done: boolean; more: string[] }>(raw);
   return { done: !!r?.done, more: Array.isArray(r?.more) ? r!.more.filter((q) => typeof q === 'string' && q.trim()).slice(0, 4) : [] };
 }
 

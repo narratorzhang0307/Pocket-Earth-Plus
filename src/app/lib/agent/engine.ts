@@ -3,6 +3,7 @@
 //   感知 → 云脑/端侧按 manifest.tagFields 打标 + 按 geoStrategy 选落点城市 → geocode → 草稿(suggest)。
 // 单级失败降级、不抛错（舱壁）。产出未钉，由 pin.ts 确认才落地。完全解耦：只依赖共享 geocodeCity + 模型。
 import { resolvePlace } from '../skills/resolvePlace';
+import { extractJSON } from '../skills/enrichEntity';
 import { getFrostBrain } from '../../../../frost-agent/harness/brain';
 import { edgeSafe } from '../../../../frost-agent/edge/contract';
 import { GEO_LABEL, type AgentManifest } from './manifest';
@@ -38,10 +39,7 @@ function buildPrompt(manifest: AgentManifest, input: string): string {
   ].join('\n');
 }
 
-function parse(raw: string): { label?: string; tags?: Record<string, string>; city?: string; country?: string; note?: string } | null {
-  if (!raw) return null;
-  try { const m = raw.match(/\{[\s\S]*\}/); return JSON.parse(m ? m[0] : raw); } catch { return null; }
-}
+type EnrichOut = { label?: string; tags?: Record<string, string>; city?: string; country?: string; note?: string };
 
 /** 跑一个自定义 agent：manifest + 一句输入 → 草稿。onEdge 且端侧就绪时打标走浏览器内 Qwen。 */
 export async function runCustomAgent(manifest: AgentManifest, input: string, opts?: { onEdge?: boolean }): Promise<CustomDraft | null> {
@@ -61,7 +59,7 @@ export async function runCustomAgent(manifest: AgentManifest, input: string, opt
     if (raw) draft.via = 'cloud';
   }
 
-  const r = parse(raw);
+  const r = extractJSON<EnrichOut>(raw);
   if (r) {
     if (r.label) draft.label = r.label;
     if (r.tags && typeof r.tags === 'object') {
