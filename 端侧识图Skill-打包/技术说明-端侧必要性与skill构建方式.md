@@ -36,9 +36,10 @@
    "原图不出端"不是一句承诺，而是代码结构保证的：唯一接触原图的就是端侧那一个接口；脱敏用确定性正则在数据离开端侧之前完成，不依赖模型自觉。
 
 4. **skill 之间可组合，把隐私边界收口到一处。**
-   我们把识图拆成两层：底层 `visionRead`（原图→端侧→脱敏文本）+ 高层 `visionExtract`（在它之上加结构化）。
-   "原图只进端侧"这条线、以及脱敏正则，都**只在底层 `visionRead` 一处**——上层和所有 agent 都只跟脱敏后的文本打交道。
-   高层 `visionExtract` 组合底层 `visionRead`：skill 调 skill、各司其职、能力像积木一样拼起来。
+   我们把它拆成图↔文对称的三个 skill：`visionRead`（图→脱敏文本）、`textExtract`（文本→字段）、
+   `visionExtract`（图→字段）= `visionRead` + `textExtract`。
+   "原图只进端侧"这条线、以及脱敏正则，都**只在 `visionRead` 一处**——上层和所有 agent 都只跟脱敏后的文本打交道。
+   这样图片输入走 `visionExtract`、纯文本输入走 `textExtract`，两条路对称、共用同一套字段契约：skill 调 skill、能力像积木一样拼起来。
 
 ## 三、这套做法带来的工程收益
 
@@ -58,4 +59,4 @@
 
 各 agent 此前各自直连端侧视觉、各有一份脱敏正则；接入后，"原图只进端侧"这条线与脱敏逻辑统一收口到底层 `visionRead` 一处。新增一个领域 = 传一份新 schema，不改 skill。
 
-附：可运行的独立实现见同目录 `visionRead.ts`（底层）与 `visionExtract.ts`（高层），三种 agent 的接入示例见 `example.ts`，接口/架构/推荐模型见 `README.md`。
+附：可运行的独立实现见同目录 `visionRead.ts`（图→文）、`textExtract.ts`（文→字段）、`visionExtract.ts`（图→字段=前两者组合），四种场景的接入示例见 `example.ts`，接口/架构/推荐模型见 `README.md`。

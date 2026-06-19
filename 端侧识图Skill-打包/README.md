@@ -1,16 +1,17 @@
-# 端侧识图 → 结构化 Skill（visionRead / visionExtract）
+# 端侧识图/解析 → 结构化 Skill（visionRead / textExtract / visionExtract）
 
-一套**两层、可独立移植**的端侧 skill：**给一张图，端侧把它读懂，整理成结构化数据**——原图一个字节都不出设备。
+一套**可组合、可独立移植**的端侧 skill 家族：**给一张图或一段文本，端侧把它读懂、整理成结构化数据**——原图一个字节都不出设备。
 
-它是「为什么必须端侧」的一个样板能力，也演示了一种**用端侧能力搭 skill 的方式**：能力做成可注入的接口、领域差异做成参数、隐私在数据流里硬约束、底层原语收口一处。在我们的应用里，电影 / 书 / 旅行 / 用户自建的任意「整理器」agent 都已接入同一套 skill。
+它是「为什么必须端侧」的一个样板能力，也演示了一种**用端侧能力搭 skill 的方式**：能力做成可注入的接口、领域差异做成参数、隐私在数据流里硬约束、底层原语收口一处、skill 组合 skill。在我们的应用里，电影 / 书 / 旅行 / 用户自建的任意「整理器」agent 都已接入同一套 skill。
 
 ## 包内文件
 
 | 文件 | 作用 |
 |---|---|
 | `visionRead.ts` | **底层原语**：原图 → 端侧视觉 → 脱敏文本。「原图只进端侧」隐私边界 + 脱敏正则的唯一收口 |
-| `visionExtract.ts` | **高层**：`visionRead` + 结构化 → 扁平字段 JSON。schema 由调用方传入 |
-| `example.ts` | 三种 agent 的接入示例（电影单字段 / 旅行纯文本 / 自建 agent 多字段），换两个 stub 即可跑 |
+| `textExtract.ts` | **文本 → 字段**：脱敏文本/任意文本 → 按 schema 的扁平 JSON（端侧文本模型 或 云）|
+| `visionExtract.ts` | **图 → 字段** = `visionRead` + `textExtract`。schema 由调用方传入 |
+| `example.ts` | 四种场景接入示例（电影截图单字段 / 旅行截图纯文本 / 自建 agent 多字段 / 直接文本→字段），换两个 stub 即可跑 |
 | `技术说明-端侧必要性与skill构建方式.md` | 方案/可行性文档可直接取用的一节 |
 | `README.md` | 本文件 |
 
@@ -35,25 +36,24 @@
 
 ---
 
-## 二、两层架构
+## 二、架构：图↔文对称的可组合家族
 
-把识图拆成两层，让"原图只进端侧"这条线收口到唯一一处，上层只跟脱敏后的文本打交道：
+三个 skill，组合关系清晰；"原图只进端侧"这条线收口到 `visionRead` 唯一一处，上层只跟脱敏后的文本打交道：
 
 ```
-                       ┌─ 电影认片（单字段）─┐
-                       ├─ 书认书（单字段）  ─┤→ visionExtract ─┐
-   用户自建 agent（多字段）┘                                  │ ① 调
-                                                            ▼
-   旅行票据（要纯文本，自己做嵌套结构化）──────────────▶ visionRead ──▶ 端侧视觉模型
-                                                            （原图只到这里 + 脱敏唯一一份）
+   visionRead   : 图  → 文字        （端侧·脱敏；原图只到这里）
+   textExtract  : 文字 → 字段        （端侧文本模型 / 云；schema 驱动）
+   visionExtract: 图  → 字段  =  visionRead + textExtract
 ```
 
 - **`visionRead`（底层原语）**：原图 → 端侧视觉 → 脱敏文本。隐私边界与脱敏正则**只此一份**。
-- **`visionExtract`（高层）**：`visionRead` + 结构化 → 按 schema 的扁平字段。
+- **`textExtract`**：脱敏文本（或任意文本）→ 按 schema 的扁平字段。
+- **`visionExtract`**：图 → 字段，即上面两者的组合。
 
-**怎么选哪一层**：
-- 要**纯文本**、之后自己做领域专属/嵌套结构化（如旅行行程含多段行程/多段住宿/多个景点）→ 用 `visionRead`。
-- 要**扁平结构化字段**（片名 / 导演 / 物种 / 城市…）→ 用 `visionExtract`。
+**怎么选**：
+- 输入是**图**、要**扁平字段**（片名 / 物种 / 城市…）→ `visionExtract`。
+- 输入是**图**、要**纯文本**再自己做嵌套结构化（如旅行行程含多段行程/住宿/景点）→ `visionRead`。
+- 输入是**一段文本**、要**扁平字段** → `textExtract`（与 visionExtract 完全对称）。
 
 ---
 
@@ -65,6 +65,7 @@
 | 书认书 | `visionExtract` | `[{title:'书名'}]` |
 | 用户自建 agent | `visionExtract` | 直接传它声明的字段表 → 白得"拍图入库"、零改 skill |
 | 旅行票据 | `visionRead` | 行程是**嵌套**结构（segments/stays/spots），扁平字段套不进 → 取纯文本后自己 `structureTrip` |
+| 直接文本输入 | `textExtract` | 一段文本（不经图）→ 按声明字段结构化，与图片路径对称 |
 
 完整代码见 `example.ts`。新增一个领域 = 传一份新 schema，**不改 skill**。
 
@@ -73,14 +74,20 @@
 ## 四、接口契约
 
 ```ts
-// —— 底层 visionRead ——
+// —— 底层 visionRead（图→文字）——
 interface VisionReadDeps { visionOnDevice: (imageDataUrl: string, prompt: string) => Promise<string> }  // 唯一接触原图处
 interface VisionReadOptions { max?: number; redact?: boolean }
 function visionRead(imageDataUrl: string, prompt: string, deps: VisionReadDeps, opts?: VisionReadOptions): Promise<string>
 
-// —— 高层 visionExtract ——
+// —— textExtract（文字→字段；FieldSpec 在此定义）——
 interface FieldSpec { key: string; label: string; hint?: string }
-interface VisionExtractDeps extends VisionReadDeps { structure: (prompt: string) => Promise<string>; structureOnDevice?: boolean }
+interface TextExtractDeps { structure: (prompt: string) => Promise<string>; structureOnDevice?: boolean }
+interface TextExtractInput { text: string; domain: string; fields: FieldSpec[]; instruction?: string }
+interface TextExtractResult { fields: Record<string, string>; ok: boolean; via: 'edge' | 'cloud' | 'none' }
+function textExtract(input: TextExtractInput, deps: TextExtractDeps): Promise<TextExtractResult>
+
+// —— visionExtract（图→字段）= visionRead + textExtract ——
+interface VisionExtractDeps extends VisionReadDeps, TextExtractDeps {}
 interface VisionExtractInput { imageDataUrl: string; domain: string; fields: FieldSpec[]; redact?: boolean }
 interface VisionExtractResult {
   fields: Record<string, string>;            // 按 fields.key 填好的结构化结果
