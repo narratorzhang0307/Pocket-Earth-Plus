@@ -4,7 +4,7 @@
 // 全云 Qwen 协同（搜索需联网，属云协同；核心交互/选择仍可端侧）。解耦：只依赖共享 geocodeCity + 本模块 pin/manifest，不碰内核、不碰别的 agent。
 // 工程纪律（书里反复强调）：硬步数上限防死循环、动作去重、JSON 约束、每步舱壁降级、进度持久化（断点续传）。
 import { getFrostBrain } from '../../../../frost-agent/harness/brain';
-import { geocodeCity } from '../../data/geoStickers';
+import { resolvePlace } from './geocode';
 import type { AgentManifest } from './manifest';
 import { GEO_LABEL } from './manifest';
 import type { CustomDraft } from './engine';
@@ -51,8 +51,9 @@ async function runQuery(manifest: AgentManifest, query: string): Promise<MapReco
   const fields = manifest.tagFields.join('、');
   const prompt =
     `任务：联网检索「${query}」，整理出属于「${manifest.domain}」的真实条目。\n` +
-    `每个条目尽量给：名字、所在城市/地名、标签字段(${fields})、一句说明、来源。\n` +
-    `只输出 JSON：{"records":[{"label":"名字","city":"城市/地名","tags":{${manifest.tagFields.map((f) => `"${f}":"值或空"`).join(',')}},"note":"≤30字说明","source":"来源名或链接"}]}\n` +
+    `每个条目给：名字(可含具体地点)、所在【城市或区】、标签字段(${fields})、一句说明、来源。\n` +
+    `注意 city 只填城市或区名（如 杭州 / 临安 / 内罗毕），不要带具体地点名（地点放进 label），便于精确定位。\n` +
+    `只输出 JSON：{"records":[{"label":"名字","city":"城市或区","tags":{${manifest.tagFields.map((f) => `"${f}":"值或空"`).join(',')}},"note":"≤30字说明","source":"来源名或链接"}]}\n` +
     `若搜不到可靠条目，records 给空数组。`;
   // search:true → 服务端给 Qwen 开联网搜索（enable_search）；不支持时退化为模型知识，仍出 JSON。
   const raw = await getFrostBrain().complete(prompt, { json: true, search: true });
@@ -127,10 +128,10 @@ export async function populateMap(
     if (!queue.length) break;
   }
 
-  // 地理编码（确定性步骤）：城市→坐标
+  // 地理编码（真实 geocoding：本地表→Mapbox→缓存，破"只认~100城"）
   ph('④ 地理编码：把条目落到坐标…');
   for (const rec of byKey.values()) {
-    const hit = rec.city ? geocodeCity(rec.city) : null;
+    const hit = rec.city ? await resolvePlace(rec.city) : null;
     if (hit) rec.geo = { place: hit.place, lat: hit.lat, lng: hit.lng };
   }
 

@@ -2,7 +2,7 @@
 // 这是 movie/book 六层骨架的【参数化版】：吃一份 manifest + 用户一句输入 →
 //   感知 → 云脑/端侧按 manifest.tagFields 打标 + 按 geoStrategy 选落点城市 → geocode → 草稿(suggest)。
 // 单级失败降级、不抛错（舱壁）。产出未钉，由 pin.ts 确认才落地。完全解耦：只依赖共享 geocodeCity + 模型。
-import { geocodeCity } from '../../data/geoStickers';
+import { resolvePlace } from './geocode';
 import { getFrostBrain } from '../../../../frost-agent/harness/brain';
 import { edgeSafe } from '../../../../frost-agent/edge/contract';
 import { GEO_LABEL, type AgentManifest } from './manifest';
@@ -72,7 +72,7 @@ export async function runCustomAgent(manifest: AgentManifest, input: string, opt
     draft.reason += `；${draft.via === 'edge' ? '端侧' : '云脑'}补全`;
     // 落点：geocode 城市 → 不行再 country。geoStrategy 决定的是「找哪类地名」，已由 prompt 表达。
     if (manifest.tools.includes('geocode')) {
-      const hit = (r.city && geocodeCity(r.city)) || (r.country && geocodeCity(r.country)) || null;
+      const hit = (r.city && await resolvePlace(r.city)) || (r.country && await resolvePlace(r.country)) || null;
       if (hit) draft.geo = { place: hit.place, lat: hit.lat, lng: hit.lng, strategy: manifest.geoStrategy[0] || 'manual' };
     }
   } else {
