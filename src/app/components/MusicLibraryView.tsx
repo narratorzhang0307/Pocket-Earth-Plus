@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Pause, ChevronDown, Music2, Maximize2 } from 'lucide-react';
+import { Play, Pause, ChevronDown, Music2, Maximize2, MapPin } from 'lucide-react';
 import { groupSongs, songs, songTotal, GROUP_LABELS, type GroupKey, type Song } from '../data/musicCatalog';
 import { resolveTracksByIds, type ResolvedTrack } from '../../../frost-agent/data/radio';
+import { addUserMark, getUserMarksByKind, spreadCoord } from '../data/userMarks';
+import { recordSignals } from '../../../frost-agent/harness/profile';
+import musicCities from '../data/music-cities.json';
+import { recordPlay } from '../lib/music/plays';
 import { RadioStage } from './radio/RadioStage';
 
 // 音乐曲库视图（music-curator 的「曲库」tab）：把所有歌曲做成条目，按 地域/城市/歌手/流派 归类。
@@ -10,6 +14,10 @@ import { RadioStage } from './radio/RadioStage';
 function fallbackAudio(i: number): string {
   return `https://www.soundhelix.com/examples/mp3/SoundHelix-Song-${(i % 8) + 1}.mp3`;
 }
+
+// 城市名 → 经纬度（取自音乐城市表，给「把歌钉到城市」用）
+const CITY_LL = new Map((musicCities as { nameZh: string; lat: number; lng: number }[]).map((c) => [c.nameZh, [c.lng, c.lat] as [number, number]]));
+const slug = (s: string) => (s || '').replace(/[\s·\-—:：,，.。!！?？'"'']/g, '').slice(0, 16);
 
 export default function MusicLibraryView() {
   const [by, setBy] = useState<GroupKey>('region');
@@ -38,21 +46,38 @@ export default function MusicLibraryView() {
     setSrcMode('real');
     a.src = cur.audioUrl || '';
     a.load();
-    if (playingRef.current) a.play().catch(() => {});
+    if (playingRef.current) a.play().catch(() => setPlaying(false));   // 自动播放被浏览器拦 → UI 同步成暂停，别假装在放
     const fallback = () => {
       if (fell) return; fell = true; setSrcMode('fallback');
       a.src = fallbackAudio(Math.abs(hashId(cur.id)) % 8); a.load();
-      if (playingRef.current) a.play().catch(() => {});
+      if (playingRef.current) a.play().catch(() => setPlaying(false));
     };
     a.addEventListener('error', fallback);
     const t = window.setTimeout(() => { if (a.readyState < 2) fallback(); }, 7000);
     return () => { window.clearTimeout(t); a.removeEventListener('error', fallback); };
   }, [curId, cur]);
-  useEffect(() => { const a = audioRef.current; if (!a) return; if (playing) a.play().catch(() => {}); else a.pause(); }, [playing]);
+  useEffect(() => { const a = audioRef.current; if (!a) return; if (playing) a.play().catch(() => setPlaying(false)); else a.pause(); }, [playing]);
+
+  const [pinMsg, setPinMsg] = useState<string | null>(null);
 
   const playSong = (id: string) => {
     if (id === curId) { setPlaying((p) => !p); return; }
     setCurId(id); setPlaying(true);
+    const s = songs.find((x) => x.id === id);   // 记一次收听 → 听歌记忆库 + 回流口味画像（含 genre/city）
+    if (s) recordPlay({ id: s.id, title: s.title, artist: s.artist, genre: s.genre, city: s.city });
+  };
+
+  // 把当前歌曲钉到它所属城市（稳定 id 幂等去重 + 喂长期画像）。城市无坐标则提示。
+  const pinTrack = () => {
+    if (!cur) return;
+    const ll = CITY_LL.get(cur.cityNameZh || '');
+    if (!ll) { setPinMsg('这首歌的城市暂无坐标'); window.setTimeout(() => setPinMsg(null), 1800); return; }
+    const id = `umu-${slug(cur.artist)}-${slug(cur.title)}`;
+    if (getUserMarksByKind('music').some((m) => m.id === id)) { setPinMsg(`已在地球上 · ${cur.cityNameZh}`); window.setTimeout(() => setPinMsg(null), 1800); return; }
+    const [lng, lat] = spreadCoord(id, ll[0], ll[1], 0.6);
+    addUserMark({ id, kind: 'music', lng, lat, label: cur.title, meta: { track: cur.title, artist: cur.artist, city: cur.cityNameZh } });
+    recordSignals('music', { cities: [cur.cityNameZh || ''], artists: [cur.artist] });
+    setPinMsg(`已钉到地球 · ${cur.cityNameZh}`); window.setTimeout(() => setPinMsg(null), 1800);
   };
   const toggle = (k: string) => setOpen((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
@@ -122,10 +147,13 @@ export default function MusicLibraryView() {
             <div className="font-pixel text-[6px] text-[#7CFF6B]/70 tracking-wider truncate mt-0.5">{cur.cityNameZh}{srcMode === 'fallback' ? ' · 示例音源' : ''}</div>
           </div>
           <button onClick={() => setPlaying((p) => !p)} className="w-9 h-9 border-2 border-[#7CFF6B] flex items-center justify-center active:scale-95">{playing ? <Pause className="w-4 h-4" fill="currentColor" strokeWidth={0} /> : <Play className="w-4 h-4 ml-0.5" fill="currentColor" strokeWidth={0} />}</button>
+          {/* 把这首歌钉到它的城市（让地球长出「我的音乐」点） */}
+          <button onClick={pinTrack} title="把这首歌钉到地球" className="w-9 h-9 border-2 border-[#7CFF6B] flex items-center justify-center active:scale-95"><MapPin className="w-4 h-4" strokeWidth={2.5} /></button>
           {/* 进入沉浸式电台（城市封面 + DJ 开关 + 与 frost 对话） */}
           <button onClick={() => { setPlaying(false); setStageTrackId(curId); }} title="进入电台（沉浸播放）" className="w-9 h-9 border-2 border-[#7CFF6B] flex items-center justify-center active:scale-95"><Maximize2 className="w-4 h-4" strokeWidth={2.5} /></button>
         </div>
       )}
+      {pinMsg && <div className="absolute left-1/2 -translate-x-1/2 bottom-20 z-50 border-2 border-black bg-black text-[#7CFF6B] text-[11px] px-3 py-1.5 shadow-[2px_2px_0_#000]">{pinMsg}</div>}
       <audio ref={audioRef} onEnded={() => setPlaying(false)} />
 
       {/* 沉浸式电台播放台（音乐形态进入；可切 DJ 开/关、音乐/播客） */}

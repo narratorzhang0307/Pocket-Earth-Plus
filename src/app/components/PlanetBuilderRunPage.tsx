@@ -1,6 +1,6 @@
 import { useReducer, useState, useEffect } from 'react';
 import { ChevronLeft, Sparkles, Globe2, X, RefreshCw } from 'lucide-react';
-import { parseTheme, fetchPlanetPhotos } from '../data/themePlanet';
+import { parseTheme, fetchPlanetPhotos, localPlanetPhotos } from '../data/themePlanet';
 import { addPlanet, appendPhotos, getPlanets, subscribePlanets, removePlanet, togglePlanet, nextPlanetColor } from '../data/planets';
 
 // planet-builder 运行页 —— 自定义「星球」agent。
@@ -28,18 +28,25 @@ export default function PlanetBuilderRunPage({ onBack }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [parse, setParse] = useState<{ query: string; band: [number, number] } | null>(null);
   const [refilling, setRefilling] = useState<string | null>(null);
+  const [fellLocal, setFellLocal] = useState(false);   // 本轮是否用了本地照片库兜底
 
   const planets = getPlanets();
 
   const build = async (input?: string) => {
     const name = (input ?? theme).trim();
     if (!name || building) return;
-    setBuilding(true); setError(null); setParse(null);
+    setBuilding(true); setError(null); setParse(null); setFellLocal(false);
     const parsed = await parseTheme(name);
     setParse(parsed);
     const { photos, error: err } = await fetchPlanetPhotos(parsed.query, parsed.band, 24);
-    if (err || !photos.length) { setError(err || 'empty'); setBuilding(false); return; }
-    addPlanet({ id: 'pl-' + Date.now(), name, query: parsed.query, color: nextPlanetColor(), band: parsed.band, photos });
+    let finalPhotos = photos;
+    if (err || !photos.length) {
+      // 舱壁降级：Unsplash 挂了就用本地世界照片库凑一颗，照样钉星球
+      const local = localPlanetPhotos(parsed.band, 24);
+      if (local.length) { finalPhotos = local; setFellLocal(true); }
+      else { setError(err || 'empty'); setBuilding(false); return; }
+    }
+    addPlanet({ id: 'pl-' + Date.now(), name, query: parsed.query, color: nextPlanetColor(), band: parsed.band, photos: finalPhotos });
     setTheme('');
     setBuilding(false);
   };
@@ -108,6 +115,9 @@ export default function PlanetBuilderRunPage({ onBack }: Props) {
             ✕ {errText(error)}
             {error === 'empty' && <span className="text-black/50"> · 试试：日落 / 海洋 / 星空</span>}
           </div>
+        )}
+        {fellLocal && !building && (
+          <div className="text-[10px] text-[#a05a2c] leading-snug">⊙ Unsplash 暂不可用 · 已用本地世界照片库凑成这颗星球</div>
         )}
       </div>
 

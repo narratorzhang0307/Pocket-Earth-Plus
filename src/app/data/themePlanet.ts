@@ -4,6 +4,7 @@
 
 import { edgeSafe } from '../../../frost-agent/edge/contract';
 import type { PlanetPhoto } from './planets';
+import { photoPoints } from './photos';
 
 export interface ThemeParse { query: string; band: [number, number] }
 
@@ -91,6 +92,19 @@ export async function fetchPlanetPhotos(query: string, band: [number, number], c
     return { id: p.id, thumb: p.thumb, full: p.full, alt: p.alt, author: p.author, authorUrl: p.authorUrl, link: p.link, color: p.color, downloadLocation: p.downloadLocation, lat, lng };
   });
   return { photos };
+}
+
+// 舱壁降级：Unsplash 不可用（无密钥/额度用尽/离线）时，用本地世界照片库凑一颗星球——
+// 主题图像虽不精准，但「失败要有 fallback、要看得见」，好过一个死错误。落点仍按主题纬度带散开。
+export function localPlanetPhotos(band: [number, number], count = 24): PlanetPhoto[] {
+  const pool = photoPoints.filter((p) => p.thumb && p.full);
+  const within = (lat: number) => lat >= band[0] - 12 && lat <= band[1] + 12;
+  const ordered = [...pool.filter((p) => within(p.lat)), ...pool.filter((p) => !within(p.lat))].slice(0, count);
+  return ordered.map((p) => {
+    const id = 'local-' + p.id;
+    const [lng, lat] = placePhoto(band, id);
+    return { id, thumb: p.thumb!, full: p.full!, alt: p.city || '', author: p.author || '', authorUrl: p.authorLink || '', link: p.photoLink || '', color: '#2a2a2a', downloadLocation: '', lat, lng };
+  });
 }
 
 const UTM = '?utm_source=pocket_earth&utm_medium=referral';

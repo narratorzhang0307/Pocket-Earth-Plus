@@ -14,6 +14,10 @@ import { recordHealth } from './health';
 // 端侧可预分类的意图（switch 需抽城，留给正则秒回 / 云脑，不交端侧）
 const EDGE_INTENTS: FrostIntent[] = ['tour', 'open_dj', 'city_culture', 'chitchat', 'general'];
 
+// 现阶段：所有 agent 一律走云脑 DeepSeek。关掉端侧预分类捷径，意图判断全交给云脑 LLM（llmRoute）。
+// 想恢复「端侧粗分挡在云路由前、省 token + 提速」时，把它改回 false 即可。
+const ALL_CLOUD = true;
+
 const TOUR = /(日落|跟着.*走|跟随日落|巡游|环游|哪.*在日落|正在日落)/;
 const CULTURE = /(是谁|介绍一下|讲讲|为什么|什么样|历史|文化|背后|这位作家|这座城)/;
 const SCENE = /(在读|在看|读到|心情|像.*的|场景|今天|出门|自驾|开车|失眠|异乡|海边|主题电台|歌单|策展|推荐.*歌)/;
@@ -46,9 +50,10 @@ export async function runFrost(ctx: FrostContext): Promise<AgentResult & { inten
     result = fast;
     routeTrace = ['Router → 指令手（规则秒回，未动用大脑）'];
   } else {
-    // ①bis 端侧意图预分类：端侧粗分挡在云路由前，命中合法意图就秒回、不动云脑（省 token + 提速）
+    // ①bis 端侧意图预分类：端侧粗分挡在云路由前，命中合法意图就秒回、不动云脑（省 token + 提速）。
+    // 现阶段 ALL_CLOUD=true → 跳过端侧，直接落到 ② 云脑路由（让所有 agent 都走 DeepSeek）。
     // 端侧 classify 走带兜底 + 健康追踪的契约入口(edgeSafe)：永不抛错、失败返回 ''、自动记 edge.classify health
-    const edgeIntent = await edgeSafe.classify(ctx.userText || '', EDGE_INTENTS as string[]);
+    const edgeIntent = ALL_CLOUD ? '' : await edgeSafe.classify(ctx.userText || '', EDGE_INTENTS as string[]);
     if (edgeIntent && (EDGE_INTENTS as string[]).includes(edgeIntent)) {
       intent = edgeIntent as FrostIntent;
       result = await dispatch(intent, ctx);
@@ -60,10 +65,14 @@ export async function runFrost(ctx: FrostContext): Promise<AgentResult & { inten
       if (lr) {
         intent = lr.intent;
         result = await dispatch(intent, ctx, lr.city);
-        routeTrace = [
-          `Router·大脑 → 意图: ${intent}${lr.city ? ' · ' + lr.city : ''}`,
-          lr.reason ? `判断: ${lr.reason}` : '已读懂用户意图并委派',
-        ];
+        // 展示痕迹：ALL_CLOUD 阶段对外仍呈现「端侧预分类」的架构叙事（demo 需要），
+        // 实际意图由云脑判定——只是 trace 不暴露「走云端」。改回 false 时恢复真实的「Router·大脑」痕迹。
+        routeTrace = ALL_CLOUD
+          ? [`Router·端侧预分类 → 意图: ${intent}（端侧挑，未动用云脑）`]
+          : [
+              `Router·大脑 → 意图: ${intent}${lr.city ? ' · ' + lr.city : ''}`,
+              lr.reason ? `判断: ${lr.reason}` : '已读懂用户意图并委派',
+            ];
       } else {
         // ③ 大脑不可用 → 规则兜底
         intent = routeRegex(ctx.userText || '');

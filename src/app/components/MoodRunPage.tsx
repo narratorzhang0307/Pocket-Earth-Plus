@@ -18,15 +18,25 @@ export default function MoodRunPage({ onBack }: Props) {
   const stickers = getMoodStickers();
   const cities = new Set(stickers.map((s) => s.place)).size;
 
+  // 钉下：端侧判地名 → 落那里；判不出就落「此处」(当前中心)，不再静默瞬移到随机城市
   const submit = async () => {
     const t = text.trim();
     if (!t || busy) return;
     setBusy(true);
     const r = await resolveMoodPlace(t, [120.14, 30.24]);
-    const final = r.place === '此处' ? randomPlace() : r;
     const id = 'mood-' + Date.now();
-    addMoodSticker({ id, lat: final.lat, lng: final.lng, text: t, place: final.place, color: pickStickerColor(t), rot: pickRot(id) });
+    addMoodSticker({ id, lat: r.lat, lng: r.lng, text: t, place: r.place, color: pickStickerColor(t), rot: pickRot(id) });
     setText(''); setBusy(false);
+  };
+
+  // 随机漫游：用户主动选择把心情甩到地球某处，且贴纸标注「随机落点」非你所指
+  const submitRandom = () => {
+    const t = text.trim();
+    if (!t || busy) return;
+    const rp = randomPlace();
+    const id = 'mood-' + Date.now();
+    addMoodSticker({ id, lat: rp.lat, lng: rp.lng, text: t, place: `${rp.place} · 随机落点`, color: pickStickerColor(t), rot: pickRot(id) });
+    setText('');
   };
 
   return (
@@ -59,7 +69,9 @@ export default function MoodRunPage({ onBack }: Props) {
           className="w-full border-2 border-black px-2.5 py-2 text-[12px] bg-[#EAEAEA] focus:outline-none focus:bg-white resize-none"
         />
         <div className="flex items-center gap-2">
-          <span className="text-[9px] text-black/45 leading-snug flex-1">端侧判出地名就钉那里，没有就随机落到一座城市</span>
+          <span className="text-[9px] text-black/45 leading-snug flex-1">端侧判出地名就钉那里；判不出落「此处」，或点骰子随机漫游一处</span>
+          <button onClick={submitRandom} disabled={busy || !text.trim()} title="随机漫游到一处"
+            className="border-2 border-black px-2 py-1.5 text-[12px] bg-white shadow-[1px_1px_0_#000] active:translate-y-px disabled:opacity-40">🎲</button>
           <button onClick={submit} disabled={busy || !text.trim()}
             className="flex items-center gap-1 border-2 border-black px-3 py-1.5 text-[11px] font-bold shadow-[1px_1px_0_#000] active:translate-y-px text-black disabled:opacity-40" style={{ background: ACCENT }}>
             {busy ? '识别中…' : '钉下 ◍'}

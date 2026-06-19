@@ -97,6 +97,7 @@ const DOMAIN_LABEL: Record<string, string> = { movies: '电影', books: '书', m
 const FIELD_LABEL: Record<string, string> = {
   directors: '常看导演', countries: '偏好国别', authors: '偏爱作者', storyPlaces: '故事地',
   artists: '常听艺人', genres: '流派', moods: '情绪', cities: '城市', aesthetics: '风格',
+  prefs: '旅行偏好', seasons: '偏好季节', modes: '交通偏好',   // travel 子字段（只扩标签，不扩 ProfileDomain）
 };
 
 function topTags(list: TagCount[], k: number): string[] { return list.slice(0, k).map((t) => t.tag); }
@@ -136,6 +137,18 @@ export function profileFingerprint(): string {
 }
 
 const NARR_KEY = 'pe.profile.narrative.v1';
+
+/** 同步读已缓存的「一句话口味气质」（summarizeTaste 落盘的 text），无则空串。
+ *  供 memoryRouter 注入用——只读现成缓存、绝不触发云脑（刷新由别处的 summarizeTaste 负责）。
+ *  这是唯一的叙事载体（锚定 NARR_KEY），不另起第二份 narrative store。 */
+export function getCachedTasteLine(): string {
+  try {
+    if (typeof localStorage === 'undefined') return '';
+    const raw = localStorage.getItem(NARR_KEY);
+    if (raw) { const c = JSON.parse(raw); if (c && typeof c.text === 'string') return c.text; }
+  } catch { /* ignore */ }
+  return '';
+}
 
 /** 一句话口味画像（云脑润色）。fingerprint 命中缓存则直接返回，跳过云脑调用。 */
 export async function summarizeTaste(brain: FrostBrain): Promise<string> {

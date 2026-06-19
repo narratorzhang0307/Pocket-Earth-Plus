@@ -1,0 +1,369 @@
+{
+  "final": {
+    "overview": "机制改成「类型优先 + 钉地球正交闸」：每张照片先解码缩图(沿用 decode，长边256)，按性价比依次过四道便宜信号——EXIF金信号(扩 readCaptureDate→readExif 读 Make/Model/曝光/GPS)、像素废片闸(沿用 sharpness<0.08/mean<28)、资料(isUtility)多信号投票、必要时才对少量不确定项跑 CLIP 兜底——得到一张照片的三件事:photoType(类型)、verdict(留/待定/可清理 建议)、pinnable(能否钉地球)。其中 verdict 与 pinnable 是两条正交输出:质量分被彻底降级为只管「废片过滤+簇内选优」,绝不再单独决定留/钉。钉地球是一条独立硬逻辑:实拍类型 ∧ 有真实拍摄坐标 ∧ 簇内代表 才钉;资料型一律不钉、且只标不删。关键纠偏(对两份评审的核心让步):因为 HEIC 在 PWA/Safari 上 GPS 解析失败率高、国内社交平台普遍剥 EXIF,「有 GPS」不能当会让大多数中国/iPhone 用户地球全空的死硬闸——所以坐标降级为「有真坐标→直接钉;读不出但其它信号判定为实拍→进『疑似有地点·待你确认』中间态,引导用户点一下补地点」,而不是冷冰冰判死。所有 PWA 端的判别都是「带置信度的建议 + 显眼纠错入口 + 记住纠正」,默认偏置压倒性地是「宁可放过、绝不误杀珍视照片/纪念截图」。原图与中间画布永不出端,进知识库的只有 {dHash, type, 分数, verdict, pinnable, hasGPS, 经纬度, exif摘要}。",
+    "screening_criteria": "最终筛选标准 = 「类型 × 质量 × 价值 × 地理」四维组合,而不是单一质量分(用户实测翻车的根因就是只用质量分):①类型先行——先判这是实拍还是资料/废片,类型决定它走哪套价值标准、默认怎么处置、能否钉地球;②质量退化为废片闸——sharpness/曝光/对比只用来过滤模糊/欠曝/纯色误拍 + 在相似簇里选最优一张,绝不再单独把一张资料截图判「留」;③价值按类型分别算(见 value_by_type)——风景算美学+地理稀有度,人物算有人/主体清晰,资料算可检索性而非美;④地理只作用于「钉地球」这条正交线,不影响留/待定/可清理。判定顺序固定为:解码→EXIF金信号→废片闸→资料(isUtility)投票→(不确定才)CLIP→查重选优→按类型算价值→出 verdict+pinnable。这条顺序把贵操作压到最后、最少,也保证「先分清是什么,再谈值不值/钉不钉」。",
+    "type_taxonomy": [
+      {
+        "group": "实拍·有地点价值(风景/自然·城市街景/建筑·地标)",
+        "examples": "海边、雪山、街道、夜景、寺庙、招牌、菜市场",
+        "pin_eligible": true,
+        "how_detected": "EXIF 有 Make+Model+曝光三元组→强实拍先验;CLIP 子类 landscape/cityscape 高;有真 GPS→直接进钉候选,无 GPS 但判实拍→进『待确认地点』"
+      },
+      {
+        "group": "实拍·人与生活(人物/自拍合影·美食·宠物动物·活动现场·日常物品)",
+        "examples": "家人合影、一盘菜、猫、演唱会、桌上的花",
+        "pin_eligible": true,
+        "how_detected": "EXIF 相机字段 + CLIP person/food/animal/activity 子类;PWA 无人脸,人物退化为 CLIP person 置信度+主体清晰度近似,原生换 Vision 人脸"
+      },
+      {
+        "group": "资料·屏内生成(截图·聊天记录·网图转存·表情包·海报/插画/卡通)",
+        "examples": "技术文档截图、聊天截图、漫画海报、网络存图",
+        "pin_eligible": false,
+        "how_detected": "宽高比精确命中屏幕分辨率表 + 大面积单一纯色块/状态栏规律亮块 + 量化唯一色数少(直方图尖峰) + 无相机EXIF + Software 含截图工具名;CLIP screenshot 兜底"
+      },
+      {
+        "group": "资料·拍摄的文字(翻拍文档/白板/PPT·菜单·票据收据·证件·名片·二维码·手写)",
+        "examples": "翻拍的文件、餐厅菜单、车票、身份证",
+        "pin_eligible": false,
+        "how_detected": "二值化后小连通域文本密度高 + 水平行结构;可能有相机EXIF甚至GPS,但类型闸一票否决钉地球。注:店招/菜单这类有地点意义的,靠纠错入口一键拉回"
+      },
+      {
+        "group": "实拍·无地点(待补位)",
+        "examples": "判为实拍但 EXIF 被微信/IG/截屏二次保存剥了 GPS、或 HEIC 读不出坐标、或拍摄时关了定位",
+        "pin_eligible": false,
+        "how_detected": "isUtility=false 但 hasGPS=false;不判死,进『疑似有地点·待你确认地点』中间态,引导用户补地点后转正进钉候选"
+      },
+      {
+        "group": "废片(重模糊·严重欠曝/过曝·纯色误拍·近重复次优张)",
+        "examples": "手抖糊片、口袋误拍、连拍冗余",
+        "pin_eligible": false,
+        "how_detected": "sharpness<0.08→模糊;mean<28→太暗(夜景/星空/虚焦艺术照走低光豁免,见 ziliao_answer 同款豁免逻辑);相似簇内非代表张"
+      },
+      {
+        "group": "不确定(低置信,启发式与 CLIP 都没把握 0.35~0.65)",
+        "examples": "带风景的截图、拍的有字的招牌",
+        "pin_eligible": false,
+        "how_detected": "投票落 0.35~0.65 一律退『待定』不武断判死,优先跑 CLIP 兜底;仍不确定则交用户,默认偏保留"
+      }
+    ],
+    "pipeline": [
+      "闸门0·解码:沿用现有 decode() 缩图到长边256(HEIC 走 createImageBitmap→<img> 兜底),取像素数组+宽高+文件大小。dHash 在这步算出,作为后续稳定幂等键",
+      "闸门1·EXIF金信号(最先最便宜最确定):把 readCaptureDate(photoScreen.ts:43)扩成 readExif,除日期外读 Make/Model/Software/FNumber/ExposureTime/ISO/FocalLength/GPSLatitude/GPSLongitude,返回 {capDate, hasCameraFields, hasGPS, lat, lng, softwareIsScreenshot}。做一致性校验:GPS 在海里/时间在出生前/Make 是已知截图工具→标 suspectExif,不盲信",
+      "闸门2·废片闸(沿用现状阈值,但只服务清理分支、不参与钉地球价值):sharpness<0.08→模糊废片;mean<28→太暗废片——但先过『低光/艺术豁免』:若 colorful 不低或有少量高光点或 CLIP beautiful 概率不低,夜景/星空/虚焦/雪雾极简不判废片",
+      "闸门3·资料(isUtility)多信号投票(便宜,能定大多数资料型):宽高比命中屏幕分辨率 + 最大单一纯色块占比 + 量化唯一色数 + 二值化文本密度+行结构 + EXIF 无相机字段/含截图Software,融合成 isUtility 概率。替换 photoScreen.ts:270 那条脆弱的 colorful<0.18&&contrast>0.55 单规则",
+      "闸门4·仅对不确定样本跑 CLIP(贵,靠后,限量;沿用 useModel/modelTopN 限流):对 isUtility 投票模糊(0.35~0.65)或将进钉候选的图,跑改造后 ensemble CLIP——先二分实拍↔资料(纠偏 isUtility),实拍再判子类。CLIP 不可用(离线/镜像挂)时 isUtility 闸降级为『不否决·宁放过』,绝不让拍脑袋启发式单独误杀",
+      "闸门5·查重分两档+资料放宽:先按 EXIF DateTimeOriginal 以~10分钟断点时间分桶(无 DateTimeOriginal 的截图/网图单独归『无日期桶』不与有日期照片混簇,避免跨年误删);桶内 dHash 海明≤2→严格重复(留分高一张),3~8→相似簇(只聚类、簇内选最佳、其余标可清理不自动删)。对判为资料型的图放宽/跳过 dHash 去重,防误杀连续聊天截图/同模板表情包",
+      "闸门6·时空聚类把散点变经历(新模块 photoCluster.ts):对有 GPS 的实拍候选,时间10分钟分桶→桶内 GPS 空间 DBSCAN(eps 数百米),每簇=一次经历;增量 agglomerative,新照只与时间相邻簇比对并入或开新簇,不重算全库",
+      "闸门7·按类型算价值+簇内选代表+反查地名:实拍按 value_by_type 算价值分,资料不进美学排序;每簇选价值最高一张为代表;反查地名先用 EXIF GPS,城市级字典(geoStickers.ts PLACE_COORDS)只做就近显示且明确标『约』,默认走真坐标钉点、地名仅作标签(不靠字典定位)",
+      "闸门8·出三件套+只写派生数据:verdict(留/待定/可清理 建议)+ photoType + pinnable;以 dHash 为主键写 IndexedDB {dHash,type,score,verdict,pinnable,hasGPS,lat,lng,exif摘要,clusterId,userOverride},原图/canvas/CLIP embedding 一律不入库"
+    ],
+    "decision_tree": "verdict(留/待定/可清理)是「建议」,由类型+价值+重复共同决定,且压倒性偏置「宁可放过」:●废片(模糊/太暗/纯色误拍)→『可清理』;●相似簇内非代表的严格重复张→『可清理』(代表张『留』);●实拍类型→价值分≥60『留』、40~60『待定』、<40 且确属像素废片才『可清理』;●资料·拍摄文字(票据/证件/文档/菜单/二维码/手写)→默认『待定·归档』,绝不默认可清理(可能是报销凭证/证件);●资料·屏内生成(截图/网图/表情包/海报)→默认『待定』(注意:不再像初版那样默认『建议清理』——这是对评审的关键让步:纪念截图/和逝者的聊天记录被默认标可清理是比『资料被误判留』严重得多的反向伤害);●仅当一张截图同时满足『dHash 与库内已有严格重复』或『纯临时网图特征极强且无人脸无人名』才给弱『可清理』建议。pinnable 是与 verdict 正交的独立布尔=实拍类型(非资料/非废片/非不确定) ∧ 有真坐标(或用户已补) ∧ 该类型价值达钉地球阈值 ∧ 簇内代表;资料型即使带坐标、即使被判『留』,pinnable 恒 false(类型一票否决优先级高于坐标)。低置信(0.35~0.65)一律退『待定』。所有『可清理』永远只是建议+标记,绝不替用户删原图。」",
+    "pin_to_earth": "钉地球 = 类型闸 × 坐标(降级后) × 价值/代表闸,三者组合,但坐标不再是会让地球全空的死硬闸。准则照搬 Apple Places 的『地图契约』——地球上一个点意味着『人在此地、亲手拍下此景』。①类型闸(一票否决):必须实拍组(风景/街景/人物/美食/宠物/活动/日常);资料·屏内、资料·拍摄文字、翻拍实体资料、废片、不确定 一律挡掉——截图的坐标是『屏幕内容的位置』不是『身体所在』,翻拍文档的 GPS 与照片语义无关,类型优先级高于坐标。②坐标(降级,这是对两份评审 HEIC-GPS 痛点的核心修正):有真 EXIF GPS→直接钉,坐标打 source=exif;读不出 GPS 但判为实拍→不判死,进『疑似有地点·待你确认地点』中间态,用户点一下从字典/地图补坐标后转正(source=user),或时空借位(同次行程相邻有坐标的照片借位,source=borrowed,默认不外泄);明确告诉用户『是相册本身缺坐标,不是筛选 bug』。③价值/代表闸:同一次经历只钉簇内最佳一张+簇内张数,不钉几十个重叠点。【簇代表刷新规则(补评审 gap):钉点稳定的是 clusterId 而非具体某张;新批次进来若刷新了某簇最佳,原地更新该簇代表的缩略图引用、坐标基本不变,做到『簇只增、簇代表可被更好的替换』,不与只增不重算冲突】。无 GPS 怎么办:绝不强行钉到错位置;给体面的『待确认地点』状态 + 一键补地点入口 + 时空借位建议,把『地球长期空着』的风险从坐标硬闸手里夺回来。落地:接 mapMarkers.ts 已有的 kind:'photo' marker(含 lat/lng/thumb/full),新增 addPhotoPin 只接 pinnable===true 的簇代表,与 geoStickers 的 mood 贴分层。隐私补丁:分享/截图地球时对 source=exif 的精确坐标做抽稀(降到街区/城市级)+ 家庭/公司高频点识别后默认不外泄——这是比『原图不出端』更被低估的洞。",
+    "ziliao_answer": "结论(直接回答用户最纠结的那一问):资料型一律『不钉地球、不自动删、默认待定·进独立可检索资料分区』,把删的决定权完全交还用户——绝不替用户判它没用,更绝不默认建议删。细化:①一票不钉:类型闸否决,与有没有坐标无关;②默认『待定·归档』而非『可清理』(对评审的关键修正——初版把『屏内生成默认建议清理』当通则会主动建议清掉用户珍视的纪念截图/和逝者的聊天记录,这是会击穿信任的反向伤害,予以取消);③价值不按美算,按可检索/有用性另立一档(票据含金额日期、证件、二维码、文档),原生阶段对这档跑 OCR 抽文本作『可检索价值』另存;④建『资料』分区:可检索、可一键转正、可彻底删,避免隐藏式删除;⑤情感截图豁免:含人脸/含人名/被用户收藏过/反复查看过的截图,从任何『可清理』建议里豁免,默认『待定·留』;⑥『拍的菜单/招牌/票根/站牌』这类有地点意义却文本密度高的——机制承认 PWA 启发式+CLIP 分不开它和『纯翻拍文档』,所以不靠机制硬判,而是给显眼的『一键拉回实拍/钉地球池』纠错入口,且纠错被记住(写 userOverride,回写个性化,见 long_running),用 GPS 是否存在做加权参考而非决定。一句话:资料型的处置原则是『移出地图主线、不删、归档可查、把判断权留给用户、纠错被记住』。",
+    "value_by_type": [
+      {
+        "type": "实拍·风景/街景/地标",
+        "criteria": "价值=美学(PWA: CLIP『beautiful photo』概率+构图/色彩/清晰 三项加权,初值各 0.3/0.3/0.4;原生: overallScore) + 地理稀有度(该时空簇照片越少越珍贵) + 是否簇代表。地理稀有度的分母明确=『历史进过库的全部照片(IndexedDB 累积)』而非本批,本批量太小时稀有度权重自动调低避免荒谬排序。不靠人脸"
+      },
+      {
+        "type": "实拍·人物/自拍合影",
+        "criteria": "价值=主体存在与清晰(PWA: CLIP person 置信度+主体区域清晰度近似,无法判睁眼/谁是主角——诚实承认 PWA 这档偏弱,默认偏『留』不偏『清理』,原生换 Vision 人脸 landmark/睁眼/正脸/主体占比) + 美学 + 有人=高权重(即便构图普通也倾向留)"
+      },
+      {
+        "type": "实拍·美食/宠物/日常物品",
+        "criteria": "价值=主体清晰 + 色彩饱满 + 适度美学,权重偏主体非全局构图。PWA 无 saliency,用『中心区域清晰度 vs 全局清晰度比值』近似主体清晰,原生换 Vision saliency。簇内挑主体最清晰那张为代表"
+      },
+      {
+        "type": "实拍·活动现场",
+        "criteria": "价值=有人/有主体 + 清晰 + 时近性(稀有事件加权)"
+      },
+      {
+        "type": "资料·拍摄文字(文档/票据/证件/菜单/二维码/手写)",
+        "criteria": "价值≠美学(套美学会得出荒谬排序),而是可检索性/唯一性/近期性:是否票据(含金额日期)/证件等结构化信息、库内是否已有、是否近期拍。PWA 先只做归档+去重(对资料放宽 dHash 防误杀),原生用 OCR 量化。默认归档不删"
+      },
+      {
+        "type": "资料·屏内生成(截图/网图/表情包/海报)",
+        "criteria": "价值=是否唯一/是否近期/是否含人脸或人名(情感豁免)。默认『待定』不进美学排序;仅库内严格重复或纯临时网图特征极强且无情感信号才给弱清理建议——绝不默认建议清理珍视截图"
+      },
+      {
+        "type": "废片",
+        "criteria": "无价值维度,纯由像素废片闸(模糊/太暗/纯色误拍/相似簇非代表)判定,统一『可清理』建议(仍只标不删);夜景/星空/虚焦/雪雾极简走低光豁免不进此档"
+      }
+    ],
+    "long_running_task": "设计成『增量 + 幂等 + 空闲跑 + 纠错闭环』的后台流水线,让地球钉点随时间持续生长,绝不一次性全量卡死设备。①稳定幂等键(对评审根因 gap 的核心修正):绝不再用 photoScreen.ts:272 那个 'p'+i+'_'+(file.size%100000) 的非内容、跨批次会漂移/碰撞的 id;改用 dHash 为主键(内容指纹、稳定、PWA 系统选择器每次给临时 File 也不变),size/lastModified 仅作辅助消歧——dHash 在闸门0 已算出,正好复用。重扫只处理新增/变更,稳定库秒级跳过,重活(CLIP/OCR)绝不重复跑。②分层省算:像素废片(秒)→EXIF+宽高比+纯色+唯一色+文本密度多信号投票(便宜,先滤掉大多数资料型)→仅不确定 top 候选跑 CLIP→仅资料档案跑 OCR;一次 image embedding 复用于类型分类+美学价值两任务。对『整批全是资料』(报销季拍一堆收据)做快速短路:整批 isUtility 高→直接进资料分区、跳过钉地球与美学排序、PWA 阶段也跳过 OCR。③调度(诚实对待 iOS PWA 限制):MEMORY 已记 iOS PWA 拿不到后台/全相册;所以不承诺『后台自动扫』,PWA 只能用户主动分批喂照片,重推理用 requestIdleCallback(iOS 不支持则降级为 setTimeout 切片) + Page Visibility 前台空闲分批、每批数十张不卡 UI;结果入库累积,多次选图在地球上叠加。④钉点增量:新过闸的实拍点并入已有时空簇,簇只增不重算,簇代表可被更好的替换(见 pin_to_earth)。⑤纠错闭环(补评审 gap):用户每次『把误判资料拉回实拍/钉地球池』『撤钉』『把可清理拉回留』都写 userOverride 进 IndexedDB,并回写 taste.ts/profile.ts 个性化:微调 isUtility 阈值、留/钉门槛、常去地点先验——让同类误判下次少犯。纠错是一等公民不是脚注。⑥稀有度/个性化的分母诚实标注:PWA 样本天然稀疏偏倚(只含用户选的那几批),稀有度权重随库规模自适应,小库时调低,避免被偏样带偏。⑦坐标隐私:IndexedDB 里的经纬度是高敏个人轨迹,提供一键清空坐标/整库、默认不同步上云、分享时脱敏(见 pin_to_earth)。",
+    "pwa_now_vs_native_later": "同一套『type + 价值 + pinnable』schema 契约不变,只换底层实现。【PWA 现在能做到】EXIF金信号(exifr 扩读 Make/Model/曝光/GPS,零模型成本,当前最该补)、宽高比命中屏幕分辨率、纯色占比/唯一色数/文本密度像素启发式、ensemble CLIP 做实拍↔资料二分与子类、dHash+时间分桶查重、有 GPS 才钉/无则待确认、IndexedDB 增量缓存(dHash 为键)。【必须诚实的 PWA 局限,不在文案承诺等同 Apple 精度】①HEIC+GPS:iPhone 默认 HEIC,exifr 在 PWA/Safari 上 GPS 解析失败率高——所以坐标做了降级而非硬闸,且建议落地前先做一次真机 HEIC+GPS 取数验证;②拿不到全相册(系统选择器逐次多选)、拿不到删权限(只能给建议清单引导用户去系统相册自己删,反而天然安全);③无系统级 isUtility/人脸/saliency/美学分,人物档与主体档是近似实现、默认偏保留;④iOS PWA 后台 JS 被冻结、requestIdleCallback 支持差→不承诺后台自动扫;⑤CLIP 镜像(hf-mirror)不稳/离线→isUtility 闸降级为不否决。【原生 app 以后升级,接口不变只换零件】截图→PHAsset.mediaSubtype .photoScreenshot(系统级0成本最准);资料/工具型→VNCalculateImageAestheticsScores 的 isUtility;美学分→同 API overallScore(-1..1);场景子类→VNClassifyImageRequest(约1303类层级 taxonomy);相似分组→VNGenerateImageFeaturePrint+computeDistance(从0.35起重标定);人脸/主体→Vision 人脸/saliency;文档/OCR→DetectDocumentSegmentation+VNRecognizeText;全相册+后台增量+NPU→PhotoKit change observer+BGProcessingTask;位置补位→Significant Locations(端到端加密)做时空借位。原则:所有 PWA 判别都是『建议+置信度+纠错记忆』,把每个启发式零件平滑替换为系统信号即升级。",
+    "impl_changes": "相对现状(/Users/zhangcheng/Desktop/Pocket Earth/src/app/lib/photoScreen.ts)的具体改动,按落地优先级排:【先钉死三件最硬的事(评审共识:这是用户翻车根因,先做)】① readCaptureDate(line 39-49) 扩成 readExif:parse 字段从 ['DateTimeOriginal','CreateDate','ModifyDate'] 增补 Make/Model/Software/FNumber/ExposureTime/ISO/FocalLength/GPSLatitude/GPSLongitude,返回 {capDate,hasCameraFields,hasGPS,lat,lng,softwareIsScreenshot,suspectExif};这是『资料截图被判留』根因之一。② 稳定幂等键:把 line 272 的 id 'p'+i+'_'+(file.size%100000) 改为以 dHash 为主键(辅以 size),供 IndexedDB 增量复用。③ 资料 isUtility 多信号投票:在 fastMetrics(line 81) 旁新增 utilityMetrics(宽高比命中屏幕分辨率表/最大单一纯色块占比/量化唯一色数/二值化文本密度+行结构),融合 EXIF 信号投票出 isUtility 概率,替换 line 270 那条脆弱的 colorful<0.18&&contrast>0.55 单规则 和 line 317 的 tags 驱动 verdict。【然后扩数据结构与判定】④ ScreenResult(line 16-33) 增 photoType:string、isUtility:boolean、pinnable:boolean、hasGPS:boolean、lat/lng、clusterId、source:'exif'|'user'|'borrowed'、userOverride。⑤ CLIP(line 167-231):CLIP_LABELS 改两段式 ensemble(先实拍↔资料各多 prompt 聚正负两向量只算两次余弦,实拍再判子类),只对 isUtility 不确定/将进钉候选的图跑;CLIP 不可用时 isUtility 不否决。⑥ 查重(line 281-290):dHash 前加 EXIF 时间分桶(无 DateTimeOriginal 单独无日期桶),海明拆 ≤2 严格重复/3~8 相似簇两档,资料型放宽/跳过去重。⑦ 判定(line 312-319)改『先类型后价值』:废片才 clean,资料默认 review(归档,不再因 tags 含截图/文档就笼统 review,而是默认待定且豁免情感截图),实拍按价值分留/待定;新增正交 pinnable=isUtility===false && (hasGPS||userPinned) && 非废片 && 簇代表 && 价值达阈值。【新建模块】⑧ 新文件 src/app/lib/photoCluster.ts:时间10分钟分桶→GPS DBSCAN→簇内 dHash 去重+选代表;反查地名用 EXIF GPS 真坐标,geoStickers.ts PLACE_COORDS 仅作就近城市级标签(标『约』)不作定位。⑨ IndexedDB 缓存层(dHash 为键)做增量幂等。⑩ 接通真钉地球:替换 PhotosCuratorRunPage.tsx 当前用的 addMoodSticker(geoStickers.ts:32)路径,新增 addPhotoPin 接 mapMarkers.ts 已有 kind:'photo' marker(line 33,56-60),只钉 pinnable===true 的簇代表,与 mood 贴分层。⑪ UI:三档外加『资料』分区(可检索/一键转正/彻底删)、『疑似有地点·待确认』中间态+一键补地点、误判一键拉回入口(写 userOverride 回写 taste.ts/profile.ts)、分享地球时坐标脱敏。【工作量诚实评估】IndexedDB 增量层、两段式 ensemble CLIP、时空 DBSCAN、资料分区 UI、纠错闭环——每项都是从零新建,不是『轻量扩字段』。",
+    "open_questions": [
+      "坐标闸到底硬还是软,需你先拍板:建议落地前先用你自己 iPhone 的几张 HEIC 照片做一次真机 exifr GPS 取数验证——若 PWA/Safari 能稳定读出 GPS,坐标可保持较硬;若读不出,坐标必须降为『有则钉、无则待确认』的软闸。这一步决定中国/iPhone 用户的地球会不会长期空着,是成败点。",
+      "资料·屏内截图的默认建议:本设计已把默认从『建议清理』改成『待定』(防误删纪念截图)。你是否认同?还是希望对『明显临时网图/表情包』保留弱清理建议?这关系到信任 vs 整理效率的权衡。",
+      "钉地球的颗粒度:同一次行程的一簇照片,是只钉『簇内最佳一张+张数』(地球干净),还是钉多张(信息全但点密)?默认取前者,需你确认。",
+      "无 GPS 实拍的主路径:『待确认地点』让用户手动补地点会增加操作成本。是否接受『时空借位(同行程相邻照片借坐标)』作为自动兜底,代价是坐标精度下降、需打 borrowed 标记不外泄?",
+      "隐私默认:钉地球的精确 EXIF 坐标是高敏轨迹。分享/截图地球时默认抽稀到街区/城市级、家庭高频点不外泄——这个默认偏保守你是否接受,还是想要可由用户逐点开关精度?"
+    ]
+  },
+  "designs": [
+    {
+      "framing": "类型优先（A 方案）：每张照片先被分进一个类型桶，类型决定它走哪套价值标准、能否钉地球、默认怎么处置——质量分退化成只管「废片过滤」的一道工序，绝不再单独决定留/钉。一句话准则：能钉地球的，永远是「实拍 + 有真实拍摄 GPS + 该类型里值得记的那张」，资料型一律不钉、且只标不删。",
+      "type_taxonomy": [
+        {
+          "group": "实拍·有地点价值（风景/自然、城市街景/建筑、地标）",
+          "examples": "海边、雪山、街道、夜景、寺庙、招牌、菜市场",
+          "pin_eligible": true
+        },
+        {
+          "group": "实拍·人/生活（人物、自拍合影、美食、宠物动物、活动现场、日常物品）",
+          "examples": "家人合影、一盘菜、猫、演唱会、桌上的花",
+          "pin_eligible": true
+        },
+        {
+          "group": "资料·屏内生成（手机/电脑截图、聊天记录、网图转存、表情包、海报/插画/卡通）",
+          "examples": "技术文档截图、聊天截图、漫画海报、网络存图",
+          "pin_eligible": false
+        },
+        {
+          "group": "资料·拍摄的文字（拍下的文档/白板/PPT、菜单、票据收据、证件、名片、二维码、手写笔记）",
+          "examples": "翻拍的文件、餐厅菜单、车票、身份证",
+          "pin_eligible": false
+        },
+        {
+          "group": "废片（重模糊、严重欠曝/过曝、纯色误拍、近重复里的次优张）",
+          "examples": "手抖糊片、口袋误拍、连拍冗余",
+          "pin_eligible": false
+        },
+        {
+          "group": "不确定（低置信度，启发式与 CLIP 都没把握）",
+          "examples": "带风景的截图、拍的有字的招牌",
+          "pin_eligible": false
+        }
+      ],
+      "pipeline": [
+        "① 解码缩图（已有 decode，maxAnalyze 256）+ 读 EXIF 金信号：把 readCaptureDate 扩成 readExif，除日期外读 Make/Model/Software/FNumber/ExposureTime/ISO/FocalLength/GPSLatitude/GPSLongitude",
+        "② 像素度量（已有 fastMetrics：清晰/曝光/色彩/对比）+ 新增三个截图/文字信号：最大单一颜色块占比、量化唯一色数（直方图离散度）、二值化后小连通域的文本密度+行结构",
+        "③ 废片闸：sharpness<0.08→模糊废片；mean<28→太暗废片（保留现状阈值，仅作为「废片」类型而非直接 clean 一切）",
+        "④ 类型分类（启发式优先，便宜且确定）：用 EXIF 缺相机字段 + 宽高比命中屏幕分辨率 + 高纯色占比 + 低唯一色 + 高文本密度 投票判『资料·屏内/资料·拍摄文字』；有 Make+Model+曝光三元组→强『实拍』先验。能确定的直接定类",
+        "⑤ 仅对『④ 没把握的候选』跑 CLIP（沿用 useModel 的 top-N 限流），prompt 改 ensemble：先二分实拍 vs 资料，实拍再判子类（风景/街景/人物/自拍合影/美食/宠物/活动/日常）",
+        "⑥ 查重分两档：先按 EXIF DateTimeOriginal 以 ~10 分钟断点时间分桶降复杂度，桶内 dHash 海明距离≤2→严格重复（可较激进留一张），3-8→相似簇（只聚类、簇内按价值选最佳、其余标可清理不自动删）",
+        "⑦ 按类型算价值分（见 value_by_type），资料型不进美学排序",
+        "⑧ 出三件套：verdict（留/待定/可清理）+ type + pinnable（是否进钉地球候选池），原图与中间画布不出端，只把 {type,score,verdict,hash,hasGPS,lat,lng,exif摘要} 写知识库"
+      ],
+      "decision_logic": "verdict 由『类型 + 价值分 + 重复标记』共同决定，不再是单一质量分门：废片类型→可清理；近重复次优张→可清理；资料型→默认『待定』（绝不默认可清理，因为可能是票据/证件/重要文档，留删交用户）；实拍类型→价值分≥阈值『留』、中间『待定』、过低『可清理』（仅指像素层面确属废片）。pinnable（能否钉地球）是一条与 verdict 正交的硬闸，三条同时满足才为 true：(a) 类型 ∈ 实拍组（非资料/非废片/非不确定）AND (b) EXIF 有真实 GPS 经纬度 AND (c) 该类型价值分≥钉地球阈值。资料型即使带坐标、即使被判『留』，pinnable 恒为 false——类型一票否决优先级高于坐标。",
+      "pin_criteria": "钉地球 = 类型闸 × 坐标闸 × 价值闸，三闸全过才钉。① 类型闸：必须是实拍组（风景/街景/人物/美食/宠物/活动/日常），资料·屏内、资料·拍摄文字、废片、不确定 一律挡掉；② 坐标闸：EXIF 必须有真实拍摄 GPS（照搬 Apple Places/Google Map 的纳入规则，天然滤掉绝大多数资料型——截图本就没拍摄坐标，即便偶然带坐标那也是『屏幕内容的位置』不是『人在此地』，由类型闸再兜一层）；③ 价值闸：该类型价值分达阈值，避免把模糊/平庸实拍也钉上。落地形态：把 GPS 点先按时空（DBSCAN 空间 eps 数百米 + 同日/连续几天）聚成『一个地点/一次行程』，每簇只钉『簇内价值最高那张』+ 簇内张数，而不是几百个重叠点；坐标来源打 source 标记（exif 真坐标 / 借位 / 用户补），借位坐标默认不外泄。",
+      "ziliao_handling": "资料型的处置规则（直接回答用户最纠结的那一问）：① 一律不钉地球（类型闸否决，与有没有坐标无关）；② 默认进『待定』而不是『可清理』——因为资料型常有实用价值（票据/证件/文档/二维码），机制绝不替用户判它没用、更绝不删；③ 价值不按『美』算，按『可检索性/有用性』另立一档：屏内生成里的截图/网图/表情包默认建议清理（多是临时存的），但拍摄的文档/票据/证件默认建议『归档』而非清理（对齐 Google Photos Archive、Apple Utilities 的 Documents/Receipts 思路）；④ 单独建一个『资料』分区，可检索、可一键转正、可彻底删，避免变成隐藏式删除；⑤ PWA 现在只能用启发式 + CLIP 近似判资料、且只能给『建议清单』引导用户自己去系统相册处理（拿不到删权限，反而天然安全）；⑥ 留一个『误判拉回』入口：用户能把被判资料型的照片一键拉回实拍池/钉地球池（CLIP 会把拍的菜单/招牌误判 document，但这些其实有地点意义，靠用户纠偏 + GPS 兜底）。",
+      "value_by_type": [
+        {
+          "type": "风景/自然、城市街景/地标",
+          "criteria": "价值=美学(构图/色彩/清晰) + 有 GPS 加权 + 稀有度(该地点/该时段照片少则加分)；不靠人脸"
+        },
+        {
+          "type": "人物/自拍合影",
+          "criteria": "价值=人脸存在/清晰/睁眼 + 主体占比 + 美学；PWA 现阶段无人脸，退化为『CLIP person 置信度 + 主体清晰度』近似，原生换 Vision 人脸/landmark"
+        },
+        {
+          "type": "美食/宠物动物/日常物品",
+          "criteria": "价值=主体清晰 + 色彩饱满 + 适度美学；权重偏主体而非全局构图"
+        },
+        {
+          "type": "活动现场",
+          "criteria": "价值=有人/有主体 + 清晰 + 时近性（稀有事件加权）"
+        },
+        {
+          "type": "资料·拍摄文字（文档/票据/证件/菜单/二维码/手写）",
+          "criteria": "价值≠美学，而是『有用性/可检索性』：OCR 文本量、是否票据(含金额日期)/证件等结构化信息；默认归档不删"
+        },
+        {
+          "type": "资料·屏内生成（截图/网图/表情包/海报）",
+          "criteria": "价值=是否唯一/是否近期/是否被引用；多为临时存图，默认建议清理；不进美学排序"
+        },
+        {
+          "type": "废片",
+          "criteria": "无价值维度，纯由像素废片闸(模糊/太暗/重复次优)判定，统一可清理（仍只标不删）"
+        }
+      ],
+      "long_running": "长期本地任务 = 增量 + 幂等 + 分层限流，机制不变只换信号源。① 持久化派生数据：以『photoId/内容哈希 + 文件修改时间』为幂等键，把 {type, 价值分, verdict, hash, hasGPS, lat/lng, exif摘要, 簇ID} 写 IndexedDB（原图、CLIP embedding 一律不入库）；重扫只处理新增/变更，稳定库秒级跳过。② 分层把贵操作压到最少：像素废片过滤(秒) → EXIF+宽高比+纯色+唯一色+文本密度多信号投票(便宜，能定大多数资料型) → 仅对『不确定』的少量候选跑 CLIP → 仅对判为资料且需细分的跑 OCR；越贵的越靠后、处理越少。③ 调度照搬 Apple Memories：重推理安排在空闲/充电（PWA 用 requestIdleCallback + visibility API 分批、每批数十张不卡 UI；原生用 BGProcessingTask + NPU）。④ 钉点随时间累积：每次用户喂新一批照片，新过三闸的实拍点增量并入已有时空簇，地球上的钉点只增不重算，逐步长出一张『人去过哪』的地图。⑤ 阈值可随知识库个性化（看多了用户偏好后微调留/钉门槛）。",
+      "pwa_vs_native": "PWA 现在能做到：EXIF 金信号判别（exifr 多读 Make/Model/曝光/GPS 几个字段，零模型成本，是当前最该补的）、宽高比命中屏幕分辨率、纯色占比/唯一色数/文本密度等像素启发式、CLIP 零样本(ensemble prompt)做实拍↔资料二分与实拍子类、dHash+时间分桶查重、有 GPS 才钉、IndexedDB 增量缓存；但拿不到全相册（系统选择器逐次多选）、拿不到删权限（只能给建议清单）、没有系统级 isUtility/人脸/美学分，准确率与覆盖面都不如原生，文案不能承诺等同 Apple 精度。原生以后升级（同一套 type+价值+pinnable 契约不变，只换底层实现）：截图→PHAsset.mediaSubtype 的 .photoScreenshot（系统级 0 成本最准）；资料型/工具型→VNCalculateImageAestheticsScores 的 isUtility（替代自研截图判别）；美学分→同 API 的 overallScore(-1..1)；场景子类→VNClassifyImageRequest(约1303类、多标签、层级 taxonomy)；相似分组→VNGenerateImageFeaturePrint + computeDistance(从 0.35 起标定)；人脸/主体→Vision 人脸/saliency；文档分割/OCR→DetectDocumentSegmentation + VNRecognizeText；全相册 + 后台增量 + NPU→PhotoKit + BGTask。",
+      "impl_changes": "现状到目标要改的具体点（文件级）：① src/app/lib/photoScreen.ts 的 readCaptureDate 扩成 readExif，parse 字段补 Make/Model/Software/FNumber/ExposureTime/ISO/FocalLength/GPSLatitude/GPSLongitude，并返回 hasCameraFields/hasGPS/{lat,lng}（当前完全没用这些金信号，是『资料截图被判留』的根因之一）；② fastMetrics 旁新增 screenMetrics：最大单一颜色块占比、量化唯一色数、二值化文本密度+行结构，替换现在那条脆弱的 `colorful<0.18 && contrast>0.55→可能截图` 规则；③ 新增显式 PhotoType 字段与 classify() 两段式分类器（启发式投票为主、CLIP 仅兜底不确定项），ScreenResult 增加 type、pinnable、hasGPS、lat/lng、exif摘要；④ CLIP_LABELS 改 ensemble（每类多条 prompt 取平均、正负各聚一向量），先二分再判子类，而不是现在 7 条单 prompt；⑤ 查重在 dHash 前加 EXIF 时间分桶，海明阈值拆 ≤2 严格重复 / 3-8 相似簇两档；⑥ 第⑤步判定逻辑改为『先类型后价值』：资料型默认 review 不默认 clean，废片才 clean，实拍才按价值分留/待定；⑦ 钉地球：在 PhotosCuratorRunPage / MyMapTab 用 mapMarkers 已有的 photo 类 marker（kind:'photo'，含 lat/lng/thumb/full，见 src/app/data/mapMarkers.ts:33,57-58）接 pinnable===true 的实拍结果，替换现在 mood 的 addSticker（src/app/data/geoStickers.ts 的 addMoodSticker 不该承载真筛选结果）；⑧ 加 IndexedDB 缓存层做增量幂等；⑨ UI 增加『资料』分区 + 误判一键拉回钉地球池的入口。"
+    },
+    {
+      "framing": "从「钉回地球」这个产品终点倒推整条流水线：地图是主线，每张照片先回答一个 yes/no——「它配得上钉在地球上吗？」（=实拍 ∧ 有真实拍摄 GPS ∧ 在该时空簇里有代表性），配得上的进「钉点候选池」并按时间地点聚成「一次经历」，不配的全部分流成副产物（待补位 / 资料档案 / 可清理建议）。筛选、查重、清理不再是目的，而是为了让地球上钉出来的点干净、可信、不重复。",
+      "type_taxonomy": [
+        {
+          "group": "实拍·有地点（钉地球主角）",
+          "examples": "风景/街景、人物合影自拍、美食、宠物动物、活动现场、日常场景——且 EXIF 带真实相机字段(Make/Model/曝光)+GPS 经纬度",
+          "pin_eligible": true
+        },
+        {
+          "group": "实拍·无地点（待补位）",
+          "examples": "同上实拍照，但 EXIF 被微信/IG/截屏二次保存剥掉了 GPS，或拍摄时关了相机定位",
+          "pin_eligible": false
+        },
+        {
+          "group": "资料·系统截图",
+          "examples": "手机/电脑屏幕截图（聊天记录、网页、游戏、APP界面）",
+          "pin_eligible": false
+        },
+        {
+          "group": "资料·有用档案",
+          "examples": "收据/票据、证件、二维码、笔记/白板、文档扫描件、菜单——以后可能要查",
+          "pin_eligible": false
+        },
+        {
+          "group": "资料·消费内容",
+          "examples": "表情包、海报、漫画、网图、长图、屏录截帧",
+          "pin_eligible": false
+        },
+        {
+          "group": "翻拍·实体资料",
+          "examples": "用相机拍下的纸质文档/招牌/菜单——有相机EXIF甚至有GPS，但语义是资料",
+          "pin_eligible": false
+        },
+        {
+          "group": "废片",
+          "examples": "模糊、重糊、太暗、纯黑/纯色误拍",
+          "pin_eligible": false
+        }
+      ],
+      "pipeline": [
+        "闸门0·解码：缩图到长边256（沿用现有 decode，HEIC 兜底），取像素数组、宽高、文件大小",
+        "闸门1·EXIF金信号（最先、最便宜、最确定）：扩展 readCaptureDate 同时读 Make/Model/Software/FNumber/ExposureTime/ISO/FocalLength/GPSLatitude/GPSLongitude。产出三个原子位：hasCameraFields、hasGPS、softwareIsScreenshot",
+        "闸门2·实拍 vs 资料 二分类（PWA 多信号投票，不靠单一分类器）：信号=①无相机字段且无GPS→偏资料 ②宽高比精确命中已知屏幕分辨率(如1170×2532)→偏截图 ③大面积单一纯色块占比/状态栏规律亮块→偏截图 ④唯一色计数少+直方图尖峰空洞→偏合成图 ⑤文本密度高(二值化后小连通域多+水平行结构)→偏文档。投票得 isUtility 概率",
+        "闸门3·废片过滤（沿用现有，但只服务清理分支不参与钉地球价值）：sharpness<0.08→模糊；mean<28→太暗，标 clean 建议",
+        "闸门4·钉地球硬闸（三条同时满足才进候选池）：isUtility=false ∧ hasGPS ∧ 非废片。任一不过→分流，不进价值排序也不进地图",
+        "闸门5·仅对不确定样本跑 CLIP（贵，靠后，限量）：对闸门2投票模糊(0.35~0.65)或闸门4通过的图，跑改造后的 CLIP——正/负 prompt 各 ensemble 成一个向量只算两次余弦，复用同一次 image embedding 同时输出 isUtility 纠偏 + 实拍子类(风景/人物/美食/宠物/活动/日常)",
+        "闸门6·时空聚类（把散点变经历）：对候选池按 EXIF DateTimeOriginal 以10分钟断点先时间分桶，桶内用 GPS 做空间 DBSCAN(eps 几百米)，每簇=一次经历；簇内用 dHash 海明距离去严格重复、CLIP embedding 距离去近似连拍",
+        "闸门7·簇内选最佳 + 反向地理编码：每簇按多因子(清晰度+美学+主体清晰，PWA 缺人脸先用质量分代理)选代表照；簇中心反查地名；其余标「相似·可清理」但绝不自动删",
+        "闸门8·只写派生数据入库：每张落 {photoId, 类型标签, isUtility, hasGPS+经纬度, 价值分, 簇ID, dHash, EXIF摘要}；原图与 embedding 不出端。钉地球只用 经纬度+缩略图引用 + 簇代表"
+      ],
+      "decision_logic": "三档建议(留/待定/可清理)与「能否钉地球(pinnable)」是两条正交输出，不互相覆盖：\n\n【pinnable 布尔】= isUtility=false ∧ hasGPS ∧ 非废片 ∧ 非簇内相似冗余。这是地图主线唯一关心的位，资料型(无相机EXIF/无GPS)天然被前两条挡死——直接堵住用户踩的「资料截图差点被钉」坑。\n\n【留/待定/可清理 三档】按类型分别给默认：\n- 实拍·有地点：默认「留」，且 pinnable=true，簇内代表照高亮、其余相似照「留但建议只钉代表」。\n- 实拍·无地点：默认「留 + 待补位」(进无GPS处置流程)，pinnable=false。\n- 资料·有用档案(收据/证件/笔记/票据)：默认「待定·归档」——不删不钉，进可检索资料分区。\n- 资料·系统截图/消费内容(表情包/海报/网图)：默认「可清理」建议，但只标记不执行。\n- 翻拍·实体资料：pinnable=false(资料语义一票否决，即便有GPS)，类型默认「待定」。\n- 废片(模糊/太暗/重复)：默认「可清理」。\n\n低置信样本(投票0.35~0.65)一律退「待定」而非武断判死，并允许用户一键把误判为资料的照片拉回钉点候选池。",
+      "pin_criteria": "钉地球准则照搬 Apple Places 的「地图契约」——地球上的点意味着「人在此地，亲手拍下此景」，三类信号 AND 组合缺一不可：\n\n类型闸(一票否决)：isUtility=false。资料型/截图/翻拍实体资料即使带 GPS 也绝不钉——因为截图的坐标是「屏幕内容的位置」不是「身体所在」，翻拍文档的 GPS 是「拍文档时人在哪」与照片语义无关。类型优先级高于坐标。\n\nGPS闸(必要条件)：必须有 EXIF 内嵌真实拍摄经纬度(hasGPS)。无坐标天然钉不上，走待补位。坐标须打 source=exif；借位/地标估算出的坐标打 source=borrowed/landmark，地图上区分显示且默认不随分享外泄。\n\n价值闸(质量+代表性)：非废片 ∧ 在所属时空簇里被选为代表照(或用户手动指定)。同一次经历不钉几十个重叠点，只钉「这段经历里最好的那张 + 簇内张数」。价值分按类型算，不用单一像素质量分(见 value_by_type)。\n\nEXIF 缺相机机型/光圈/快门是「非原相机实拍」的强信号，可叠加进类型闸，但不单独定性(编辑/转存的真实拍照也会丢字段)。",
+      "ziliao_handling": "资料型的处置原则：永不钉地球、永不自动删、默认进「资料档案」可检索分区(对标 Google Photos Archive / Apple Utilities 这个被验证过的中间态)——不删、移出地图主线、但留在专属分区随时可翻、可一键转正、可彻底删。\n\n细分两类给不同默认：\n- 有用档案(收据/票据/证件/二维码/笔记/文档扫描)：默认「待定·归档」。它们的价值不在「美」而在「可检索」——PWA 阶段先只做归档+去重；原生阶段对这档跑 OCR 抽文本(收据金额日期、文档关键词)作为「可检索价值」另存一档，让用户以后搜得到。这正面回答用户「资料型留不留」=不删、不钉、归独立档、把删的决定权完全留给用户。\n- 系统截图/消费内容(表情包/海报/网图/聊天截图)：默认「可清理」建议(这类多是临时拍的、非永久保存)，但同样只标记不执行。\n\n注意两个工程红线：①dHash 对连续聊天截图/同模板表情包会误判重复(像素高度相似但内容不同)，对判为资料型的图应放宽或跳过去重，避免误杀不同内容的截图；②翻拍的实体文档/菜单/招牌可能有 GPS，CLIP 也可能把它误判 document——靠「类型闸一票否决」纠偏：资料语义 → 不钉，但不当废片删。",
+      "value_by_type": [
+        {
+          "type": "实拍·风景/街景",
+          "criteria": "美学分(PWA: CLIP「beautiful photo」概率+构图/色彩/清晰；原生: overallScore) + GPS稀有度(该地点/该时空簇照片越少越珍贵) + 是否簇代表。不靠纯像素质量分"
+        },
+        {
+          "type": "实拍·人物/自拍合影",
+          "criteria": "主体存在与清晰(PWA: CLIP person 标签+主体清晰度近似；原生: Vision 人脸/landmark·睁眼/微笑/正脸·主体占比) + 美学 + 个人意义(有人=高权重，即便构图普通)"
+        },
+        {
+          "type": "实拍·美食/宠物/日常",
+          "criteria": "主体清晰 + 色彩 + 美学；不强求构图。簇内挑主体最清晰那张为代表"
+        },
+        {
+          "type": "资料·有用档案",
+          "criteria": "不套美学分(套了会得出荒谬排序)。价值=可检索性/唯一性/近期性：是否收据·证件·重要信息、是否同库已有、是否近期拍。原生阶段用 OCR 文本量量化"
+        },
+        {
+          "type": "资料·消费内容/废片",
+          "criteria": "近零回忆价值。仅做去重，默认可清理建议，不进任何价值排序"
+        }
+      ],
+      "long_running": "设计成「增量 + 幂等 + 空闲跑」的后台流水线，让地球上的钉点随时间持续往上长，绝不一次性全量扫描卡死设备：\n\n幂等缓存(IndexedDB)：以 (photoId 或 dHash + 文件大小 + 修改时间) 为 key，把每张算过的派生数据 {类型标签, isUtility, hasGPS+经纬度, 价值分, 簇ID, dHash, EXIF摘要} 持久化。重扫只处理新增/变更，稳定库秒级跳过——重活(CLIP/OCR)绝不重复跑。原图与 embedding 不入库。\n\n分层省算：按性价比排序，越贵越靠后只处理越少的图——像素废片过滤→EXIF+宽高比+纯色+文本密度多信号(便宜，先滤掉大多数资料型)→仅对不确定 top 候选跑 CLIP→仅对资料档案跑 OCR。一次 image embedding 复用于「类型分类 + 美学价值」两任务。\n\n调度：PWA 阶段受系统选择器限制，只能用户主动分批喂照片，重推理用 requestIdleCallback + Page Visibility 在空闲时跑、每批几十张不卡 UI；结果入库累积，多次选图的结果在地球上叠加，钉点越来越多。\n\n聚类增量：时空簇做增量 agglomerative——新照片只与时间相邻桶比对并入既有簇或开新簇，不重算全库 O(n²)。每个簇钉「代表照+张数」，新照若成为更好代表则替换簇代表。\n\n长期画像：库累积后阈值可个性化(常去地点、个人审美)，让「稀有度/代表性」判得更准。",
+      "pwa_vs_native": "【PWA 现在能做到】——同一套「类型+价值+坐标」schema，用启发式近似实现：\n- 类型判别：EXIF 金信号(扩读 Make/Model/曝光/GPS) + 宽高比命中屏幕分辨率 + 纯色块/状态栏检测 + 唯一色计数 + 文本密度连通域，多信号投票出 isUtility；不确定的才上 CLIP(改造为正/负 prompt ensemble)。\n- 价值：CLIP「beautiful photo」概率 + 像素质量；可选接 LAION 美学 MLP(几十KB，复用 embedding)。\n- 坐标：只读 EXIF GPS；无 GPS 走待补位(时空借位/用户补/高置信地标)。\n- 局限要诚实：拿不到全相册(只能系统选择器分批选)、无相册写删权(只能给清理建议引导用户去系统相册自己删)、HEIC EXIF 常解析失败要靠像素兜底、CLIP 对中文界面截图/资料细分偏弱、isUtility 是近似非系统级。\n\n【原生 app 以后升级】——接口不变(契约同一套 schema)、只换底层实现，把每个启发式零件平滑替换为系统信号：\n- 截图→PHAssetMediaSubtype.photoScreenshot(系统级 100% 可靠、零推理)\n- 资料型→VNCalculateImageAestheticsScores.isUtility(iOS18，毫秒级走NPU)\n- 美学分→同 API 的 overallScore(-1~1)\n- 场景类型→VNClassifyImageRequest(约1303类，多标签，层级 taxonomy)\n- 相似/连拍→VNGenerateImageFeaturePrint + computeDistance(阈值从 0.35 起按自己 embedding 重标定)\n- 人脸/主体→Vision 人脸/saliency(选最佳照纳入睁眼/正脸)\n- 文档资料→DetectDocumentSegmentation + VNRecognizeText(OCR 做可检索价值)\n- 全相册+后台增量→PhotoKit change observer + BGProcessingTask + 神经引擎\n- 位置补位→Significant Locations(端到端加密)做时空借位\n切勿在 PWA 文案里承诺等同 Apple 精度。",
+      "impl_changes": "相对现状(/Users/zhangcheng/Desktop/Pocket Earth/src/app/lib/photoScreen.ts)的具体改动：\n\n1. 扩展 EXIF 读取(根因修复)：现 readCaptureDate(line 43) 只读 ['DateTimeOriginal','CreateDate','ModifyDate']，是「资料截图得高分被判留」的根因之一。新增读 Make/Model/Software/FNumber/ExposureTime/ISO/FocalLength/GPSLatitude/GPSLongitude。新增 readExifSignals(file) 返回 {capDate, hasCameraFields, hasGPS, lat, lng, softwareIsScreenshot}。\n\n2. 新增 isUtility 多信号判别(取代现 line 270 那条 `colorful<0.18 && contrast>0.55→可能截图` 的脆弱单规则、和 line 317 的 tags 判断)：在 fastMetrics(line 81) 旁加 utilityMetrics——宽高比命中屏幕分辨率表、最大单一颜色像素占比、唯一色计数(量化RGB)、文本密度(二值化小连通域+水平行结构)，融合 EXIF 信号投票出 isUtility 概率。\n\n3. ScreenResult(line 16) 扩字段：新增 isUtility:boolean、photoType:string、hasGPS:boolean、lat/lng、clusterId、pinnable:boolean、source:'exif'|'borrowed'|'landmark'。Verdict 之外把 pinnable 作为独立正交输出。\n\n4. 改 CLIP(line 167-231)：CLIP_LABELS 改两段式——先实拍vs资料(细列各种非实拍负向标签)，再实拍子类；每类多 prompt ensemble、正/负聚成两向量只算两次余弦；只对 isUtility 投票不确定/或过钉地球闸的图跑(省算)。\n\n5. 改判定(line 312-319)：在质量三档之外，新增钉地球硬闸 computePinnable = !isUtility && hasGPS && !废片 && 非簇冗余。资料型默认 review(归档)而非按质量分 keep。\n\n6. 新增时空聚类模块(新文件 src/app/lib/photoCluster.ts)：时间10分钟分桶→GPS DBSCAN→簇内 dHash 去重+选代表+反向地理编码(可复用 geoStickers.ts 的 PLACE_COORDS 反查)。\n\n7. 接通真·钉地球(替换 mood 路径)：现 PhotosCuratorRunPage.tsx(line 221)拿到结果后用的是 mood 的 addMoodSticker(geoStickers.ts line 32)。新增 addPhotoPin，只接受 pinnable=true 的簇代表照，写 {lat,lng(来自EXIF),place(反查),缩略图引用,簇张数}，与 mood 贴分开图层。\n\n8. 新增 IndexedDB 缓存层：以 dHash+size+lastModified 为 key 持久化派生数据，runScreen 开头先查缓存跳过已处理，实现增量。\n\n9. UI：结果区在「留/待定/可清理」三档外，单加一档「已钉地球 N」展示簇代表 + 一个「资料档案」分区；无GPS实拍给「待补位」提示(说明是相册本身缺坐标，非筛选bug)。"
+    }
+  ],
+  "findings": [
+    {
+      "area": "Apple Photos 与 iOS Vision 的照片分类、策展与「按地点」地图组织机制（场景/主体分类、截图/资料型检测、Memories 精选、相似分组、iOS18 美学评分、Places 地图与排除规则），及对 Pocket Earth photos-curator 的端侧落地启发",
+      "key_findings": [
+        "iOS18 新增 VNCalculateImageAestheticsScoresRequest（结果对象 ImageAestheticsScoresObservation），只输出两个字段：overallScore（float，范围 -1 到 1，越高越美）和 isUtility（bool）。isUtility=true 专指『截图、收据、文档、备忘类』——即便像素质量很高也判为『工具型/非可分享的回忆照』。这正是 Apple 用来把『资料截图』和『值得留的生活照』分开的核心信号，恰好对应用户暴露的核心问题（资料型质量分100却不该被当好照片）。它分析的是 blur/exposure、色彩平衡、构图、主体内容的综合，而非单维像素质量。来源 createwithswift / Apple 文档 ImageAestheticsScoresObservation。",
+        "截图检测在 Apple 体系有两条独立、互补的路径：(1) 系统级元数据——PhotoKit 的 PHAsset.mediaSubtypes 含 .photoScreenshot（系统截图键直接打标，100% 可靠，零推理成本），可用谓词 NSPredicate(format: \"(mediaSubtype & %d) != 0\", PHAssetMediaSubtype.photoScreenshot.rawValue) 过滤；(2) 内容级——iOS18 aesthetics 的 isUtility 能识别『非系统截图但本质是资料』的（如拍下来的文档、海报、聊天记录翻拍）。两者覆盖面不同，应同时用。来源 Apple PhotoKit 文档 / dev.to。",
+        "场景/主体分类用 VNClassifyImageRequest，内置分类器(Revision1)约 1303 个标识符，是『多标签』网络（一张图可同时命中多个标签），且基于层级 taxonomy（从 outdoor→land→water_body→waterfall 这种由泛到细，并带 indoor/outdoor 顶层）。可用 supportedIdentifiers() 取全部类目。这与 Pocket Earth 现在用 CLIP 零样本(标签 beautiful/blurry/screenshot/scenery/food…) 同质，但 Apple 的是层级+多标签且模型即 Photos 同款。来源 Apple 文档 VNClassifyImageRequest / WWDC19-222 / blakecrosley。",
+        "相似/近重复分组（burst、连拍、轻微角度差）不是靠 dHash 或 SHA，而是靠语义向量：VNGenerateImageFeaturePrintRequest 产出 VNFeaturePrintObservation（神经网络高维语义向量），两张图用 computeDistance(_:to:) 取欧氏距离。一个真实出货 app(ShutterSlim) 实测：阈值 0.35 是甜点（0.2 漏掉真重复、0.5 把『同一大场景的无关照片』也并进来）。先按时间(>10分钟断点)分桶再两两比，把 35000 张库的 ~6亿次比较降到几十万次。来源 ShutterSlim 博客 / Apple 文档 VNGenerateImageFeaturePrintRequest。",
+        "Apple Photos 的『重复(Duplicates)』功能(iOS16+)与上面的相似分组是两回事：Duplicates 走的是接近精确匹配（像素/元数据高度一致），对『角度/光线略不同』的相似照不报重复。所以产品里要区分两档：精确重复（删一份）vs 相似簇（挑最佳）。全程本地，不依赖 iCloud。来源 Macworld / insanelymac。",
+        "Memories/Featured 精选是后台机器学习任务：仅在『接电+锁屏/空闲』时跑，按『重要的人/地点/事件』聚合，融合 时间+地点(GPS)+人脸+场景内容 多因子交叉，挑『最佳镜头并排序』，并显式跳过模糊/重复/截图。WWDC2016 时 Apple 称『每张照片 11 billion computations』。还有『敏感地点』屏蔽(如不从某些纪念地自动生成回忆)。iOS18 用户可在 View Options 里把 Screenshots 整体从库视图隐藏。来源 gizmodo / Apple Support / Cambridge。",
+        "『按地点(Places)』地图的纳入规则极简且关键：只纳入带嵌入式 GPS(EXIF 经纬度) 的照片/视频；没有定位的（截图、网络/聊天软件存的去元数据图、关掉相机定位拍的）天然不进地图。地图上把坐标做反向地理编码(reverse geocoding)成地名聚合展示。也就是说『进不进地图』第一道闸是『有没有真实拍摄坐标』——这恰好天然过滤掉绝大多数资料型。来源 Apple Support / idownloadblog。",
+        "best-of-cluster 选最佳：ShutterSlim 的可迁移配方是多因子加权——清晰度(边缘方差)25% + 人脸质量(五官/眼鼻嘴可见度)30% + 构图(三分法)15% + 分辨率20% + 时近性10%。在 Apple 原生侧，等价信号是 aesthetics.overallScore + 人脸/主体显著性。要点：选最佳要把『人脸在不在、睁没睁眼、是不是主体清晰』纳入，而不只是全局清晰度。来源 ShutterSlim。"
+      ],
+      "techniques": [
+        "两段式判定，先类型后价值（直接修复用户 6 问的根因）：第一段判『是不是实拍生活照』——PWA 端用 CLIP 现有标签 screenshot/document 当 isUtility 代理 + 启发式(纯色块占比高、文字密度高、长宽比像手机屏 19.5:9、无 EXIF 相机字段如 Make/Model/曝光参数=很可能资料/截图)；第二段才对『实拍』算美学/价值分。资料型不进价值排序、绝不钉地球。",
+        "把『价值』拆成与类型相关的多套标准，而不是一个通用质量分：风景类→构图+色彩+清晰+有 GPS 加权；人物类→人脸存在/清晰/睁眼/主体占比；美食/宠物→主体清晰+色彩；资料类→默认低『回忆价值』，但可单设『可检索价值』(OCR 文本量)另存一档，回答用户『资料型留不留』=不删、不钉地球、归到独立『资料』分组。",
+        "钉地球的硬闸口照搬 Apple Places：必须同时满足 (a) EXIF 有真实 GPS 经纬度 且 (b) isUtility=false（实拍）。没坐标或判为资料/截图一律不钉。EXIF 缺相机机型/光圈/快门等拍摄字段，是『非原相机实拍』的强信号，可叠加进闸口。",
+        "相似/连拍分组用『先时间分桶再向量比对』：PWA 端先按拍摄时间(EXIF DateTimeOriginal)以 ~10 分钟断点分簇，把 O(n^2) 降到桶内比较；簇内用感知哈希(现有 dHash)做粗筛，再(可选)用 CLIP/MobileNet 的图像 embedding 取余弦/欧氏距离细分。把 Apple 实测 0.35(欧氏,feature print) 当起点，按自己 embedding 重新标定阈值。",
+        "区分『精确重复(删一份)』与『相似簇(挑最佳)』两条产品线：精确重复→哈希/字节级一致→建议删冗余；相似簇→挑 best-of-cluster(清晰25/人脸30/构图15/分辨率20/时近10 加权或等价信号)→只留最佳，其余标『可清理』。",
+        "best-of-cluster 评分纳入人脸信号：PWA 现在缺人脸，可用 CLIP person 标签 + 主体清晰度近似；原生升级到 iOS Vision 人脸/landmark 与 isUtility/overallScore，直接替换启发式。",
+        "知识库只写派生数据（隐私）：每张照片落库 {类型标签, 价值分, isUtility/截图标记, 是否有GPS+经纬度, 簇ID, 感知哈希}，原图与 embedding 不出端。钉地球时只用 经纬度+缩略图引用。",
+        "长期本地任务的调度照搬 Memories：增量+缓存。以『照片ID + 修改时间』为 key 把(分数/标签/哈希/向量)持久化(IndexedDB)，重扫只处理新增/变更，稳定库秒级完成；重活(模型推理)安排在空闲/充电(PWA 用 requestIdleCallback、可见性 API；原生用 BGProcessingTask)。",
+        "原生升级路径明确映射：把现有启发式逐个替换为系统信号——截图→PHAsset.photoScreenshot;资料型→aesthetics.isUtility;美学分→overallScore(-1..1);场景标签→VNClassifyImageRequest(1303类,多标签,层级);相似分组→VNGenerateImageFeaturePrint+computeDistance;人脸/主体→Vision 人脸/saliency;全相册+后台→PhotoKit + BGTask + 神经引擎。"
+      ],
+      "applicable_to_pocket_earth": "\"直接回答用户暴露的核心矛盾(资料截图质量100却被判留、还差点钉地球)：Apple 的解法证明『质量分』和『值得留/能钉地球』是两个正交维度——前者由 overallScore 管，后者由 isUtility 这个独立分类管。Pocket Earth 应照此把流水线改成『先判类型(实拍 vs 资料型)→再按类型算价值→钉地球加双硬闸(有真实EXIF GPS + 实拍非资料)』。这同时回答用户 6 问：①筛选=类型+类型相关价值，不靠单一像素分；②类型用 CLIP/启发式(无相机EXIF/高文字密度/手机屏比例)分实拍vs资料，原生用 Vision isUtility+场景分类；③资料型=不删不钉、归独立档(可加OCR做可检索价值)；④不同类型用不同价值权重(风景看构图色彩、人物看人脸主体);⑤只有『实拍+有真实拍摄GPS』才钉地球(完全等同 Apple Places 的纳入规则,天然滤掉资料型);⑥长期本地任务=增量扫描+按(照片ID+修改时间)缓存派生数据+空闲/充电时跑重推理，原图与向量不出端。相似分组也有现成可抄的工程参数：时间分桶(10分钟断点)+向量距离阈值(从0.35起标定)+簇内多因子选最佳。\"",
+      "cautions": "\"① isUtility/overallScore 是 iOS18+ 原生 Vision API，PWA 端拿不到，只能用 CLIP/启发式做代理近似，准确率与覆盖面都不如系统；不要在文案里承诺等同 Apple 的精度。② Apple Places 的『有 GPS 才进地图』是把双刃：iOS 默认会给原相机照打 GPS，但 用户从微信/截图/网络存的图、或拍照时关了相机定位的，都没坐标→会大量漏钉，需提示用户这是相册本身缺数据而非筛选 bug；且 iCloud/分享/部分平台会剥离 EXIF。③ ShutterSlim 的 0.35 阈值是基于 Apple feature print 的欧氏距离，换成 CLIP/dHash 必须重新标定，不能直接套数字。④ Apple『Duplicates』是近精确匹配，对相似(非重复)照不报，别把『重复检测』和『相似分组』当同一功能宣传。⑤ 多标签分类器会一图多标签、且置信度分散，需要设阈值与标签优先级(如同时命中 document 与 scenery 时如何裁决)，否则资料/实拍边界(海报、菜单、带风景的截图)会误判。⑥ EXIF 无相机字段≠一定是资料(编辑过/转存的实拍也会丢)，只能当弱-中信号叠加，不能单独定性。⑦ 隐私红线：embedding 与原图务必留在端内，知识库只存分数/标签/坐标；钉地球展示坐标本身也是敏感信息(家庭住址等)，需考虑模糊/用户授权。⑧ 绝不替用户删图——『可清理』只标记不执行(对齐 Apple 的两段回收站设计)。\""
+    },
+    {
+      "area": "端侧「实拍 vs 非实拍/资料型」照片判别 + 实拍子类分型（含对 Pocket Earth photos-curator 机制的设计建议）",
+      "key_findings": [
+        "EXIF 是分『实拍 vs 截图/网图』最强、最便宜、最确定的信号：截图/网图由系统或 App 生成、不经过相机传感器，因此普遍缺失 Make/Model/相机软件、缺失光圈(FNumber/ApertureValue)/快门(ExposureTime)/ISO/焦距、缺失 GPS。多个 EXIF 工具与法证文章一致确认这点（exifreader.org / exifdata.org / metadataperspective.com 2025）。反过来：有 Make+Model+曝光三元组(ISO/光圈/快门) ≈ 几乎必为相机实拍。代码现状只读了 DateTimeOriginal/CreateDate/ModifyDate，完全没用到 Make/Model/FNumber/GPS 这些判别金信号——这是当前『资料截图得高分被判留』的根因之一。",
+        "Apple 已经在系统层把这件事做成公开 API：iOS 18 的 VNCalculateImageAestheticsScoresRequest 返回两个值——overallScore(美学分) 和 isUtility(布尔，标记 memo/截图/文档这类『实用型/非美学』图片)。这正是 Pocket Earth『资料型不钉地球』需要的判定，且毫秒级、端侧、走神经引擎。原生 app 阶段应直接用它，不必自己训分类器。(blakecrosley.com, bitcot.com)",
+        "Google Photos / Apple Photos 都已在端侧把『资料型』细分成可搜索类目：Google 有 Screenshots / Receipts / Identity Documents / Notes / Payment Methods / Books & Magazines / Event Info 等；Apple Photos 侧栏 Utilities 下有 Duplicates / Receipts / Documents / Handwriting / Illustrations。证明『资料型』本身值得再细分（截图≠收据≠证件≠手写），而不是一刀切。判别普遍是 OCR 取文本 + 设备端分类模型组合。(9to5google.com 2024-03, support.apple.com)",
+        "合成/截图图像的颜色分布与自然照片有可量化差异（多篇 USPTO 专利总结）：合成图颜色种类少、直方图有周期性聚集和离散空洞、单一精确色出现频率极高；自然照片因光照使每个像素颜色形成连续渐变、唯一色数量大、直方图噪声化。→ 端侧可用『唯一色计数 / 直方图峰度 / 大块纯色面积占比』作为低成本截图信号，比现在只用 colorfulness+contrast 那条 tag 规则鲁棒得多。",
+        "文本密度可用轻量启发式估，不必先上 OCR：连通域(connected-component)密度分析是经典做法——把候选文本块按尺寸/密度/垂直白游程过滤，文本区域的连通域密度落在可预测区间。工程上端侧可近似为：二值化后统计小连通域数量、水平投影出现规律性行结构、边缘在水平方向成行排列 → 高文本密度+强行结构 ≈ 文档/聊天记录/海报字。(USPTO 8509534 / 7570816 等)",
+        "实拍子类（风景/人物/美食/宠物/活动/日常）端侧分型的两条成熟路线：① 场景类用 Places365（365 场景类，含室内外标签，有 ResNet18 轻量版可部署）；② 物体/主体类用 CLIP 零样本或 MobileNet。对 Pocket Earth 这种『标签集小且固定』的场景，CLIP 零样本最省事（无需训练、改 prompt 即可扩类）。(CSAILVision/places365)",
+        "CLIP 零样本对 prompt 极敏感：措辞差可掉 10+ 个百分点；官方做法是每类用多条 prompt 模板再对 embedding 取平均（ensemble），并且可把所有正向 prompt 平均成一个向量、负向平均成另一个，只算两次余弦——既更稳又更快。现状代码每类只用单条 prompt（如 'a document, receipt or text'），是把准确率压在下限。(galileo.ai, pinecone.io, unimatrixz.com)",
+        "『照片价值/美学』有现成的轻量可复用模型：LAION aesthetic predictor —— 在 CLIP 图像 embedding 上接一个小 MLP/线性层即输出 1-10 美学分（improved-aesthetic-predictor，训练自 AVA/SAC 等人评数据）。关键工程红利：一次 CLIP 前向 → embedding 同时喂给『零样本分类(类型)』和『美学 MLP(价值分)』，两个任务共享一次推理，端侧几乎零额外成本。(laion.ai, github christophschuhmann/improved-aesthetic-predictor)",
+        "纯像素质量分（清晰/曝光/色彩/对比，即现状 fastScore）天然无法区分『清晰的资料截图』和『值得留的生活照』——文档截图清晰度100/对比100 会拿满分。这从机制上证明：质量分只能当『废片过滤器(去模糊/去太暗/去重)』，绝不能当『价值分』。价值必须由『类型 + 内容语义 + 是否实拍 + 有无地点』另算。"
+      ],
+      "techniques": [
+        "EXIF 金信号判别（PWA 现在就能加，零模型成本）：扩展 readCaptureDate 同时读 Make/Model/Software/FNumber/ExposureTime/ISO/FocalLength/GPSLatitude。规则：(a) 有 Make+Model 且有任一曝光参数 → 强『实拍』先验；(b) 全无相机字段且无 GPS → 强『非实拍/资料型』先验；(c) Software 含 'Screenshot'/编辑器名 → 截图/已加工。exifr 已在用，再多读几个字段即可。",
+        "宽高比 + 屏幕分辨率匹配：维护常见手机/桌面分辨率比（19.5:9、16:9、4:3、3:2、桌面 16:10 等）与精确像素尺寸表；图片 (w,h) 精确等于某机型分辨率（如 1170×2532、1290×2796、1920×1080）→ 强截图信号。注意区分『竖屏全屏截图(=屏幕分辨率)』与『相机竖拍(4:3/16:9 但非屏幕精确值)』。",
+        "纯色/状态栏/边框检测：采样顶部一条带(状态栏区)和四边，检测是否存在大面积单一纯色或左信号/中时间/右电池的规律亮块；统计『最大单一颜色像素占比』和『纯色矩形块面积』——高占比 → 截图/海报/表情包。",
+        "唯一色计数 + 直方图离散度：在缩略图上量化到 RGB(如每通道5bit) 统计唯一色数与直方图空洞/周期性。唯一色少、直方图尖峰+空洞 → 合成图(截图/卡通/海报/网图)；唯一色多、连续渐变 → 自然照片。纯 canvas 可算，接到现有 fastMetrics 里。",
+        "文本密度启发式(无需 OCR)：缩略图自适应二值化 → 统计小尺寸连通域数量、水平投影的周期性行峰、行内等高小块排列。高文本密度 + 强行结构 → 文档/聊天记录/有字海报；可单独产出 textDensity 分。需要语义时(收据 vs 聊天 vs 证件)再对 top 候选上 OCR。",
+        "CLIP 零样本 prompt 改造：每类多条 prompt 取平均(ensemble)，正/负各聚成一个向量只算两次余弦。类型标签建议分两段——先判『是否实拍』(实拍 vs 截图/文档/海报/表情包/聊天截图/扫描件/网图/卡通插画)，再对实拍判子类(风景/城市街景/人物/合影自拍/美食/宠物动物/活动现场/日常物品)。负向标签要细列各种『非实拍』形态，单条 'document' 覆盖不全。",
+        "CLIP embedding 复用：一次图像 embedding 同时跑(1)零样本类型分类(余弦) +(2)LAION 美学 MLP(价值分)。transformers.js 已能取 image features；美学 MLP 仅 ~几十 KB 权重，端侧推理可忽略。",
+        "原生 app 升级路径：iOS 直接用 VNCalculateImageAestheticsScores 的 isUtility(替代自研截图判别) + overallScore(替代美学MLP) + VNClassifyImageRequest/VNGenerateAttentionBasedSaliency(主体)+VNRecognizeTextRequest(OCR)+PhotoKit 的 mediaSubtype(系统已标 .photoScreenshot!)。PhotoKit 的 PHAssetMediaSubtype.photoScreenshot 是系统级截图标记，原生阶段直接读，0 成本最准。",
+        "分层流水线(性价比排序)：① 像素废片过滤(模糊/太暗/重复，现状保留)→ ② EXIF+宽高比+纯色+唯一色+文本密度 的多信号融合先验(便宜，覆盖大多数资料型)→ ③ 仅对『不确定』的 top 候选跑 CLIP(类型) + 美学MLP(价值) → ④ 仅对判为资料型且需细分的跑 OCR。越贵的越靠后、只处理越少的图。"
+      ],
+      "applicable_to_pocket_earth": "回答用户 6 问的机制设计：① 筛选标准=分两层——『可保留性』(去废片/去重)与『价值』(由类型+语义+是否实拍+有无地点决定)，质量分只服务前者。② 类型用『两段式』：先二分『实拍 vs 资料型』(EXIF金信号+宽高比+纯色/状态栏+唯一色+文本密度多信号融合，便宜且确定；不确定再上 CLIP)，实拍再分子类(CLIP 零样本：风景/街景/人物/自拍合影/美食/宠物/活动/日常)。③ 资料型留不留=交给用户但给默认：截图/网图/表情包默认建议清理，收据/证件/笔记/票据这类『有用资料』默认『归档』而非删(对齐 Google/Apple 的 Documents 类目思路)，绝不替删。④ 不同类型用不同价值标准：实拍照走美学分(LAION/iOS overallScore)+稀有度(同地点同时间是否已有)+是否有人/主体；资料型走『有用性』(是否收据/证件/重要信息)而非美学。⑤ 钉地球的硬门槛=必须满足三条：判为实拍(非资料型) AND 有 EXIF GPS 经纬度 AND 价值分达阈值——资料型(无相机EXIF/无GPS)天然被前两条挡掉，正好解决用户『资料型被钉』的问题；现在用 mood 的 addSticker 应替换为只接『实拍+有GPS+过阈』的结果。⑥ 长期本地任务设计=增量+幂等：每张图算一次指纹(已有 dHash)缓存其『类型/价值/坐标/EXIF摘要』，只对新照片做全流程；分层流水线把贵操作(CLIP/OCR)限制在少量候选；CLIP embedding 一次复用于类型+美学两任务；PWA 阶段靠系统选择器分批喂、结果入库累积，原生阶段换成 PhotoKit 全相册后台增量扫描+iOS Vision，机制不变只换信号源。进知识库的只有 分数/标签/坐标/EXIF摘要(对齐隐私约束，原图不出端)。",
+      "cautions": "[\"EXIF 不是 100% 可靠：很多 App(微信/IG/Telegram)分享或重新保存会剥掉全部 EXIF，导致『真实拍的照片被存成无 EXIF』；同理截图经某些工具也可能被塞入伪字段。所以 EXIF 缺失只能当『资料型的弱-中信号』，必须与宽高比/纯色/唯一色/文本密度融合，不能单独判死。HEIC 在 Safari/PWA 里 EXIF 解析常失败，更要靠像素信号兜底。\", \"宽高比匹配会误伤：相机竖拍很多也是接近全屏比例，且不同机型分辨率表庞大易过期；只把『精确等于已知屏幕分辨率』当强信号，『接近某比例』只当弱信号。截全屏才等于分辨率，截部分/带圆角/带刘海挖孔的不等。\", \"CLIP 零样本对『资料型细分』和『中文界面截图』偏弱：clip-vit-base-patch32 较小，对聊天记录 vs 文档 vs 海报这种细类、以及非英文文本图常分不准；细分资料型应靠 OCR+规则，别指望单靠 CLIP。CLIP 也可能把『拍下来的实体文档/菜单/招牌』误判为 document——而这些其实是有地点意义的实拍，钉地球判定要用 EXIF GPS 兜底纠偏。\", \"iOS18 的 isUtility/aestheticsScore 是原生 API，PWA/网页完全拿不到；它是『原生阶段』的能力，PWA 阶段必须自己用启发式+CLIP 近似，两套信号要能平滑切换(同一套『类型+价值』schema，换底层实现)。\", \"美学分(LAION/CLIP)反映『大众平均审美』，与『对用户个人有意义』不是一回事——一张构图普通但有家人/有特殊地点的照片美学分可能低却极有价值。Pocket Earth 的价值分不能只用美学分，要叠加『有人脸/主体』『有GPS地点』『稀有度(该地点/事件照片少)』等个人意义信号，否则会把生活照判低、把网红风景图判高。\", \"查重 dHash 对资料型不可靠：连续聊天截图/同模板表情包像素高度相似但内容不同，dHash 可能误判为重复；对判为『资料型』的图应放宽或跳过 dHash 去重，避免误杀不同内容的截图。\", \"纯色/文本密度阈值需按缩略图尺寸归一并做设备实测标定，硬编码阈值在不同分辨率/缩放下会漂移；建议先在用户那 6 张已知误判样本上回归校准。\"]"
+    },
+    {
+      "area": "地理/地图类照片策展：Google Photos / Apple Photos 如何按位置组织照片、哪些值得\"放到地图/地球上\"，以及对 Pocket Earth\"钉地球\"准则的启发",
+      "key_findings": [
+        "【地图门槛=只看真实拍摄坐标】Apple Photos 的 Places 相册与 Google Photos 的 Map view，默认只把'带有内嵌位置信息(GPS/手动/估算)'的照片放上地图；没有坐标的照片根本不进地图。这是行业一致的硬门槛——地图是按'地点'索引的视图，不是按'好看'。来源：Apple Support《Browse photos and videos by location》、Google Photos Help《Understand, find & edit your photos' locations》。",
+        "【iOS18 已把'资料型 vs 值得记的照片'做成系统级 API,正中用户痛点】Vision 框架 iOS18 新增 VNCalculateImageAestheticsScores(Swift: CalculateImageAestheticsScoresRequest),返回两个独立信号:overallScore(float,-1~1,越高越美)和 isUtility(Bool)。官方明确:isUtility 标记截图、收据、文档(或其局部)这类'即便 overallScore 很高,也不算值得分享/记忆的照片'。这正是用户实测发现的问题——文档截图像素质量满分但不该留/不该钉——苹果用一个独立布尔位解决,而不是靠质量分。来源:Apple Developer Docs(ImageAestheticsScoresObservation)、createwithswift.com。",
+        "【为什么截图天生没坐标、且偶然带坐标也不该钉】截图是'屏幕输出的数字捕获',不经过镜头/传感器,所以原生不含 EXIF GPS——大多数截图根本没坐标。即便某些情况下携带了位置(如对带地图的应用截屏、或工具注入),那也是'屏幕内容的位置'而非'用户身体所在的位置',语义上与'我去过这里'无关。地图/地球的契约是'人在此地拍下此景',截图违反这个契约。来源:EXIFData.org《Do Screenshots Have EXIF Data》。",
+        "【没有 GPS 时,两大产品的补位策略:内容地标识别 + 位置历史(正在转向纯地标)】Google Photos 2022年12月起停止用 Location History 给新照片估算位置,转向'更重投入地标识别'(landmark recognition),靠照片里可见的地标推断地点;旧的'估算位置'让用户选择保留或删除。Apple 侧用 Significant Locations(端侧、端到端加密、Apple 读不到)喂给 Photos 做更好的 Memories/行程。两条路:内容识别(地标)、以及'我那段时间在哪'的轨迹。来源:9to5Google《Google Photos has changed how it estimates location》、Apple Legal《Location Services & Privacy》。",
+        "【时间+地点聚类成'一次行程/一个地点':iOS18 Trips 是成品形态】Apple Photos iOS18 把'Trips'做成独立 Collection:基于日期/时间/地理/人脸等元数据,把同一次外出或长途旅行的照片自动聚成现成相册/影片。底层是端侧'知识图谱'(on-device knowledge graph),识别重要人物、常去地点、过往行程、事件。这说明地图策展的正确单位不是'单张照片的点',而是'按时空聚成的一段经历'。来源:Apple Machine Learning Research、Apple Community(Trips)。",
+        "【内容反推坐标在技术上可行但代价高:PlaNet 数据点】Google PlaNet 把'照片拍摄地'当分类问题——用 S2 cell 把地球自适应切成多尺度网格(人口密集处更细),Inception 网络训练于约9100万张地理标注图,能给地标/街景/山川海滩等估算位置,部分场景超人类。全模型约377MB(可塞进手机内存);存在 MobileNet 版仅约13M参数(0.578B Mult-Adds)的轻量变体。即'内容→坐标'端侧化是可做的,但精度对地标强、对普通生活照弱。来源:arXiv 1602.05314 PlaNet、MobileNets 论文。",
+        "【密度聚类是把散点变'地点'的标准工具】学界用 DBSCAN / P-DBSCAN / DeepDBSCAN 对地理标注照片做密度聚类:无需预设簇数,按'半径内邻居数'发现热点;再对每个簇的中心点做反向地理编码(reverse geocoding)拿到地名/POI。这正是'一堆 GPS 点 → 命名的一个地方'的可复用配方。来源:MDPI《DeepDBSCAN》、P-DBSCAN 论文。",
+        "【隐私底线:估算出来的位置不外泄、原图不出端】Google Photos 明确:分享照片时,由 Photos 估算的位置不会被一同分享;估算开关可关。Apple:Memories/Places 的分析全在端侧完成,Significant Locations 端到端加密 Apple 读不到。两家都把'位置是敏感数据'当一等公民。来源:Google Photos Help、Apple《Privacy - Features》。"
+      ],
+      "techniques": [
+        "三层信号分离,不要用一个'质量分'兜底:质量(清晰/曝光/构图,你已有)、类型/效用(isUtility:截图/文档/收据)、地点(有无可信坐标)。这三者正交,任一不达标走不同分支。对照 iOS18:overallScore 和 isUtility 是两个独立字段。",
+        "PWA 端现在就能做的'效用判别'(无需等原生):①EXIF 缺失检测——无相机/镜头字段(Make/Model/FNumber/ExposureTime/FocalLength 全空)强烈暗示是截图/导出图,直接降权且不钉地球;②宽高比命中机型屏幕分辨率(如 1170×2532、1290×2796)→疑似 iPhone 截图;③你已接的 CLIP 零样本里 screenshot/document/text 标签置信度高→判为资料型;④高'边缘密度+大面积纯色块+规则文本行'像素特征→UI/文档。多信号投票,而非单分类器。",
+        "用 EXIF 把'能钉'和'不能钉'先一刀切:有 GPSLatitude/GPSLongitude 且该照片不是 isUtility/截图 → 进'可钉'候选池;无坐标 → 进'待补位'池;是资料型 → 永不进地图池(即使带坐标)。这把用户的问题5(钉哪类)变成确定性规则。",
+        "无 GPS 照片的三档补位(按成本递增):①时空借位——把无坐标照片归到时间相邻、有坐标照片的同一簇(同一次行程),继承该簇的近似地点(Google/Apple 都用'同库其他照片'的思路);②内容地标识别——端侧 CLIP/小模型识出'埃菲尔铁塔/天安门'等强地标再反查坐标(PlaNet 思路的轻量替代,只在高置信地标上用);③让用户补——给整簇一次性贴地名(一次行程标一次,而非逐张),反向地理编码出候选 POI 给用户点选。",
+        "把'点'聚成'地点/行程':对'可钉'候选跑 DBSCAN(空间 eps,如几百米)+时间窗(同一天/连续几天),每簇做一次 reverse geocoding 得到地名;地球上钉的是'簇代表照片(质量最高那张)+ 簇内张数',而不是几百个重叠点。对应 Apple Trips、学界 P-DBSCAN。",
+        "长期端侧任务工程:做成增量/幂等的后台流水线——每张照片算一次指纹(你已有 dHash),结果写进知识库(分数/标签/坐标/簇ID),已处理的跳过;分批处理(每次几十张)避免卡 UI;原生化后用 PhotoKit 的 change observer 增量消费新照片、在 NPU 上批跑 Vision 请求。对应 Apple'端侧知识图谱增量更新'与人脸聚类的'增量 agglomerative clustering'。",
+        "原生升级路线图(PWA→iOS app)对照表:质量分→VNCalculateImageAestheticsScores.overallScore;截图/文档判别→isUtility;场景类型→VNClassifyImageRequest(~1000类);主体/人脸→Vision 主体与人脸检测;全相册+增量→PhotoKit;地点轨迹→Significant Locations(端到端加密)。机制接口按这套字段设计,原生化时换实现不换契约。"
+      ],
+      "applicable_to_pocket_earth": "\"直接回答用户6问并给出可落地准则。问题1(筛选标准):弃用单一质量分,改三正交信号——质量×效用(isUtility)×地点可信度;'值得留'与'值得钉'是两套门槛。问题2(分类型):PWA 现用'EXIF相机字段缺失/屏幕分辨率宽高比/CLIP的screenshot·document·text标签/像素纹理'多信号投票区分资料型 vs 实拍(风景/人物/美食/宠物);原生换 isUtility+VNClassifyImageRequest。问题3(资料型留不留):资料型默认进'待定'而非'可清理'——因为它常有实用价值(票据/文档),交由用户决定;但它永远不进地图池。问题4(不同类型不同价值):风景/人物/美食类用 overallScore 式美学分;资料型用'是否唯一/是否近期/是否被引用'这类实用性启发,不能套美学分。问题5(钉哪类):只钉'非资料型 + 有可信坐标(EXIF GPS,或经时空借位/高置信地标补出)'的实拍照片;资料型即使带坐标也绝不钉——因为地球的契约是'人在此地拍下此景',截图的坐标是'屏幕内容'不是'身体所在'。问题6(长期端侧任务):做成增量幂等流水线,每张算一次指纹写知识库、跳过已处理、分批不卡UI;钉的单位是'DBSCAN时空簇的代表照片+张数',不是散点;隐私上估算坐标不外泄、原图不出端,与Google/Apple一致。一句话准则:'有真实身体坐标的、非资料型的、一次经历里最好的那张'才钉地球。\"",
+      "cautions": "[\"不要把'内容反推坐标'(PlaNet 式)当主力:对埃菲尔铁塔这类强地标准,对'某条没特征的街/我家客厅/一盘菜'几乎无效且易错钉。只在高置信强地标上用,且必须标注为'估算'、可被用户否决——错把照片钉到错误大陆比不钉更伤信任。\", \"估算/借位得到的坐标必须与'EXIF 真坐标'在数据上区分(加 source 字段:exif/borrowed/landmark/user),且默认不随分享外泄——这是 Google Photos 的明确做法。混为一谈会造成隐私事故和'我没去过却被钉'的困惑。\", \"isUtility 不是 PWA 能直接调的——它是 iOS18 原生 Vision API。PWA 阶段只能用'EXIF缺失+宽高比+CLIP标签'近似,准确率低于原生,会有漏网(如对文档拍的照片、对截图二次拍照)。机制要容错:允许用户一键把'误判为资料型'的照片拉回地图池。\", \"截图'偶然带 GPS'确实存在(对地图App截屏、或某些工具注入定位),不能因为'截图通常没坐标'就假设有坐标=非截图。判定顺序应是'先判类型(资料型?),再看坐标',类型优先级高于坐标——资料型一票否决钉地球。\", \"DBSCAN 的 eps/时间窗是体验旋钮,不是一次定死:城市密集行程和跨国长途的合理半径差很大;簇太粗会把'两个城市'并成一个地点,太细会把'同一个景点'裂成多个点。需要按时间跨度自适应或给用户'合并/拆分簇'的操作。\", \"别把美学分套到资料型上做价值判断:文档/票据的价值是'实用/可检索/唯一',跟构图曝光无关。强行用 overallScore 排序资料型会得出荒谬结果(已被用户实测验证)。资料型要走独立的实用性启发式或干脆只去重+留档。\", \"PlaNet 377MB 全模型对 PWA 太重,13M 参数的 MobileNet 变体也仍需训练/适配,短期不现实;现阶段更务实的是 CLIP 零样本地标识别 + 让用户补,把'端侧反推坐标'列为远期原生方向而非当前依赖。\"]"
+    },
+    {
+      "area": "相册「清理/精选」类功能（Apple Photos Clean Up/Duplicates、Google Photos Archive、Gemini Photos 等第三方清理 App）的判定逻辑与归档中间态，对 Pocket Earth「留/待定/可清理」+ 资料型处置的启发",
+      "key_findings": [
+        "Apple iOS 18 把「值不值得留」和「能不能钉/能不能分享」拆成两条正交信号。VNCalculateImageAestheticsScores 同时返回两个量：overallScore（美学分，范围 -1 到 1，越高越美）和 isUtility（布尔，标记截图/收据/文档这类「实用工具型」照片）。关键洞见：utility 照片就算 overallScore 很高，Apple 也明确不把它当作 memorable/可分享的照片——这正好对应用户实测踩的坑（文档截图质量分100却被判留+想钉地球）。Apple Photos 的 Memory/记忆候选和自动裁剪都吃这个分。来源 createwithswift / Apple Developer。",
+        "Apple 的 Duplicates（重复项）只对‘几乎完全相同’的图生效，稍有差异就不进这个集合；合并时保留最高质量的一张，并把 caption/关键词/编辑等元数据迁移到保留的那张。启发：dedup 要分两档——严格重复(自动合并安全) vs 近似相似(只能聚类+让人选)。Apple 还把截图当作独立媒体类型单列，方便用户定期回顾而非自动删。来源 Apple Support / AppleMagazine。",
+        "Google Photos Archive = 教科书级的「中间态」：不删、但移出主时间线(主 Library 不显示)，照片仍安全保存、仍可在专属相册里检索。用 computer vision+OCR 识别收据、截图、条码、序列号、文档这类「现在不需要看、以后可能要查」的图，主动建议归档；还可设置『截图和文档 30 天后自动归档』。核心：suggestion 以卡片形式出现在 Assistant，用户先审阅再确认，绝不偷偷扫走重要照片。来源 AndroidPolice / TechCrunch / Oreate。",
+        "Gemini Photos(MacPaw)分类法可直接借鉴：两大类——Similar(相似，量最大)与 Clutter(杂物)，Clutter 再细分 Blurred(模糊)/Notes(文本照，如名片/购物清单/文档)/Screenshots(截图)。判定靠『metadata + 视觉内容 + 其他因子』组合，不是单一质量分。文本照被明确定性为『多半是当临时提醒拍的、不是要永久保存的』——这正是资料型默认倾向『不留/可归档』的产品依据。免费清掉 clutter，相似照去重要付费。来源 9to5Mac / MacStories / MacPaw。",
+        "全行业的安全红线一致：清理类 App 几乎从不自动删除，只做『建议+标记+人审』。用户最大的不信任正来自误删珍视内容(刻意拍的纪念截图、收据、文档)，社区里大量『App 勾错了照片』的投诉。iOS 的兜底是 Recently Deleted(最近删除)保留30天可恢复。Gemini 评测也点名相似照聚类有 false positive，必须逐张审。来源 babelgum forum / Apple Community / MacStories。",
+        "近似聚类的成熟端侧做法：感知哈希(pHash/dHash/wavelet)取 64-bit 指纹，按 Hamming 距离阈值分组(连拍 burst 常用阈值≈4)，再用 DBSCAN 这类密度聚类避免 O(n²) 两两比较；连拍可借时间戳按时序对相邻帧算距离。组内选『最佳』的信号是高分辨率+正脸朝向+微笑/睁眼+清晰度。来源 Medium(Darwish) / SystemDesigner / 多份美国专利(reducing similar photos)。",
+        "iOS Vision 给原生版提供了现成的『照片类型』判别零件，无需自训模型：VNClassifyImageRequest(数百类场景/物体标签+置信度)、VNCalculateImageAestheticsScores(美学分+isUtility)、DetectDocumentSegmentationRequest(文档矩形分割)、VNRecognizeTextRequest(OCR，.fast/.accurate 两档)。全部端侧、无需联网、无 API key。来源 Apple Developer / blakecrosley / zhgchg.li。"
+      ],
+      "techniques": [
+        "双轴判定，把『质量』和『类型/价值』彻底解耦：现有 0-100 质量分只回答『清不清晰、曝光对不对』，不能单独用来决定留/钉。再加一条正交的『utility/资料型』信号——PWA 现在用 CLIP 零样本(标签 screenshot/document/QR/receipt/chat-log)+ 启发式(超高对比100+超高清晰100+长宽比接近屏幕比例+大面积纯色背景+OCR 文本密度高→强烈指向截图/文档)；原生版直接换成 Vision 的 isUtility + DetectDocumentSegmentation + VNRecognizeText 文本密度。判定矩阵：质量分管『清理』分支，utility 信号管『钉不钉地球』分支，两者不互相覆盖。",
+        "把『留/待定/可清理』升级成二维：纵轴质量(留/待定/可清理)，横轴类型(实拍生活照 vs 资料型)。资料型即使质量高也走『归档』而非『钉』——新增第三个出口『归档(Archive)』，对标 Google Photos：不删、移出主时间线/不进地球、但留在一个可检索的『资料』分区。直接回答用户Q3(资料留不留)：默认不删、不钉、归档，让用户随时能翻到，且永远可一键转正或删。",
+        "钉地球的准入要同时满足三个硬条件，缺一不可：① 非 utility(不是截图/文档)；② 有 EXIF GPS 经纬度(没坐标本就钉不上)；③ 质量分≥留档线。这一刀就把用户踩的『资料型被钉』坑堵死——文档截图既无 GPS 又是 utility，天然出局。直接回答 Q5。",
+        "dedup 分两档处理，匹配 Apple 的策略：dHash 汉明距离极小(≈0-2，近乎全等)→『严格重复』，可较激进地默认只留一张、其余标可清理；距离稍大(≈3-8)→『相似/连拍簇』，只聚类成组、必须让用户在组内选，组内默认推荐用质量分+(原生:正脸/睁眼)选出的最佳一张，但绝不自动删其余。用 DBSCAN 之类按指纹聚类，避免逐对比较。",
+        "不同类型用不同价值标准(回答 Q4)：实拍风景/人物/美食/宠物→用美学分(原生 overallScore，PWA 用 CLIP『beautiful photo』概率+质量分)；资料型→价值不在『美』而在『可检索性』，应跑 OCR 抽取文本/识别收据金额日期作为元数据，价值=以后查得到，而不是美学分。所以资料型根本不该进美学排序，单独建库。",
+        "全程『建议+标记+人审，绝不替删』，并提供撤销与回收站语义：可清理只是打标，删除动作永远是用户在审阅界面确认；即便确认，也走类似 Recently Deleted 的软删/30天可恢复缓冲(PWA 因拿不到相册写权限，本就只能给建议清单+引导用户自己去系统相册删，反而天然安全)。",
+        "长期本地任务的工程设计(回答 Q6)：增量+断点续跑——每张照片算完把『分数/标签/坐标/哈希指纹』写进本地知识库(原图不入库)，用 content hash/photoID 做幂等键，已处理的跳过；分批小步(每批 N 张)跑在 idle/充电时，避免卡 UI；PWA 受多选/全选限制只能用户主动喂照片，原生版可用 PhotoKit 增量枚举+后台运行+NPU。知识库累积出『长期画像』，后续判定阈值可个性化。",
+        "可信度优先做『高确定性的自动建议』、把『相似去重』这种易误判的放到付费/二级人审区，对齐 Gemini 的产品分层：模糊/截图/文档这类单图判定置信度高，可主动建议；相似聚类 false positive 多，只聚类不预删。"
+      ],
+      "applicable_to_pocket_earth": "把现有单一『质量分→留/待定/可清理』改成『质量轴 × 类型轴』的二维机制，并新增『归档』第三出口，直接逐条回答用户的6个问题：(Q1 标准)质量分只管能见度，留不留还要看类型与价值；(Q2 分类)用 CLIP+启发式(PWA)/Vision isUtility+文档分割+OCR(原生)把照片分『实拍(风景/人物/美食/宠物)』vs『资料型(截图/文档/收据/聊天记录)』；(Q3 资料型)默认不删不钉、进可检索的归档区，永远可转正或删——对标 Google Photos Archive 这个被验证过的中间态；(Q4 价值)实拍用美学分、资料型用『可检索性/OCR文本』，两套标准不混；(Q5 钉地球)三硬条件门禁=非utility ∧ 有EXIF GPS ∧ 质量达标，文档截图天然被挡在外；(Q6 长期任务)增量幂等(哈希做键、已处理跳过)、idle/充电分批跑、只把分数/标签/坐标入库、累积长期画像让阈值个性化。整个机制全端侧、原图不出端，与项目隐私第一约束一致；PWA 先用 CLIP/启发式落地，原生版把每个零件平滑换成 Vision/PhotoKit/NPU 对应件，是一条无需重构的升级路径。",
+      "cautions": "[\"别让美学/质量分单独决定『钉不钉』——这正是用户踩的坑：资料型截图质量分100但绝不能钉。utility 与质量必须是两条正交信号，Apple 自己也是这么拆的(高 overallScore + isUtility=true 仍不算 memorable)。\", \"『资料型』不等于『没价值』——用户自己都不确定要不要留，所以绝不能默认删。刻意拍的纪念截图、收据、重要文档是误删投诉的重灾区。默认动作应是『归档/保留可检索』而非『可清理』，把删的决定权完全留给用户。\", \"相似照聚类(near-dup)false positive 高，连 Gemini 评测都提醒要逐张审。只做聚类+推荐最佳，绝不自动删组内其余；严格全等重复才可以激进一点。阈值要保守，宁可漏判不可错杀。\", \"PWA 的硬限制要诚实对待：iOS PWA 拿不到全相册、只能靠系统选择器用户主动喂照片，也基本没有相册写/删权限——所以 PWA 阶段产品形态只能是『建议清单+引导用户去系统相册自行处理』，不能承诺真删。别把原生才有的能力(后台全相册扫描、Vision isUtility、NPU、自动归档)写进 PWA 的承诺里。\", \"CLIP 零样本在『截图/文档』这类判别上不如 iOS18 的 isUtility 稳，且首次要下模型、WASM 推理慢——PWA 阶段要配启发式兜底(长宽比≈屏幕比、纯色背景占比、OCR 文本密度)提高资料型召回，并对低置信度样本走『待定』而非直接判定。\", \"归档/中间态要可逆且可检索，否则就退化成『变相隐藏式删除』，反而损害信任。必须像 Google Photos 那样：归档项仍在专属分区可随时翻到、可一键转正、可彻底删。\", \"长期本地任务别做成一次性全量扫描卡死设备：必须增量、幂等(哈希/photoID 做键跳过已处理)、分批且只在 idle/充电时跑；只把分数/标签/坐标/指纹入库，原图与中间分析一律不出端，避免知识库膨胀和隐私泄露。\", \"选『最佳一张』依赖正脸/睁眼/微笑这类信号在 PWA 端侧难做(需人脸/主体检测)，主要是原生 Vision 的能力；PWA 阶段组内『最佳』先退化为质量分最高，别过度承诺。\"]"
+    }
+  ]
+}

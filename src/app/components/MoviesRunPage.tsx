@@ -1,9 +1,8 @@
 import { useMemo, useReducer, useRef, useState, useEffect } from 'react';
-import { ChevronLeft, Film, Plus, Camera, Star } from 'lucide-react';
+import { ChevronLeft, Film, Camera, Star, MapPin, Loader2, Check } from 'lucide-react';
 import { movieRecords, movieTotal, movieMappedTotal, movieCountries, movieCountry, doubanRating, type MovieRecord } from '../data/movies';
-import { addUserMark, getUserMarksByKind, subscribeUserMarks, spreadCoord } from '../data/userMarks';
-import { edgeSafe } from '../../../frost-agent/edge/contract';
-import { recordSignals } from '../../../frost-agent/harness/profile';
+import { getUserMarksByKind, subscribeUserMarks } from '../data/userMarks';
+import { runMovieAgent, confirmPin, recordRatingFix, recordPlaceFix, GEO_LABEL, GEO_COLOR, type MovieDraft, type MoviePhase } from '../lib/movie';
 import { AnimatePresence } from 'motion/react';
 import MarkerDetail, { type MarkerDetailData } from './MarkerDetail';
 
@@ -34,12 +33,11 @@ export default function MoviesRunPage({ onBack, embedded }: Props) {
   const [, force] = useReducer((x) => x + 1, 0);
   useEffect(() => subscribeUserMarks(force), []);
 
-  const [title, setTitle] = useState('');
-  const [country, setCountry] = useState('美国');
-  const [year, setYear] = useState('');
-  const [rating, setRating] = useState(4);
+  const [input, setInput] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [phase, setPhase] = useState<MoviePhase | ''>('');
+  const [draft, setDraft] = useState<MovieDraft | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [vision, setVision] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<MarkerDetailData | null>(null);
 
@@ -65,47 +63,49 @@ export default function MoviesRunPage({ onBack, embedded }: Props) {
   }, []);
   const onGlobe = movieMappedTotal + userTickets.length;
 
-  const showToast = (s: string) => { setToast(s); window.setTimeout(() => setToast(null), 2200); };
+  const showToast = (s: string) => { setToast(s); window.setTimeout(() => setToast(null), 2400); };
 
-  const addMovie = () => {
-    const t = title.trim();
-    if (!t) return;
-    const base = movieCountry(country);
-    const id = 'umv-' + Date.now();
-    if (base) {
-      const [lng, lat] = spreadCoord(id, base[0], base[1]);
-      addUserMark({ id, kind: 'movie', lng, lat, label: t,
-        meta: { title: t, country, year: year ? Number(year) : null, rating, type: '电影', date: new Date().toISOString().slice(0, 10) } });
-      recordSignals('movies', { countries: [country] });  // 增量喂长期画像
-      showToast(`已钉到地球 · ${country}`);
-    } else {
-      showToast('该国家暂无坐标，未落地球');
-    }
-    setTitle(''); setYear(''); setVision(null);
+  // 跑电影 agent：一句话 / 截图 → 解析→本地库→云脑补全子agent→地理子agent→校验 → 出草稿卡
+  const analyze = async (inp: Parameters<typeof runMovieAgent>[0]) => {
+    if (analyzing) return;
+    setAnalyzing(true); setDraft(null); setPhase('解析输入');
+    try {
+      const d = await runMovieAgent(inp, (p) => setPhase(p));
+      if (!d) { showToast('没认出片名，换种说法或手动记一下'); }
+      else setDraft(d);
+    } catch { showToast('解析出错了，稍后再试'); }
+    finally { setAnalyzing(false); setPhase(''); }
   };
 
-  // 截图识别（端侧 Qwen-VL）：读图 → /api/edge vision；端侧未就绪时如实提示，可手动填写
+  const onSubmitText = () => { const t = input.trim(); if (t) analyze({ kind: 'text', text: t }); };
+
+  // 截图认片：原图只进端侧 vision（不出手机）→ 同一条 agent 流水线
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (!f) return;
-    setVision('端侧识别中…');
+    if (!f) { return; }
     try {
       const dataUrl = await new Promise<string>((res, rej) => {
         const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(f);
       });
-      const text = await edgeSafe.vision(dataUrl, '这是一张电影信息截图，只回答电影的中文片名，不要其他文字。');
-      if (text && text.trim()) {
-        const guess = text.trim().split('\n')[0].slice(0, 40);
-        setTitle(guess);
-        setVision('端侧识别：' + guess);
-      } else {
-        setVision('端侧视觉模型未就绪（装好 Qwen-VL 后可从截图认片）· 可手动填写');
-      }
-    } catch {
-      setVision('识别失败 · 可手动填写');
-    } finally {
-      if (fileRef.current) fileRef.current.value = '';
-    }
+      await analyze({ kind: 'image', imageDataUrl: dataUrl });
+    } catch { showToast('读图失败 · 可手动记一下'); }
+    finally { if (fileRef.current) fileRef.current.value = ''; }
+  };
+
+  // 草稿卡上的微调：星级 / 落点国家（写偏好，下次同片沿用）
+  const setStars = (n: number) => setDraft((d) => { if (!d) return d; recordRatingFix(d.id, n); return { ...d, tags: { ...d.tags, userRating: n } }; });
+  const pickCountry = (c: string) => setDraft((d) => {
+    if (!d) return d; const base = movieCountry(c); if (!base) return d;
+    recordPlaceFix(d.id, { lng: base[0], lat: base[1], place: c });
+    return { ...d, country: c, geo: { kind: 'country', place: c, lng: base[0], lat: base[1], confidence: 0.5 }, needPlace: false };
+  });
+
+  // 确认钉地球（suggest-then-confirm 的 confirm）
+  const confirm = async () => {
+    if (!draft) return;
+    const res = await confirmPin(draft);
+    showToast(res.pinned ? `已钉到地球 · ${GEO_LABEL[draft.geo!.kind]}·${draft.geo!.place}` : '没坐标，先存进片库，补地点后可钉');
+    setDraft(null); setInput('');
   };
 
   return (
@@ -134,37 +134,97 @@ export default function MoviesRunPage({ onBack, embedded }: Props) {
         </div>
       </div>
 
-      {/* 记一笔（落地球 + 截图识别） */}
+      {/* 记一笔：一句话 / 截图 → 电影 agent 自动补全成带标签的票根草稿 */}
       <div className="px-3 py-2.5 border-b-2 border-black bg-white shrink-0 space-y-2">
         <div className="flex gap-2">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="记一部刚看完的电影…"
-            onKeyDown={(e) => e.key === 'Enter' && addMovie()}
-            className="flex-1 min-w-0 border-2 border-black px-2 py-1.5 text-[12px] bg-[#EAEAEA] focus:outline-none focus:bg-white" />
-          <button onClick={() => fileRef.current?.click()} title="截图识别（端侧）"
-            className="w-9 shrink-0 border-2 border-black bg-white flex items-center justify-center shadow-[1px_1px_0_#000] active:translate-y-px">
+          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="「我看了《泳池情杀案》四星」/ 直接发截图…"
+            onKeyDown={(e) => e.key === 'Enter' && onSubmitText()} disabled={analyzing}
+            className="flex-1 min-w-0 border-2 border-black px-2 py-1.5 text-[12px] bg-[#EAEAEA] focus:outline-none focus:bg-white disabled:opacity-50" />
+          <button onClick={() => fileRef.current?.click()} title="发电影截图（端侧认片）" disabled={analyzing}
+            className="w-9 shrink-0 border-2 border-black bg-white flex items-center justify-center shadow-[1px_1px_0_#000] active:translate-y-px disabled:opacity-50">
             <Camera className="w-4 h-4" strokeWidth={2.5} />
           </button>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
-        </div>
-        <div className="flex gap-2 items-center">
-          <select value={country} onChange={(e) => setCountry(e.target.value)}
-            className="border-2 border-black px-1.5 py-1.5 text-[11px] bg-white max-w-[110px]">
-            {movieCountries.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <input value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="年份"
-            className="w-14 border-2 border-black px-1.5 py-1.5 text-[11px] bg-white" />
-          <div className="flex items-center gap-0.5">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button key={n} onClick={() => setRating(n)} className="active:scale-90">
-                <Star className="w-3.5 h-3.5" strokeWidth={2} fill={n <= rating ? AMBER : 'none'} style={{ color: AMBER }} />
-              </button>
-            ))}
-          </div>
-          <button onClick={addMovie} className="ml-auto flex items-center gap-1 border-2 border-black px-2 py-1.5 text-[11px] font-bold shadow-[1px_1px_0_#000] active:translate-y-px text-black" style={{ background: AMBER }}>
-            <Plus className="w-3.5 h-3.5" strokeWidth={3} /> 钉地球
+          <button onClick={onSubmitText} disabled={analyzing || !input.trim()}
+            className="shrink-0 flex items-center gap-1 border-2 border-black px-2.5 py-1.5 text-[11px] font-bold shadow-[1px_1px_0_#000] active:translate-y-px text-black disabled:opacity-40" style={{ background: AMBER }}>
+            {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={3} /> : '标记'}
           </button>
         </div>
-        {vision && <div className="text-[10px] text-black/55 leading-snug">⊙ {vision}</div>}
+        {analyzing && (
+          <div className="text-[10px] text-black/55 leading-snug flex items-center gap-1.5">
+            <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2.5} /> 子 agent 工作中 · {phase || '解析'}…（本地库 → 云脑补全 → 定位取景地）
+          </div>
+        )}
+        {!analyzing && !draft && (
+          <div className="font-pixel text-[7px] text-black/35 leading-relaxed tracking-wide">
+            说「看了 xx 几星」或发张截图 · agent 自动补 导演/演员/类型/流派/剧情 + 取景地 → 你确认再钉
+          </div>
+        )}
+
+        {/* 草稿卡：子 agent 产出的全标签票根（suggest，确认才钉） */}
+        {draft && (
+          <div className="border-2 border-black bg-[#FFFDF5] shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
+            <div className="flex items-center justify-between px-2.5 py-1" style={{ background: AMBER }}>
+              <span className="font-pixel text-[7px] tracking-widest text-black">DRAFT · 待确认票根</span>
+              <span className="font-pixel text-[7px] text-black/70">{draft.source.toUpperCase()} · {Math.round(draft.confidence * 100)}%</span>
+            </div>
+            <div className="px-2.5 py-2 space-y-1.5">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[14px] font-bold leading-tight">{draft.title}</span>
+                {!!draft.year && <span className="text-[10px] text-black/45">{draft.year}</span>}
+                {draft.douban != null && <span className="font-pixel text-[8px] text-black/55">豆瓣 {draft.douban.toFixed(1)}</span>}
+              </div>
+              {draft.original && draft.original !== draft.title && <div className="font-pixel text-[7px] text-black/40">{draft.original}</div>}
+              {/* 多维标签：导演/演员/类型/流派 */}
+              <div className="flex flex-wrap gap-1">
+                {draft.tags.director && <span className="font-pixel text-[6px] border border-black/30 px-1 py-0.5 bg-[#EAEAEA]">导演·{draft.tags.director}</span>}
+                {draft.tags.genre && <span className="font-pixel text-[6px] border border-black/30 px-1 py-0.5 bg-[#EAEAEA]">类型·{draft.tags.genre}</span>}
+                {draft.tags.movement && <span className="font-pixel text-[6px] border border-black/30 px-1 py-0.5 bg-[#fff0d6]">流派·{draft.tags.movement}</span>}
+                {draft.tags.cast.slice(0, 3).map((c, i) => <span key={i} className="font-pixel text-[6px] border border-black/30 px-1 py-0.5 bg-[#EAEAEA]">{c}</span>)}
+              </div>
+              {draft.tags.plot && <div className="text-[10px] text-black/60 leading-snug">{draft.tags.plot}</div>}
+              {/* 我的评分（可改） */}
+              <div className="flex items-center gap-2">
+                <span className="font-pixel text-[7px] text-black/45">我的评分</span>
+                <div className="flex items-center gap-0.5">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button key={n} onClick={() => setStars(n)} className="active:scale-90">
+                      <Star className="w-3.5 h-3.5" strokeWidth={2} fill={n <= draft.tags.userRating ? AMBER : 'none'} style={{ color: AMBER }} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* 落点：取景地/故事地/国家，needPlace 时给国家兜底选择 */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <MapPin className="w-3 h-3" strokeWidth={2.5} style={{ color: draft.geo ? GEO_COLOR[draft.geo.kind] : '#bbb' }} />
+                {draft.geo ? (
+                  <span className="font-pixel text-[7px] px-1.5 py-0.5 text-white" style={{ background: GEO_COLOR[draft.geo.kind] }}>
+                    {GEO_LABEL[draft.geo.kind]} · {draft.geo.place}
+                  </span>
+                ) : (
+                  <>
+                    <span className="font-pixel text-[7px] text-[#d23b3b]">没定位到 · 选个国家兜底：</span>
+                    <select onChange={(e) => e.target.value && pickCountry(e.target.value)} defaultValue=""
+                      className="border border-black px-1 py-0.5 text-[10px] bg-white max-w-[100px]">
+                      <option value="" disabled>国家…</option>
+                      {movieCountries.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </>
+                )}
+              </div>
+              <div className="text-[8px] text-black/35 leading-snug">{draft.reason}</div>
+              {/* 确认 / 取消 */}
+              <div className="flex gap-2 pt-0.5">
+                <button onClick={confirm} disabled={!draft.geo}
+                  className="flex-1 flex items-center justify-center gap-1 border-2 border-black px-2 py-1.5 text-[11px] font-bold shadow-[1px_1px_0_#000] active:translate-y-px text-black disabled:opacity-40" style={{ background: AMBER }}>
+                  <Check className="w-3.5 h-3.5" strokeWidth={3} /> {draft.geo ? '确认 · 钉到地球' : '先选国家再钉'}
+                </button>
+                <button onClick={() => { setDraft(null); setInput(''); }}
+                  className="border-2 border-black bg-white px-2.5 py-1.5 text-[11px] active:translate-y-px">取消</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 票根流 */}

@@ -2,8 +2,8 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import EarthMap from './EarthMap';
-import { type MarkerKind, KIND_COLOR, toGeoJSON, MAP_MARKERS, photoById, movieById, bookById } from '../data/mapMarkers';
-import { getUserMarks, subscribeUserMarks } from '../data/userMarks';
+import { type MarkerKind, KIND_COLOR, toGeoJSON, MAP_MARKERS, photoById, movieById, bookById, ensureHeavyMarkers } from '../data/mapMarkers';
+import { getUserMarks, getUserMarksByKind, subscribeUserMarks, removeUserMark } from '../data/userMarks';
 import { getPlanets, getVisiblePlanets, subscribePlanets, togglePlanet, removePlanet } from '../data/planets';
 import { trackDownload } from '../data/themePlanet';
 import { showcasePhotos } from '../data/photos';
@@ -63,11 +63,14 @@ function resolveDetail(id: string, kind: MarkerKind, label: string): MarkerDetai
   const um = getUserMarks().find((m) => m.id === id);
   if (um) {
     const meta = (um.meta || {}) as Record<string, unknown>;
-    if (kind === 'movie') return { kind, title: um.label, original: String(meta.original || ''), director: String(meta.director || ''), country: String(meta.country || ''), year: meta.year as number, rating: meta.rating as number, date: String(meta.date || ''), synopsis: String(meta.synopsis || '') };
-    if (kind === 'book') return { kind, title: um.label, author: String(meta.author || ''), place: String(meta.place || ''), year: meta.year as number, note: String(meta.note || '') };
-    if (kind === 'travel') return { kind, title: um.label, city: String(meta.city || ''), tag: String(meta.tag || ''), note: String(meta.note || ''), date: String(meta.date || '') };
+    if (kind === 'movie') return { kind, title: um.label, original: String(meta.original || ''), director: String(meta.director || ''), country: String(meta.country || ''), year: meta.year as number, rating: meta.rating as number, date: String(meta.date || ''), synopsis: String(meta.synopsis || meta.plot || ''), genre: String(meta.genre || ''), movement: String(meta.movement || ''), cast: Array.isArray(meta.cast) ? (meta.cast as string[]) : [], place: String(meta.place || ''), geoKind: String(meta.geoKind || '') };
+    if (kind === 'book') return { kind, title: um.label, author: String(meta.author || ''), place: String(meta.place || ''), year: meta.year as number, note: String(meta.note || ''), synopsis: String(meta.synopsis || meta.plot || ''), genre: String(meta.genre || ''), movement: String(meta.movement || ''), translator: String(meta.translator || ''), country: String(meta.country || ''), geoKind: String(meta.geoKind || '') };
+    if (kind === 'travel') return { kind, markId: um.id, title: um.label, city: String(meta.city || ''), tag: String(meta.tag || ''), note: String(meta.note || ''), date: String(meta.date || '') };
     if (kind === 'photo') return { kind, full: String(meta.full || ''), thumb: String(meta.thumb || ''), city: String(meta.city || um.label || '') };
-    return { kind: 'music', title: um.label };
+    if (kind === 'council') return { kind, title: um.label, verdict: String(meta.verdict || ''), confidence: meta.confidence as number, ruleEstablished: String(meta.ruleEstablished || ''), place: String(meta.place || ''), date: String(meta.date || '') };
+    // custom：用户自建 agent 的落点。通用渲染——meta 里带 agent 身份 + 标签，地球不认识具体哪个 agent。
+    if (kind === 'custom') return { kind, title: um.label, agentName: String(meta.agentName || ''), emoji: String(meta.emoji || '📍'), domain: String(meta.domain || ''), color: String(meta.color || '#ff8a3d'), tags: (meta.tags && typeof meta.tags === 'object') ? (meta.tags as Record<string, string>) : {}, note: String(meta.note || ''), place: String(meta.place || ''), date: String(meta.date || '') };
+    return { kind: 'music', title: um.label, city: String(meta.city || '') };
   }
   if (kind === 'photo') { const p = photoById.get(id); return p ? { kind, full: p.full, thumb: p.thumb, city: (p.city || '').split(',')[0], authorName: p.author, authorLink: p.authorLink, photoLink: p.photoLink } : null; }
   if (kind === 'movie') { const m = movieById.get(id); return m ? { kind, title: m.title, original: m.original, director: m.director, country: m.country, year: m.year, rating: m.rating, date: m.date, synopsis: m.synopsis } : null; }
@@ -84,11 +87,11 @@ interface MyMapTabProps {
 // 其中的「文字卡片」现已解耦为可拖动便贴（见 seedStickers）；此处保留绿点 + 照片 + 连线。
 const ANNOTATIONS = [
   { id: 1, lng: 120.14703, lat: 30.260901, place: '断桥残雪', date: '03.14', text: '风卷着灰尘', dir: 'right', dx: 30, dy: -20, img: showcasePhotos[0]?.thumb, imgProps: { w: 60, h: 80, rot: -5, dx: -20, dy: 30 } },
-  { id: 2, lng: 120.1416133, lat: 30.2542019, place: '平湖秋月', date: '03.15', text: '霓虹闪烁的夜晚', dir: 'left', dx: -40, dy: 20, img: showcasePhotos[1]?.thumb, imgProps: { w: 70, h: 70, rot: 8, dx: 40, dy: -10 } },
-  { id: 3, lng: 120.1405, lat: 30.2408, place: '三潭印月', date: '03.18', text: '我听到心跳', dir: 'right', dx: 35, dy: 15, img: showcasePhotos[2]?.thumb, imgProps: { w: 80, h: 60, rot: -3, dx: -50, dy: 40 } },
-  { id: 4, lng: 120.13739, lat: 30.23439, place: '花港观鱼', date: '03.20', text: '雨滴打在柏油路', dir: 'left', dx: -20, dy: -30, img: showcasePhotos[3]?.thumb, imgProps: { w: 65, h: 85, rot: 6, dx: 25, dy: 35 } },
-  { id: 5, lng: 120.14501, lat: 30.23388, place: '雷峰塔', date: '03.21', text: '沉默的公交站牌', dir: 'left', dx: -35, dy: -10 },
-  { id: 6, lng: 120.12868, lat: 30.25217, place: '曲院风荷', date: '03.22', text: '远方的车灯', dir: 'right', dx: 25, dy: -25 },
+  { id: 2, lng: 120.1416133, lat: 30.2542019, place: '平湖秋月', date: '03.15', text: '紫晶暮色渐暗，夜色深深蓝', dir: 'left', dx: -40, dy: 20, img: showcasePhotos[1]?.thumb, imgProps: { w: 70, h: 70, rot: 8, dx: 40, dy: -10 } },
+  { id: 3, lng: 120.1405, lat: 30.2408, place: '三潭印月', date: '03.18', text: '我想起你，我的内心变得完整', dir: 'right', dx: 35, dy: 15, img: showcasePhotos[2]?.thumb, imgProps: { w: 80, h: 60, rot: -3, dx: -50, dy: 40 } },
+  { id: 4, lng: 120.13739, lat: 30.23439, place: '花港观鱼', date: '03.20', text: '玫瑰色的黄昏沿着无声的树篱入梦', dir: 'left', dx: -20, dy: -30, img: showcasePhotos[3]?.thumb, imgProps: { w: 65, h: 85, rot: 6, dx: 25, dy: 35 } },
+  { id: 5, lng: 120.14501, lat: 30.23388, place: '雷峰塔', date: '03.21', text: '这是一条长长的寂静的街道', dir: 'left', dx: -35, dy: -10 },
+  { id: 6, lng: 120.12868, lat: 30.25217, place: '曲院风荷', date: '03.22', text: '一辆遥远的汽车的回响，一声轻响', dir: 'right', dx: 25, dy: -25 },
 ];
 
 // 西湖（杭州）—— 地图默认聚焦点，初始缩放到能看到湖周街道
@@ -125,9 +128,11 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
   // 地图标记图层：哪些类型可见（音乐 / 照片），由左下角图例开关控制
-  const [visibleKinds, setVisibleKinds] = useState<Set<MarkerKind>>(() => new Set<MarkerKind>(['music', 'photo', 'movie', 'book', 'travel']));
-  // 状态条实时统计：当前可见图层的标记数 + 去重城市数（随左下角图层开关变化）
-  const visibleMarkers = useMemo(() => MAP_MARKERS.filter((m) => visibleKinds.has(m.kind)), [visibleKinds]);
+  const [visibleKinds, setVisibleKinds] = useState<Set<MarkerKind>>(() => new Set<MarkerKind>(['music', 'photo', 'movie', 'book', 'travel', 'council', 'custom']));
+  // 电影/书标记懒加载完成后翻转，触发统计与图层重算
+  const [markersReady, setMarkersReady] = useState(false);
+  // 状态条实时统计：当前可见图层的标记数 + 去重城市数（随左下角图层开关 / 懒加载补点变化）
+  const visibleMarkers = useMemo(() => MAP_MARKERS.filter((m) => visibleKinds.has(m.kind)), [visibleKinds, markersReady]);
   const cityCount = useMemo(
     () => new Set(visibleMarkers.filter((m) => m.kind === 'music' || m.kind === 'photo').map((m) => (m.label || '').split(',')[0].trim()).filter(Boolean)).size,
     [visibleMarkers],
@@ -200,6 +205,23 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
       })),
     );
   }, []);
+
+  // 地图就绪后，懒加载电影/书标记（含 douban 大 JSON），补进 marks 源 + 刷新统计。
+  // 不拖慢首屏地图渲染；详情查找表（movieById/bookById）也在此填好，点开标记即可拿到简介。
+  // 竞态安全：若懒加载先于 marks 源建立而 resolve，则等地图 idle 后再刷新。
+  useEffect(() => {
+    if (!map) return;
+    let alive = true;
+    ensureHeavyMarkers()
+      .then(() => {
+        if (!alive) return;
+        setMarkersReady(true);
+        if (map.getSource('marks')) refreshMapSources();
+        else map.once('idle', () => { if (alive) refreshMapSources(); });
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [map]);
 
   useEffect(() => {
     if (!map) return;
@@ -467,7 +489,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
         <h1 className="font-pixel text-xl uppercase tracking-wider mb-2">MY MAP</h1>
         <p className="text-xs text-black/70 tracking-wide font-medium">
           城市属于我们<br />
-          <span className="opacity-60 text-[9px] font-pixel block mt-1">The city, filling with your poems.</span>
+          <span className="text-black/70 text-[9px] font-pixel block mt-1">The city, filling with your poems.</span>
         </p>
       </div>
 
@@ -574,6 +596,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
             const tall = h % 2 === 0; const rot = (h % 7) - 3;
             return (
               <button key={key}
+                aria-label="查看照片大图"
                 onPointerDown={(e) => photoDragStart(e, oid, pt)}
                 onPointerMove={onDragMove}
                 onPointerUp={onDragEnd}
@@ -582,7 +605,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
                 style={{ left: `${pt.x}px`, top: `${pt.y}px`, width: '58px', transform: `translate(-50%,-50%) rotate(${rot}deg)` }}>
                 <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full border border-black" style={{ background: pin }} />
                 <div className={`w-full ${tall ? 'aspect-[3/4]' : 'aspect-square'} overflow-hidden bg-[#d8d8d6]`}>
-                  <img src={thumb} className="w-full h-full object-cover grayscale hover:grayscale-0 active:grayscale-0 transition-all duration-500" loading="lazy" draggable={false} />
+                  <img src={thumb} alt="" className="w-full h-full object-cover grayscale hover:grayscale-0 active:grayscale-0 transition-all duration-500" loading="lazy" draggable={false} />
                 </div>
               </button>
             );
@@ -594,6 +617,17 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
             out.push(polaroid('pv-' + m.id, m.id, m.lng, m.lat, m.thumb, phash(m.id), '#ff00ff',
               () => setSelected({ kind: 'photo', full: m.full, thumb: m.thumb, city: (m.label || '').split(',')[0], authorName: m.author, authorLink: m.authorLink, photoLink: m.photoLink })));
             if (out.length >= 70) break;
+          }
+          // 用户自己钉的照片（照片整理 agent 写入 userMarks）：青钉拍立得，点开看缩略大图
+          for (const m of getUserMarksByKind('photo')) {
+            const meta = (m.meta || {}) as Record<string, unknown>;
+            const thumb = String(meta.thumb || '');
+            if (!thumb) continue;
+            const [mlng, mlat] = applyOverride(m.id, m.lng, m.lat);
+            if (!b || !b.contains([mlng, mlat])) continue;
+            out.push(polaroid('um-' + m.id, m.id, m.lng, m.lat, thumb, phash(m.id), '#00e5ff',
+              () => setSelected({ kind: 'photo', full: String(meta.full || thumb), thumb, city: String(meta.city || m.label || '我的照片') })));
+            if (out.length >= 130) break;
           }
           for (const pl of getVisiblePlanets()) {
             for (const ph of pl.photos) {
@@ -619,6 +653,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
               <button
                 key={s.id}
                 title={s.text}
+                aria-label={`心情：${s.text}`}
                 onClick={() => map.flyTo({ center: [s.lng, s.lat], zoom: 8 })}
                 className="absolute z-[18] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black shadow-[1px_1px_0_rgba(0,0,0,0.4)] pointer-events-auto active:scale-90"
                 style={{ left: `${pt.x}px`, top: `${pt.y}px`, width: `${sz}px`, height: `${sz}px`, background: '#ff00ff' }}
@@ -653,6 +688,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
                   </>
                 )}
                 <button
+                  aria-label="删除这条心情"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => removeMoodSticker(s.id)}
                   className="absolute -top-2.5 -right-2.5 w-4 h-4 bg-black border border-black text-white items-center justify-center hidden group-hover:flex"
@@ -701,7 +737,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
 
       {/* 标记详情弹层（照片灯箱 / 电影票根 / 藏书票 / 行程足迹 / 音乐城市） */}
       <AnimatePresence>
-        {selected && <MarkerDetail data={selected} onClose={() => setSelected(null)} />}
+        {selected && <MarkerDetail data={selected} onClose={() => setSelected(null)} onRemove={(id) => { removeUserMark(id); refreshMapSources(); }} />}
       </AnimatePresence>
     </div>
   );

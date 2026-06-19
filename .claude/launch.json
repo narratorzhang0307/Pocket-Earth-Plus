@@ -7,6 +7,18 @@
       "runtimeArgs": ["run", "dev"],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "pocket-earth-prod",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.mjs"],
+      "port": 3008
+    },
+    {
+      "name": "pe-video-916",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/zhangcheng/Desktop/pocket-earth-video", "run", "dev", "--", "--port", "5174", "--strictPort"],
+      "port": 5174
     }
   ]
 }

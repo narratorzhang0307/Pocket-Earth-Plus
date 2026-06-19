@@ -65,8 +65,14 @@ export default function EarthMap({
     }
   };
 
+  // 错误态可见：地图加载中/失败时给可见反馈，而不是首屏一整块纯黑分不清是在加载还是坏了
+  const [loaded, setLoaded] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
+    // token 缺失：直接显示提示，不创建 Map（否则只会黑屏）
+    if (!MAPBOX_TOKEN) { setMapError('缺少地图 token'); return; }
 
     mapboxgl.accessToken = MAPBOX_TOKEN;
     map.current = new mapboxgl.Map({
@@ -78,6 +84,8 @@ export default function EarthMap({
       attributionControl: false,
       interactive,
     });
+    map.current.on('load', () => setLoaded(true));
+    map.current.on('error', (e: { error?: { message?: string } }) => setMapError(e?.error?.message || '地图加载失败'));
 
     map.current.on('style.load', () => {
       if (!map.current) return;
@@ -143,6 +151,20 @@ export default function EarthMap({
         className={className}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, background: '#000000' }}
       />
+
+      {/* 加载中 / 失败的可见反馈（盖在黑色容器上，像素风一致） */}
+      {(mapError || !loaded) && (
+        <div className="absolute inset-0 z-[5] flex flex-col items-center justify-center gap-2 bg-black/80 pointer-events-none">
+          {mapError ? (
+            <>
+              <div className="w-3 h-3 bg-[#d23b3b] border border-white/60" />
+              <div className="text-[11px] text-white/80">地图加载失败 · 请检查网络{mapError === '缺少地图 token' ? ' / token' : ''}</div>
+            </>
+          ) : (
+            <div className="w-3 h-3 bg-[#00ff88] border border-white/40 animate-pulse" />
+          )}
+        </div>
+      )}
 
       {/* 自转开关 + 速度选择：右上角同一行（速度条在按钮左侧） */}
       <div className="absolute top-4 left-0 right-0 z-20 flex justify-end items-center gap-2 px-4 pointer-events-none">

@@ -5,17 +5,23 @@ import { motion } from 'motion/react';
 // 详情数据由 MyMapTab 点击时从查找表(mapMarkers / userMarks)取出后传入。
 
 export interface MarkerDetailData {
-  kind: 'photo' | 'movie' | 'book' | 'travel' | 'music';
+  kind: 'photo' | 'movie' | 'book' | 'travel' | 'music' | 'council' | 'custom';
+  markId?: string;          // 用户落点 id（travel 足迹等可撤销内容用）
   // 通用
   title?: string;
   // photo
   full?: string; thumb?: string; city?: string;
   // movie
   original?: string; director?: string; country?: string; year?: number | null; rating?: number | null; date?: string; synopsis?: string; type?: string;
+  cast?: string[]; genre?: string; movement?: string; geoKind?: string;   // 电影 agent 补全的多维标签 + 落点精度
   // book
-  author?: string; place?: string; note?: string;
+  author?: string; place?: string; note?: string; translator?: string;
   // travel
   tag?: string;
+  // council（议事裁决）
+  verdict?: string; confidence?: number; ruleEstablished?: string;
+  // custom（用户自建 agent 的落点 · 通用渲染）
+  agentName?: string; emoji?: string; domain?: string; color?: string; tags?: Record<string, string>;
   // 星球照片署名（Unsplash 合规）
   authorName?: string; authorLink?: string; photoLink?: string;
 }
@@ -29,7 +35,7 @@ const stars = (r?: number | null) => {
   return '★★★★★'.slice(0, n) + '☆☆☆☆☆'.slice(0, 5 - n);
 };
 
-export default function MarkerDetail({ data, onClose }: { data: MarkerDetailData; onClose: () => void }) {
+export default function MarkerDetail({ data, onClose, onRemove }: { data: MarkerDetailData; onClose: () => void; onRemove?: (id: string) => void }) {
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -75,10 +81,20 @@ export default function MarkerDetail({ data, onClose }: { data: MarkerDetailData
               <div className="text-[15px] font-bold leading-tight">{data.title}</div>
               {data.original && data.original !== data.title && <div className="font-pixel text-[8px] text-black/40 mt-1">{data.original}</div>}
               <div className="text-[11px] text-black/60 mt-1.5">{[data.director, data.country, data.year].filter(Boolean).join(' · ')}</div>
+              {/* 电影 agent 补全的多维标签 */}
+              {(data.genre || data.movement || (data.cast && data.cast.length)) && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {data.genre && <span className="font-pixel text-[6px] border border-black/30 px-1 py-0.5 bg-[#EAEAEA]">类型·{data.genre}</span>}
+                  {data.movement && <span className="font-pixel text-[6px] border border-black/30 px-1 py-0.5 bg-[#fff0d6]">流派·{data.movement}</span>}
+                  {(data.cast || []).slice(0, 3).map((c, i) => <span key={i} className="font-pixel text-[6px] border border-black/30 px-1 py-0.5 bg-[#EAEAEA]">{c}</span>)}
+                </div>
+              )}
               {data.synopsis && <div className="text-[11px] text-black/70 leading-relaxed mt-2 max-h-[160px] overflow-y-auto">{data.synopsis}</div>}
               <div className="flex items-center gap-1.5 mt-2.5">
                 <span className="w-2 h-2" style={{ background: '#ffb000' }} />
-                <span className="font-pixel text-[7px] text-black/50 tracking-wider">已钉 {data.country || '—'}{data.date ? ` · 观看 ${data.date}` : ''}</span>
+                <span className="font-pixel text-[7px] text-black/50 tracking-wider">
+                  钉于 {data.geoKind === 'filming' ? '取景地' : data.geoKind === 'story' ? '故事地' : ''}{data.place || data.country || '—'}{data.date ? ` · 观看 ${data.date}` : ''}
+                </span>
               </div>
             </div>
           </div>
@@ -96,12 +112,22 @@ export default function MarkerDetail({ data, onClose }: { data: MarkerDetailData
                 <div className="text-[15px] font-bold leading-tight">{data.title}</div>
                 {data.year && <span className="font-pixel text-[8px] text-black/35">{data.year}</span>}
               </div>
-              <div className="text-[11px] text-black/60 mt-1">{[data.author, data.place].filter(Boolean).join(' · ')}</div>
+              <div className="text-[11px] text-black/60 mt-1">{[data.author, data.country].filter(Boolean).join(' · ')}</div>
+              {/* 读书 agent 补全的多维标签 */}
+              {(data.genre || data.movement || data.translator) && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {data.genre && <span className="font-pixel text-[6px] border border-black/30 px-1 py-0.5 bg-[#EAEAEA]">类型·{data.genre}</span>}
+                  {data.movement && <span className="font-pixel text-[6px] border border-black/30 px-1 py-0.5 bg-[#f3ecff]">流派·{data.movement}</span>}
+                  {data.translator && <span className="font-pixel text-[6px] border border-black/30 px-1 py-0.5 bg-[#EFE9FA]">译·{data.translator}</span>}
+                </div>
+              )}
               {data.synopsis && <div className="text-[11px] text-black/75 leading-relaxed mt-2 max-h-[160px] overflow-y-auto">{data.synopsis}</div>}
               {!data.synopsis && data.note && <div className="text-[12px] text-black/75 leading-relaxed mt-2 italic">「{data.note}」</div>}
               <div className="flex items-center gap-1.5 mt-2.5">
                 <span className="w-2 h-2" style={{ background: '#b388ff' }} />
-                <span className="font-pixel text-[7px] text-black/50 tracking-wider">已钉 {data.place || '故事之地'}{data.date ? ` · 读于 ${data.date}` : ''}</span>
+                <span className="font-pixel text-[7px] text-black/50 tracking-wider">
+                  钉于 {data.geoKind === 'story' ? '故事地' : data.geoKind === 'author' ? '作者地' : ''}{data.place || '故事之地'}{data.date ? ` · 读于 ${data.date}` : ''}
+                </span>
               </div>
             </div>
           </div>
@@ -120,9 +146,15 @@ export default function MarkerDetail({ data, onClose }: { data: MarkerDetailData
               </div>
               <div className="text-[11px] text-black/55 mt-1">{data.city}</div>
               {data.note && <div className="text-[12px] text-black/75 leading-relaxed mt-2">{data.note}</div>}
-              <div className="flex items-center gap-1.5 mt-2.5">
-                <span className="w-2 h-2" style={{ background: '#ff3b6b' }} />
-                <span className="font-pixel text-[7px] text-black/50 tracking-wider">{data.date ? `走过 · ${data.date}` : '已钉星球'}</span>
+              <div className="flex items-center justify-between gap-1.5 mt-2.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2" style={{ background: '#ff3b6b' }} />
+                  <span className="font-pixel text-[7px] text-black/50 tracking-wider">{data.date ? `走过 · ${data.date}` : '已钉星球'}</span>
+                </div>
+                {data.markId && onRemove && (
+                  <button onClick={() => { onRemove(data.markId!); onClose(); }}
+                    className="font-pixel text-[7px] border border-black px-1.5 py-0.5 bg-white text-[#d23b3b] active:translate-y-px">移除足迹</button>
+                )}
               </div>
             </div>
           </div>
@@ -135,6 +167,52 @@ export default function MarkerDetail({ data, onClose }: { data: MarkerDetailData
             <div className="px-3 py-3 text-center">
               <div className="text-[16px] font-bold">{data.title || data.city}</div>
               <div className="text-[10px] text-black/45 mt-1">● 歌手出身地 / 歌曲城市</div>
+            </div>
+          </div>
+        )}
+
+        {/* 议事裁决（法庭/圆桌的庭审纪要） */}
+        {data.kind === 'council' && (
+          <div>
+            <div className="px-2.5 py-1.5" style={{ background: '#caa64a' }}>
+              <span className="font-pixel text-[7px] tracking-widest text-black">VERDICT · 庭审纪要</span>
+            </div>
+            <div className="px-3 py-2.5">
+              <div className="text-[14px] font-bold leading-tight">⚖️ {data.title}</div>
+              {data.verdict && <div className="text-[12px] text-black/75 leading-relaxed mt-2">{data.verdict}</div>}
+              {data.ruleEstablished && <div className="text-[11px] text-black/60 italic mt-2 border-l-2 pl-2" style={{ borderColor: '#caa64a' }}>裁判要旨：{data.ruleEstablished}</div>}
+              <div className="flex items-center gap-1.5 mt-2.5">
+                <span className="w-2 h-2" style={{ background: '#caa64a' }} />
+                <span className="font-pixel text-[7px] text-black/50 tracking-wider">
+                  {data.place ? `就此地开庭 · ${data.place}` : '议事裁决'}{typeof data.confidence === 'number' ? ` · 置信 ${Math.round(data.confidence * 100)}%` : ''}{data.date ? ` · ${data.date}` : ''}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 自建 agent 落点（通用：一个分支覆盖所有用户自造的 agent，地球不认识具体哪个） */}
+        {data.kind === 'custom' && (
+          <div>
+            <div className="px-2.5 py-1.5" style={{ background: data.color || '#ff8a3d' }}>
+              <span className="font-pixel text-[7px] tracking-widest text-black">{(data.agentName || '自建 AGENT').toUpperCase()}</span>
+            </div>
+            <div className="px-3 py-2.5">
+              <div className="text-[15px] font-bold leading-tight">{data.emoji || '📍'} {data.title}</div>
+              {data.note && <div className="text-[12px] text-black/75 leading-relaxed mt-1.5">{data.note}</div>}
+              {data.tags && Object.keys(data.tags).length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {Object.entries(data.tags).map(([k, v]) => (
+                    <span key={k} className="text-[9px] border border-black px-1.5 py-0.5 bg-[#f6f6f6]">{k}：{v}</span>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 mt-2.5">
+                <span className="w-2 h-2" style={{ background: data.color || '#ff8a3d' }} />
+                <span className="font-pixel text-[7px] text-black/50 tracking-wider">
+                  {data.domain ? `${data.domain}` : '自建'}{data.place ? ` · ${data.place}` : ''}{data.date ? ` · ${data.date}` : ''}
+                </span>
+              </div>
             </div>
           </div>
         )}

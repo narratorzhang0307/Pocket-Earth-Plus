@@ -9,6 +9,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { gzipSync, brotliCompressSync, constants as zlibConstants } from 'node:zlib'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DIST = path.join(__dirname, 'dist')
@@ -28,7 +29,17 @@ const DIST = path.join(__dirname, 'dist')
 })()
 
 const PORT = Number(process.env.API_PORT || process.env.PORT || 3008)
+// 云脑：优先通义 Qwen（DashScope · OpenAI 兼容），未配 DASHSCOPE_API_KEY 时回退 DeepSeek。
+const DASHSCOPE_KEY = process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY || ''
+const QWEN_MODEL = process.env.QWEN_MODEL || 'qwen-plus'
+const DASHSCOPE_BASE = process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || ''
+// 现役云脑选型：有 Qwen key 用 Qwen，否则用 DeepSeek。
+const LLM = DASHSCOPE_KEY
+  ? { name: 'qwen', key: DASHSCOPE_KEY, url: `${DASHSCOPE_BASE}/chat/completions`, model: QWEN_MODEL }
+  : DEEPSEEK_KEY
+    ? { name: 'deepseek', key: DEEPSEEK_KEY, url: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-chat' }
+    : null
 const UNSPLASH_KEY = process.env.UNSPLASH_ACCESS_KEY || ''
 const OLLAMA = process.env.OLLAMA_URL || 'http://localhost:11434'
 const EDGE_MODEL = process.env.EDGE_MODEL || 'qwen3:0.6b'
@@ -55,16 +66,16 @@ async function handleFrostLlm(req, res) {
   if (req.method !== 'POST') { res.statusCode = 405; res.end(); return }
   const raw = await readBody(req)
   try {
-    if (!DEEPSEEK_KEY) return sendJSON(res, { text: '', error: 'no_key' })
+    if (!LLM) return sendJSON(res, { text: '', error: 'no_key' })
     const { prompt, system, json } = JSON.parse(raw || '{}')
     const messages = []
     if (system) messages.push({ role: 'system', content: system })
     messages.push({ role: 'user', content: prompt })
-    const r = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    const r = await fetch(LLM.url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${DEEPSEEK_KEY}` },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${LLM.key}` },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: LLM.model,
         messages,
         temperature: json ? 0 : 0.7, // 结构化/路由类求确定性；对话类保留创造性
         ...(json ? { response_format: { type: 'json_object' } } : {}),
@@ -231,21 +242,47 @@ const MIME = {
   '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf',
   '.map': 'application/json; charset=utf-8', '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8',
 }
+// —— 文本类资源按需压缩（br 优先，否则 gzip）；压缩结果按 路径+编码+mtime 缓存，避免每次重压 ——
+const COMPRESSIBLE = new Set(['.html', '.js', '.mjs', '.css', '.json', '.svg', '.webmanifest', '.map', '.txt'])
+const compCache = new Map()
+function compressFor(accept, buf, abs, mtimeMs) {
+  let enc = ''
+  if (/\bbr\b/.test(accept)) enc = 'br'
+  else if (/\bgzip\b/.test(accept)) enc = 'gzip'
+  if (!enc || buf.length < 1024) return { enc: '', body: buf } // 小文件不值得压
+  const key = `${abs}:${enc}:${mtimeMs}`
+  let body = compCache.get(key)
+  if (!body) {
+    body = enc === 'br'
+      ? brotliCompressSync(buf, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 5 } })
+      : gzipSync(buf, { level: 6 })
+    compCache.set(key, body)
+  }
+  return { enc, body }
+}
+
 async function serveStatic(req, res, pathname) {
   let rel = decodeURIComponent(pathname).replace(/^\/+/, '')
   if (rel === '') rel = 'index.html'
   let abs = path.join(DIST, rel)
   if (!abs.startsWith(DIST)) { res.writeHead(403); res.end('forbidden'); return } // 防目录穿越
-  let isFile = false
-  try { isFile = (await stat(abs)).isFile() } catch { isFile = false }
-  if (!isFile) { abs = path.join(DIST, 'index.html'); rel = 'index.html' } // SPA 回退
+  let st = null
+  try { st = await stat(abs); if (!st.isFile()) st = null } catch { st = null }
+  if (!st) { abs = path.join(DIST, 'index.html'); rel = 'index.html'; try { st = await stat(abs) } catch { /* noop */ } } // SPA 回退
   try {
     const buf = await readFile(abs)
     const ext = path.extname(abs).toLowerCase()
     const headers = { 'content-type': MIME[ext] || 'application/octet-stream' }
-    // 带哈希的资源长缓存；index.html 不缓存（始终拿最新）
-    if (rel === 'index.html') headers['cache-control'] = 'no-cache'
+    // 带哈希的资源长缓存；index.html / sw.js / manifest 不缓存（始终拿最新，PWA 更新即时生效）
+    if (rel === 'index.html' || rel === 'sw.js' || rel === 'manifest.webmanifest') headers['cache-control'] = 'no-cache'
     else if (rel.startsWith('assets/')) headers['cache-control'] = 'public, max-age=31536000, immutable'
+    else if (rel.startsWith('icons/') || rel.startsWith('splash/') || rel === 'favicon.ico') headers['cache-control'] = 'public, max-age=604800'
+    // 文本资源按需压缩（js/css/json/html… 体积大头），图片字体已是压缩格式不重复压
+    if (COMPRESSIBLE.has(ext)) {
+      headers['vary'] = 'Accept-Encoding'
+      const { enc, body } = compressFor(req.headers['accept-encoding'] || '', buf, abs, st ? st.mtimeMs : 0)
+      if (enc) { headers['content-encoding'] = enc; res.writeHead(200, headers); res.end(body); return }
+    }
     res.writeHead(200, headers)
     res.end(buf)
   } catch {
@@ -261,12 +298,12 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/frost-llm') return await handleFrostLlm(req, res)
     if (p === '/api/edge') return await handleEdge(req, res)
     if (p === '/api/unsplash') return await handleUnsplash(req, res, url)
-    if (p === '/healthz') return sendJSON(res, { ok: true, edge: EDGE_WANT, llm: DEEPSEEK_KEY ? 'on' : 'off' })
+    if (p === '/healthz') return sendJSON(res, { ok: true, edge: EDGE_WANT, llm: LLM ? LLM.name : 'off', model: LLM ? LLM.model : '' })
     return await serveStatic(req, res, p)
   } catch (e) {
     res.writeHead(500); res.end('server error')
   }
 })
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[pocket-earth] 监听 :${PORT}  llm=${DEEPSEEK_KEY ? 'on' : 'off'}  edge=${EDGE_WANT}  unsplash=${UNSPLASH_KEY ? 'on' : 'off'}`)
+  console.log(`[pocket-earth] 监听 :${PORT}  llm=${LLM ? LLM.name + '/' + LLM.model : 'off'}  edge=${EDGE_WANT}  unsplash=${UNSPLASH_KEY ? 'on' : 'off'}`)
 })

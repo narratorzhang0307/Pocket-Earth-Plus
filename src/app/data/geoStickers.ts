@@ -43,14 +43,25 @@ export function updateMoodStickerPos(id: string, lat: number, lng: number) {
 }
 // 拖动结束：落盘
 export function commitStickers() { persist(); }
-// 一次性把「已有的白色卡片」种入便贴库（按固定 id 去重 + 一次性标记，刷新不重复）
+// 把「已有的白色卡片」种入便贴库。版本化：改种子内容（如卡片诗句）时把 SEED_VERSION +1，
+// 已种过的浏览器会重新同步种子卡片的文字——非破坏性：保留用户自建的心情贴，
+// 也保留用户拖动过的种子卡片位置，只覆盖文字 / 日期等种子内容。
+const SEED_VERSION = '2';
 export function seedStickers(seeds: Array<Omit<MoodSticker, 'createdAt'>>) {
   const flagKey = KEY + '.seeded';
-  try { if (localStorage.getItem(flagKey)) return; } catch { /* 隐私模式：直接尝试种 */ }
-  const have = new Set(stickers.map((s) => s.id));
-  const fresh = seeds.filter((s) => !have.has(s.id)).map((s) => ({ ...s, createdAt: new Date().toISOString() }));
-  if (fresh.length) { stickers = [...stickers, ...fresh]; persist(); emit(); }
-  try { localStorage.setItem(flagKey, '1'); } catch { /* ignore */ }
+  let prev = '';
+  try { prev = localStorage.getItem(flagKey) || ''; } catch { /* 隐私模式：当作未种 */ }
+  if (prev === SEED_VERSION) return;                       // 已是最新种子版本
+  const ids = new Set(seeds.map((s) => s.id));
+  const prevById = new Map(stickers.map((s) => [s.id, s]));
+  const userStickers = stickers.filter((s) => !ids.has(s.id)); // 保留用户自建贴
+  const seeded = seeds.map((s) => {
+    const old = prevById.get(s.id);                         // 已存在则保留其位置（用户可能拖过）
+    return { ...s, ...(old ? { lat: old.lat, lng: old.lng } : {}), createdAt: old?.createdAt || new Date().toISOString() };
+  });
+  stickers = [...seeded, ...userStickers];
+  persist(); emit();
+  try { localStorage.setItem(flagKey, SEED_VERSION); } catch { /* ignore */ }
 }
 export function subscribeMood(fn: () => void): () => void { subs.add(fn); return () => { subs.delete(fn); }; }
 
@@ -86,11 +97,37 @@ const PLACE_COORDS: Record<string, [number, number]> = {
 
 function matchPlace(s: string): { place: string; lng: number; lat: number } | null {
   if (!s) return null;
-  const low = s.toLowerCase().replace(/\s/g, '');
+  const low = s.toLowerCase();
   for (const [k, v] of Object.entries(PLACE_COORDS)) {
-    if (s.includes(k) || low.includes(k.toLowerCase())) return { place: k, lng: v[0], lat: v[1] };
+    if (/^[a-z]+$/.test(k)) {
+      // 英文键用词边界匹配，避免短键被无关地名的子串误命中（Paristhana→paris、Balikpapan→bali、Old Berliner→berlin）
+      if (new RegExp(`\\b${k}\\b`, 'i').test(low)) return { place: k, lng: v[0], lat: v[1] };
+    } else if (s.includes(k)) {
+      return { place: k, lng: v[0], lat: v[1] };   // 中文键无词边界，保留子串匹配
+    }
   }
   return null;
+}
+
+// 城市级地理解析（字典直配，纯本地、可离线）。供电影/读书等 agent 的「取景地/故事地」子 agent 复用，
+// 避免各处重复维护城市坐标表。匹配不到返回 null，调用方自行回退到国家坐标或端侧提名。
+export function geocodeCity(name: string): { place: string; lng: number; lat: number } | null {
+  return matchPlace(name);
+}
+
+// 坐标 → 最近的已知中文城市（粗反查）。给照片钉地球填城市名 + 回流长期画像用。
+// 超过 maxKm 视为不在任何已知城市附近，返回 null（照片就不带城市、也不回流，避免乱填）。
+export function nearestCity(lat: number, lng: number, maxKm = 80): { place: string; lng: number; lat: number } | null {
+  let best: { place: string; lng: number; lat: number } | null = null;
+  let bestKm = Infinity;
+  for (const [k, v] of Object.entries(PLACE_COORDS)) {
+    if (!/[一-龥]/.test(k)) continue;   // 只回中文城市名，跳过英文别名
+    const dLat = (lat - v[1]) * 111;
+    const dLng = (lng - v[0]) * 111 * Math.cos((lat * Math.PI) / 180);
+    const km = Math.sqrt(dLat * dLat + dLng * dLng);
+    if (km < bestKm) { bestKm = km; best = { place: k, lng: v[0], lat: v[1] }; }
+  }
+  return best && bestKm <= maxKm ? best : null;
 }
 
 // 从心情文字解析经纬度：本地字典直配 → 端侧提地名 → 兜底用当前地图中心

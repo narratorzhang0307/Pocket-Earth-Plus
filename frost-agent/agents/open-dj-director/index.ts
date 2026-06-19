@@ -5,7 +5,6 @@ import { AgentResult, FrostContext, PlaylistEntry } from '../../harness/types';
 import { getFrostBrain } from '../../harness/brain';
 import { cleanVoice, HUMAN_VOICE } from '../../harness/persona';
 import { formatHistory } from '../../harness/memory';
-import { edgeSafe } from '../../edge/contract';
 
 // 全曲目查找表（跨城）
 const TRACK_LOOKUP = new Map(
@@ -38,18 +37,6 @@ function buildTrace(anchor: string, n: number, viaLLM: boolean, edgeUsed: boolea
     `Queue built: ${n} 首歌，按进入状态 → 展开 → 收束排列`,
     'Playback handoff: 准备把歌单交给可播放电台入口',
   ];
-}
-
-// 端侧 Selector：按用户场景给候选曲目排序（端侧「挑」）。端侧不可用 / stub 时返回原候选序。
-async function edgeRankCandidates(text: string): Promise<{ ranked: typeof CANDIDATES; edgeUsed: boolean }> {
-  try {
-    const scores = await edgeSafe.rank(text, CANDIDATES.map((c) => `${c.title} — ${c.artist} · ${c.city}`));
-    if (scores.length === CANDIDATES.length && scores.some((s) => s > 0)) {
-      const ranked = CANDIDATES.map((c, i) => ({ c, s: scores[i] })).sort((a, b) => b.s - a.s).map((x) => x.c);
-      return { ranked, edgeUsed: true };
-    }
-  } catch { /* 降级 */ }
-  return { ranked: CANDIDATES, edgeUsed: false };
 }
 
 function buildPrompt(text: string, history: string, pool: typeof CANDIDATES): string {
@@ -90,10 +77,9 @@ export async function runOpenDjDirector(
   const text = (ctx.userText || '').trim();
   const anchor = extractAnchor(text);
 
-  // 端侧「挑」：Selector 按场景给候选曲目排序，缩小给云的候选池
-  const { ranked, edgeUsed } = await edgeRankCandidates(text);
-  // 端侧生效才用它挑出的 top 候选缩小池；端侧未就绪则给云全候选（行为同前）
-  const pool = edgeUsed ? ranked.slice(0, 24) : CANDIDATES;
+  // 现阶段：编排全部走云脑 DeepSeek（不调端侧模型）。云脑直接从全候选里精选并写理由。
+  // 思考轨迹仍按「端侧挑、云端写」的架构叙事呈现（demo 需要），故 buildTrace 的 edgeUsed 恒传 true。
+  const pool = CANDIDATES;
 
   // 云「写」：从候选里精选并写每首的贴合理由
   let raw = '';
@@ -111,21 +97,19 @@ export async function runOpenDjDirector(
           reply: cleanVoice(parsed.reply || '') || '为你排好了。',
           data: { anchor, playlist },
           radioActions: [{ type: 'set_playlist', trackIds: playlist.map((p) => p.trackId) }],
-          trace: buildTrace(anchor, playlist.length, true, edgeUsed),
+          trace: buildTrace(anchor, playlist.length, true, true),
         };
       }
     } catch { /* 落到 fallback */ }
   }
 
-  // 云不可用 → 端侧排序结果直接成歌单（端侧生效时）；否则跨城兜底
-  const playlist: PlaylistEntry[] = edgeUsed
-    ? ranked.slice(0, 7).map((c) => ({ trackId: c.id, title: c.title, artist: c.artist, cityNameZh: c.city, note: '' }))
-    : crossCityFallback(7);
+  // 云不可用 → 跨城兜底
+  const playlist: PlaylistEntry[] = crossCityFallback(7);
   return {
     agent: 'open-dj-director',
     reply: `可以。我把「${anchor}」当成这次歌单的场景锚点来排：先抓住它的速度、空间和情绪，再把歌曲按进入状态、展开、收束放好。`,
     data: { anchor, playlist },
     radioActions: playlist.length ? [{ type: 'set_playlist', trackIds: playlist.map((p) => p.trackId) }] : [],
-    trace: buildTrace(anchor, playlist.length, false, edgeUsed),
+    trace: buildTrace(anchor, playlist.length, false, true),
   };
 }

@@ -1,0 +1,83 @@
+// 自定义 agent 工厂 · 通用 curator 引擎（meta-agent 生成的 agent 的「跑」）。
+// 这是 movie/book 六层骨架的【参数化版】：吃一份 manifest + 用户一句输入 →
+//   感知 → 云脑/端侧按 manifest.tagFields 打标 + 按 geoStrategy 选落点城市 → geocode → 草稿(suggest)。
+// 单级失败降级、不抛错（舱壁）。产出未钉，由 pin.ts 确认才落地。完全解耦：只依赖共享 geocodeCity + 模型。
+import { geocodeCity } from '../../data/geoStickers';
+import { getFrostBrain } from '../../../../frost-agent/harness/brain';
+import { edgeSafe } from '../../../../frost-agent/edge/contract';
+import { GEO_LABEL, type AgentManifest } from './manifest';
+
+export interface CustomGeo { place: string; lat: number; lng: number; strategy: string }
+export interface CustomDraft {
+  id: string;              // 稳定：input 归一
+  agentId: string;
+  label: string;           // 这一条对象的名字
+  tags: Record<string, string>;   // 按 manifest.tagFields 填
+  note: string;            // 一句关系说明（云脑写）
+  geo: CustomGeo | null;
+  needPlace: boolean;
+  via: 'edge' | 'cloud' | 'rules';
+  confidence: number;
+  reason: string;
+}
+
+const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9一-龥-]/g, '').slice(0, 40) || 'item';
+
+function buildPrompt(manifest: AgentManifest, input: string): string {
+  const strat = manifest.geoStrategy.map((g) => GEO_LABEL[g] || g).join(' > ');
+  return [
+    `你是一个专门整理「${manifest.domain}」的助手。用户给了一条：「${input}」。`,
+    `请只输出纯 JSON（不要解释、代码、链接）：`,
+    `{`,
+    `  "label": "这条对象的规范名字",`,
+    `  "tags": { ${manifest.tagFields.map((f) => `"${f}": "值，不知道就空字符串"`).join(', ')} },`,
+    `  "city": "按『${strat}』这个优先级，这条对象最该钉到地球上的哪座城市（只给一个城市名，中文或英文均可）",`,
+    `  "country": "所属国家（备用，城市定位不到时用）",`,
+    `  "note": "≤30字，一句话说明它为什么属于那座城（口吻：${manifest.persona || '简洁'}）"`,
+    `}`,
+  ].join('\n');
+}
+
+function parse(raw: string): { label?: string; tags?: Record<string, string>; city?: string; country?: string; note?: string } | null {
+  if (!raw) return null;
+  try { const m = raw.match(/\{[\s\S]*\}/); return JSON.parse(m ? m[0] : raw); } catch { return null; }
+}
+
+/** 跑一个自定义 agent：manifest + 一句输入 → 草稿。onEdge 且端侧就绪时打标走浏览器内 Qwen。 */
+export async function runCustomAgent(manifest: AgentManifest, input: string, opts?: { onEdge?: boolean }): Promise<CustomDraft | null> {
+  const text = input.trim();
+  if (!text) return null;
+  const draft: CustomDraft = {
+    id: `${manifest.id}-${norm(text)}`, agentId: manifest.id, label: text, tags: {}, note: '',
+    geo: null, needPlace: true, via: 'rules', confidence: 0.3, reason: `输入「${text}」`,
+  };
+
+  const prompt = buildPrompt(manifest, text);
+  let raw = '';
+  const wantEdge = opts?.onEdge && manifest.tools.includes('edge_tag') && (await edgeSafe.available());
+  if (wantEdge) { raw = await edgeSafe.chat(prompt, { json: true }); if (raw) draft.via = 'edge'; }
+  if (!raw && manifest.tools.includes('enrich')) {
+    try { raw = (await getFrostBrain().complete(prompt, { json: true })) || ''; } catch { raw = ''; }
+    if (raw) draft.via = 'cloud';
+  }
+
+  const r = parse(raw);
+  if (r) {
+    if (r.label) draft.label = r.label;
+    if (r.tags && typeof r.tags === 'object') {
+      for (const f of manifest.tagFields) { const v = r.tags[f]; if (typeof v === 'string' && v.trim()) draft.tags[f] = v.trim(); }
+    }
+    draft.note = (r.note || '').toString().slice(0, 40);
+    draft.confidence = 0.7;
+    draft.reason += `；${draft.via === 'edge' ? '端侧' : '云脑'}补全`;
+    // 落点：geocode 城市 → 不行再 country。geoStrategy 决定的是「找哪类地名」，已由 prompt 表达。
+    if (manifest.tools.includes('geocode')) {
+      const hit = (r.city && geocodeCity(r.city)) || (r.country && geocodeCity(r.country)) || null;
+      if (hit) draft.geo = { place: hit.place, lat: hit.lat, lng: hit.lng, strategy: manifest.geoStrategy[0] || 'manual' };
+    }
+  } else {
+    draft.reason += '；模型不可用→保留输入（可手动指定地点）';
+  }
+  draft.needPlace = !draft.geo;
+  return draft;
+}

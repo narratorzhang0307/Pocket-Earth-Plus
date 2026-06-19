@@ -1,0 +1,761 @@
+{
+  "final": {
+    "one_line": "把现状 runScreen 那个『质量分单决留/钉』的一次性打分器，重构成感知→记忆→推理→行动→反思→协作的端侧具身闭环 Worker：Harness 四底座(白名单物理保证/舱壁降级/断点续跑/分级推理)做工程地基，三明治架构(确定性逻辑夹住端侧 CLIP)保可靠，verdict⟂pinnable 类型优先正交闸把质量分降级为只管废片过滤+簇内选优，全程 suggest-then-confirm 原图不出端。",
+    "design_philosophy": "三明治架构(确定性逻辑夹住概率模型，生成可概率/验证必确定) + 人机主导权(suggest-then-confirm，人 decision/AI choice/系统 execution) + 建议而非执行(绝不替用户删原图) + 类型优先正交闸(verdict⟂pinnable，质量分降级为只管废片过滤+簇内选优=连根拔除『质量分单决留/钉』翻车根因) + Harness 四底座(白名单物理保证/舱壁降级/断点续跑/分级推理省算省电) + 诚实对待 PWA 硬限制(无后台/无全相册/HEIC-GPS 读不出/无人脸 saliency)。核心立场转折：现状 runScreen 是把感知/记忆/推理/行动揉进一个大函数、还让 fastScore 单独决定留/钉(line 312-319) 的一次性打分器；要重构成六层具身闭环 Worker，per-photo 走串行流水线、阶段间只传结构化小结论(Handoff Contract)、原图/canvas/embedding 绝不出端也绝不回流主上下文。三套草案的『思想合成』全采纳；但它们对接现有代码有 4 处事实错误(钉地球链路是 0 不是『替换 addMoodSticker』；MAP_MARKERS 是 const 无运行时发布订阅；edgeSafe.vision 是网络调用违反原图不出端；FrostIntent/RadioAction 是封闭枚举 photos 无法路由)——已逐一核实并在本架构里改对：钉地球从零新建并复用 geoStickers 那套 localStorage 发布订阅、复用契约里已定义的 mark_place 而非另造 addPhotoPin、端侧 CLIP 走 photoScreen.ts 内 transformers.js 绝不走 edgeSafe.vision、FROST 接入诚实承认要动 types/router/validator 内核。",
+    "layers": [
+      {
+        "layer": "感知",
+        "responsibility": "把一张 File 解码成带置信度的便宜信号，贵操作压到最后最少。per-photo 八闸认知漏斗：闸0 解码缩图(长边256，HEIC createImageBitmap+{imageOrientation:'from-image'} 归一化→<img>兜底)+算 dHash 主键 → 闸1 EXIF 金信号(最便宜最确定) → 闸2 像素废片闸(先过低光/艺术豁免) → 闸3 资料 isUtility 多信号投票 → 闸4 仅不确定(0.35~0.65)或将进钉候选才跑端侧 CLIP。每张独立舱室：HEIC 解码失败/EXIF 缺失/坏图只标 status:failed 跳过不中断整轮。多模态融合像素+EXIF+GPS 成统一表征。【修 OOM·评审实证 bug】现状 photoScreen.ts:277 给每一张 result 都挂 _canvas、全程驻留到 322 才 delete=大相册必 OOM；改为单张闸跑完即吐 PhotoFeatures 小结论、立即释放 canvas，buffer 绝不留主决策上下文。",
+        "patterns": [
+          "认知漏斗/注意力聚焦(廉价评分器先分流90%废片资料，主动忽视而非全处理)",
+          "多模态融合/统一语义场(像素+EXIF+GPS 融合，从『看』到『在』)",
+          "三明治上层面包(像素/EXIF 确定性约束包住 CLIP 概率输入)",
+          "舱壁/优雅降级(单张坏图 status:failed 锁沙箱，不污染整轮)",
+          "分级推理/具身预算(System1 秒判→仅不确定项升级 System2 CLIP，按电量/充电下发精筛比例)"
+        ],
+        "modules": [
+          "src/app/lib/photoScreen.ts:decode() 加 imageOrientation 归一化(line 56/62)+单张跑完即释放 canvas(修 277/322 OOM)",
+          "src/app/lib/photoScreen.ts:readExif() 由 readCaptureDate(line 39-49) 扩 Make/Model/Software/曝光/GPS，出 {capDate,hasCameraFields,hasGPS,lat,lng,softwareIsScreenshot,suspectExif}+一致性校验(海里/出生前/截图工具名→suspectExif)",
+          "src/app/lib/photoScreen.ts:fastMetrics(line 81) 废片闸沿用 sharpness<0.08/mean<28 + 低光艺术豁免前置",
+          "新增 utilityMetrics()：宽高比命中屏幕分辨率表/最大纯色块占比/量化唯一色数/二值化文本密度行结构，融合 EXIF 投票出 isUtilityProb，替换 line 270 脆弱单规则 colorful<0.18&&contrast>0.55",
+          "src/app/lib/photoScreen.ts:visionClassify(line 213) 改两段式 ensemble，仅不确定项跑；端侧 CLIP 走现有 transformers.js 浏览器本地路径，【绝不走 edgeSafe.vision——已核实它经 httpEdge 是网络调用，会违反原图不出端】"
+        ]
+      },
+      {
+        "layer": "记忆",
+        "responsibility": "端侧持久化地基：已筛过别重筛、偏好沉淀、坐标治理。L1 工作记忆=当前批 File；L3=IndexedDB 照片索引(dHash 主键)。生命周期四步：编码(算 dHash+脱敏，只写派生)→巩固(去重写入)→检索(重扫先查 dHash 命中即秒级跳过，重活 CLIP/OCR 绝不重复跑)→遗忘(用户删的软删+坐标可清空)。RAG 式知识解耦：经纬度→地名当外挂(PLACE_COORDS 仅城市级标签『约』不作定位)。【诚实】PWA 系统选择器拿不到全相册全集，故『重扫只处理新增』退化为『用户重复喂入时去重』，无法做『稳定库秒级跳过整本』——那是原生 PhotoKit change observer 才有的能力，不在 PWA 文案承诺。",
+        "patterns": [
+          "分层记忆/倒金字塔(L1 批×L3 IndexedDB 索引，只存派生元数据保持端侧轻盈)",
+          "对抗遗忘/高效遗忘(不存原图全量特征，只留指纹+派生)",
+          "情节记忆双键检索(目标相似+状态相似→既查重又举一反三归类)",
+          "RAG/知识解耦(坐标→地名外挂可更新，模型不背地理)",
+          "幂等主键(dHash 替换 line 272 跨批漂移/碰撞伪键)"
+        ],
+        "modules": [
+          "新增 src/app/lib/photo/photoStore.ts(IndexedDB 增量幂等层，dHash 主键，get/put/queryByCluster/clearGeo)",
+          "新增 src/app/lib/photo/prefsStore.ts(端侧个性化阈值，【不能进 profile.ts——已核实其第6-7行声明只供云脑、端侧 Selector 一律不接触；且 recordSignals 只吃字符串标签存不了数值阈值】)",
+          "src/app/data/geoStickers.ts:PLACE_COORDS(line 75) 抽为就近城市级标签字典，标『约』不定位",
+          "frost-agent/harness/profile.ts:recordSignals('photos',{cities/aesthetics}) 仅收『脱敏标签计数』那类云脑画像信号(去过的城市名)，不收数值阈值"
+        ]
+      },
+      {
+        "layer": "推理",
+        "responsibility": "把 PhotoFeatures 推成三件套 photoType + verdict + pinnable。判定顺序固定『先类型后价值』。两条正交输出：verdict(留/待定/可清理 建议，压倒性偏『宁可放过』)由类型+价值+重复定；pinnable=实拍类型 ∧ 真坐标(或用户补) ∧ 价值达钉阈 ∧ 簇代表，资料型即便带坐标即便判留 pinnable 恒 false(类型一票否决优先于坐标)。质量分被彻底降级为只管废片过滤+簇内选优。价值按 value_by_type 算(风景=美学+地理稀有度，人物=有主体清晰，资料=可检索性非美)，稀有度分母=IndexedDB 累积全库，小库自动调低权重。",
+        "patterns": [
+          "三明治下层面包/验证器(类型闸/坐标闸以 EXIF/像素确定性信号否决 CLIP 概率误判)",
+          "ReAct 微闭环(单张『像截图』→查 EXIF/GPS→观察→改判，设步数上限超限标待确认防死磕)",
+          "快/慢思考路由(System1 启发式秒判 / System2 CLIP 仅升级不确定项)",
+          "类型优先决策树(先分清是什么再谈值不值/钉不钉)",
+          "时空聚类(时间10分钟分桶→GPS DBSCAN eps 数百米，每簇=一次经历，增量只比相邻簇)"
+        ],
+        "modules": [
+          "新增 classify()：融合 EXIF+utilityVote+CLIP 出 photoType(六类型：实拍有地点/实拍人与生活/资料屏内生成/资料拍摄文字/实拍无地点待补/废片+不确定)",
+          "新增 valueByType() 替换 fastScore 单分(line 125)：资料不进美学排序另立可检索档",
+          "src/app/lib/photoScreen.ts 查重(line 281-290)：DUP=8 一刀切改 EXIF 时间10分钟分桶(无 DateTimeOriginal 单独无日期桶防跨年误删)+海明≤2 严格重复/3~8 相似簇两档，资料型放宽/跳过",
+          "src/app/lib/photoScreen.ts 判定(line 312-319)：拆 verdict⟂pinnable 两正交输出，替换 tags 驱动单决定",
+          "新增 src/app/lib/photo/photoCluster.ts(时空 DBSCAN→簇内选价值最高代表+反查地名优先 EXIF 真坐标)"
+        ]
+      },
+      {
+        "layer": "行动",
+        "responsibility": "suggest-then-confirm 是行为底线：默认只读相册、只产 proposal 清单(建议钉哪些/哪些可清理/哪些归档/哪些待确认地点)，绝不替用户删原图、绝不直接钉。钉地球只接 pinnable===true 的簇代表。【已核实并修对：钉地球链路当前是 0(PhotosCuratorRunPage.tsx:172 只是 UI 文案『已钉到地球』无任何写入；MAP_MARKERS 是 import 期 const(mapMarkers.ts:64) 无运行时发布订阅，运行时 push 不会触发地球重渲染)——故 addPhotoPin 不是『替换 addMoodSticker 路径』而是从零新建『运行时 marker 存储+持久化+发布订阅+地图源刷新』，最务实是直接复用 geoStickers.ts 那套成熟的 localStorage emit/subscribe(getMoodStickers/addMoodSticker/subscribeMood/persist)，而非给 MAP_MARKERS 另造一套。】所有删/钉走 UI 二次确认，移入待删相册而非物理删+撤回时间锁。",
+        "patterns": [
+          "suggest-then-confirm/人类保持主导权(只生成 proposal，人 decision/AI choice/系统 execution+可逆时间锁)",
+          "白名单物理保证(分析阶段工具集根本无 deleteAsset/writeOriginal/网络上传，能力不存在则幻觉也删不掉传不出)",
+          "工具编排/能力语义化(读EXIF/算dHash/坐标→地名/写索引/mark_place 封装成带语义工具)",
+          "流水线 Handoff Contract(阶段间只传结构化小 JSON，绝不把像素 buffer/embedding 往下传，端侧内存生命线)",
+          "规划-执行+状态护具(大相册分批 requestIdleCallback 切片+进度持久化断点续跑)"
+        ],
+        "modules": [
+          "新增 src/app/lib/photo/proposal.ts(产 Proposal{pins,cleanable,archive,needPlace}，纯建议不执行)",
+          "新增 src/app/lib/photo/geoPinStore.ts(照片钉点运行时存储+localStorage 持久化+发布订阅，照搬 geoStickers 模式；写 kind:'photo' marker 形态供地图层消费)",
+          "src/app/data/mapMarkers.ts:首屏 MAP_MARKERS(line 64) 之外，地图层订阅 geoPinStore 把用户钉的照片点动态并入并重建 geojson 源(toGeoJSON line 94)",
+          "src/app/components/PhotosCuratorRunPage.tsx:结果区加『资料』分区(可检索/一键转正/彻底删)+『疑似有地点·待确认』中间态+一键补地点+误判一键拉回；接 requestIdleCallback 切片+断点续跑游标",
+          "新增『待删相册』软删容器(时间锁+撤回，绝不调原图删除 API)"
+        ]
+      },
+      {
+        "layer": "反思",
+        "responsibility": "判定前 Critic 用确定性锚点否决 CLIP 概率误判(挑错强于一次判对)+从用户留/删/纠正学(纠错是一等公民)。护栏三件：策略护栏写死绝不删原图、行为护栏在任何『标记可清理』前运行时拦截、审计护栏记每次判据可追溯理由链。语言强化学习：每次拉回实拍/撤钉/可清理拉回留都写 userOverride 进 IndexedDB，提炼自然语言教训回写【端侧 prefsStore 而非 profile.ts】微调 isUtility 阈值/留钉门槛。ExpeL 跨任务概括：最近多是截图误判成地方照片→对截图更保守。稀有度分母随库规模自适应(小库调低避免偏样带偏)。",
+        "patterns": [
+          "自我修正/Critic+护栏(EXIF 截图标志/GPS 有无/dHash 锚点否决概率误判；策略/行为/审计护栏)",
+          "反思记忆/语言强化学习(userOverride→自然语言教训，不重训，下次注入)",
+          "跨任务概括 ExpeL(系统性误判统计→对该类更保守)",
+          "失败是资产(用户每次纠正是最宝贵训练信号)",
+          "稀有度诚实标注(PWA 样本稀疏，权重随库规模自适应)"
+        ],
+        "modules": [
+          "新增 src/app/lib/photo/critic.ts(判定前二次校验：CLIP 判风景但 isUtility 高+有截图 Software→压回资料)",
+          "src/app/lib/photo/prefsStore.ts:接收 userOverride 回写微调本地阈值(端侧存储)",
+          "src/app/lib/photo/photoStore.ts:写 userOverride/emotionalExempt 字段",
+          "frost-agent/harness/profile.ts:recordSignals('photos',{cities}) 只回写『去过的城市』这类脱敏标签计数供云脑画像，不回写数值阈值",
+          "审计理由链：每张记 阶段+判据+verdict 理由，供 UI『为什么这张被建议清理』"
+        ]
+      },
+      {
+        "layer": "协作",
+        "responsibility": "照片 agent=FROST 交响乐团里的专才 Worker(frost-agent/agents/photos-curator 已有 contract.md)，由 router.ts 按意图分诊。委托：总控持全局上下文做统一 HITL 入口，照片 Worker 只拿局部上下文、把 proposal 上交审批。【已核实并诚实标注接入成本：『registerActionValidator 注册即接入、内核不改』只对了一半——registerActionValidator(validator.ts:15)/registerIntent(intentRegistry.ts:19) 确是注册表化、加 mark_place 校验器+photos handler 无需改内核；但 FrostIntent(types.ts:5-13) 是封闭枚举无 photos、RadioAction 是封闭 union 无 mark_place、AgentResult.radioActions:RadioAction[] 装不下 mark_place、validateActions/dispatch 都硬绑 RadioAction/FrostIntent——真要把 photos-curator 变可路由 Worker 必须动 types(加 photos intent、把动作类型从 RadioAction 泛化为 FrostAction 联合)+router+validator，这是内核改动。】Stigmergy：钉点写共享地球状态，tour/open-dj 监听做后续。",
+        "patterns": [
+          "委托/有向树(Manager 全局上下文+统一 HITL；Worker 局部上下文上交 proposal)",
+          "路由/星形网络(router 语义分诊到 photos-curator，registerIntent 注册 handler)",
+          "群体/留痕 Stigmergy(钉点写共享地球 marker 状态，其他 agent 监听解耦)",
+          "报文传输而非共享内存(只传结构化 proposal/marker，不传原图/embedding)",
+          "端侧契约复用(CLIP 端侧本地跑；mark_place 经 Boundary 校验，对齐既有 Worker 契约)"
+        ],
+        "modules": [
+          "frost-agent/agents/photos-curator/index.ts(新建 Worker：封装六层流水线产 AgentResult{scanned,selected,pins}+mark_place 建议，绝不直接落地；契约已在 contract.md 定义)",
+          "frost-agent/harness/types.ts(FrostIntent 加 'photos'；RadioAction 泛化为 FrostAction 联合纳入 mark_place；AgentResult.actions 字段泛化)",
+          "frost-agent/harness/validator.ts(registerActionValidator('mark_place', 校验经纬度合法+pinnable+价值阈值)，validateActions 签名随 FrostAction 泛化)",
+          "frost-agent/harness/intentRegistry.ts+router.ts(registerIntent('photos', runPhotosCurator)，dispatch/EDGE_INTENTS 纳入 photos)",
+          "frost-agent/harness/profile.ts+memory.ts(地点经验/城市偏好脱敏共享给 tour/open-dj 复用)"
+        ]
+      }
+    ],
+    "data_model": "主键=dHash(64bit 内容指纹，在感知层 decode 即算)，替换 photoScreen.ts:272 那个 'p'+i+'_'+(file.size%100000) 的非内容、跨批漂移/碰撞伪键。【已核实的两个 dHash 前置修正——评审遗漏点，必须先做否则主键照样漂移】① decode 的 createImageBitmap(line 56) 与 <img> 兜底(line 62) 都未传 imageOrientation/未做 EXIF orientation 归一化——同一张带旋转标志的 HEIC 走不同解码分支像素布局不同→dHash 漂移；故 dHash 必须算在「orientation 归一化后的灰度缩图」上(createImageBitmap 加 {imageOrientation:'from-image'})。② 64bit dHash 有碰撞概率，主键用 dHash 但写入/查重时以 (dHash,w:h 比例桶) 复合消歧，size/lastModified 仅辅助。存储=IndexedDB(库名 pe.photos)：store『photos』key=dHash，store『clusters』key=clusterId，store『progress』断点续跑游标，store『prefs』端侧个性化阈值(见 safety_privacy 为何不能进 profile.ts)。PhotoRecord(只存派生，schema 里根本没有原图/canvas/CLIP embedding 字段位置=物理保证)：{dHash(PK), photoType, verdict:'keep'|'review'|'clean', pinnable:boolean, isUtilityProb:number, hasGPS, lat, lng, source:'exif'|'user'|'borrowed', exif摘要{capDate,make,model,softwareIsScreenshot,suspectExif}, sharpness/exposure/colorful/contrast 四像素分, valueScore, clusterId, dupOf, userOverride, emotionalExempt:boolean, status:'ok'|'failed'|'pending', schemaVer, updatedAt}。ClusterRecord:{clusterId, repDHash(簇代表可被更好的替换), memberDHashes[], centroidLat/Lng(钉点坐标用簇心而非代表张坐标，避免代表刷新时点跳——补评审 gap), timeBucket, placeLabel}。现状 ScreenResult(photoScreen.ts:16-33) 是内存态(含 objectURL 给 UI)，落库时投影为 PhotoRecord；需扩 photoType/isUtilityProb/pinnable/hasGPS/lat/lng/clusterId/source/userOverride/emotionalExempt 字段。坐标是高敏轨迹：一键清空坐标/整库、默认不上云、分享脱敏。",
+    "pipeline_decision": "per-photo=有依赖的串行流水线(责任链/Unix pipe，黄佳《Harness》流水线型)，阶段间只传结构化小结论(Handoff Contract)，绝不把像素 buffer/embedding 往下传(端侧不 OOM 的生命线)：闸0 解码(orientation 归一化)+算 dHash 主键 → 闸1 EXIF 金信号(海里/出生前/截图工具名一致性校验标 suspectExif) → 闸2 像素废片闸(先过低光/艺术豁免：夜景/星空/虚焦/雪雾不判废) → 闸3 资料 isUtility 多信号投票(替换 line 270 脆弱单规则) → 闸4 仅不确定(0.35~0.65)或将进钉候选才跑端侧两段式 ensemble CLIP(先实拍↔资料二分纠偏 isUtility，实拍再判子类；CLIP 不可用时 isUtility 降级为不否决·宁放过，绝不让启发式单独误杀) → 闸5 查重(EXIF 时间分桶+海明≤2 严格/3~8 相似簇，资料放宽) → 闸6 时空 DBSCAN(把散点变经历) → 闸7 按类型算价值+簇内选代表+反查地名 → 闸8 出三件套+只写派生数据。决策核心=verdict⟂pinnable 双正交：verdict(留/待定/可清理)压倒性偏『宁可放过』——废片/相似簇非代表→可清理；实拍价值≥60 留/40~60 待定/<60 且确属像素废片才可清理；资料·拍摄文字默认待定·归档绝不默认可清理(可能是报销凭证/证件)；资料·屏内生成默认待定(纪念截图/逝者聊天被默认标可清理是比资料误留严重得多的反向伤害)；仅 dHash 严格重复且无情感信号才给弱可清理。pinnable=实拍 ∧ 真坐标 ∧ 价值达钉阈 ∧ 簇代表，资料型恒 false。质量分(line 125 fastScore)被彻底降级为只管废片过滤+簇内选优，绝不再单独决定留/钉(=连根拔除 line 312-319 用户翻车根因)。可并行的仅同张内独立子判定，端侧并行抢内存未必划算按设备能力定；查重/钉点有全局依赖必须串行。",
+    "safety_privacy": "四条硬约束全部落成架构层物理保证而非文案。① 原图/canvas/embedding 不出端：分析阶段工具集根本不放网络/上传工具(白名单即安全边界)，端侧 CLIP 走 photoScreen.ts 内 transformers.js 浏览器本地路径——【关键纠错·已核实：绝不用 edgeSafe.vision，它经 httpEdge 是网络调用(/api/edge)，用它跑 CLIP 会把图传出端，违反原图不出端；且 edgeSafe.vision 只返回字符串，拿不到 embedding，连『ensemble 余弦』都做不了】；canvas 单张跑完即释放(修 277/322 OOM)；IndexedDB schema 无原图/embedding 字段位置=无处可存。② 绝不替用户删原图：工具集无 deleteAsset/writeOriginal(能力不存在)，整会话 plan 只读模式；PWA 本就拿不到删权限，只能给建议清单引导用户去系统相册自己删(反而天然安全)。③ 进库只有派生小结论(dHash/类型/分数/verdict/pinnable/坐标/exif 摘要)。④ suggest-then-confirm：人 decision/AI choice/系统 execution，即便点清理也走移入待删相册+时间锁延迟而非物理删。⑤ 舱壁降级：单张坏图/HEIC 解码失败只标 status:failed 跳过不中断整轮；缺 GPS 不钉但仍完成分类。⑥ 坐标隐私(比原图不出端更被低估)：分享/截图地球时 source=exif 精确坐标抽稀到街区/城市级、家庭/公司高频点识别后默认不外泄、source=borrowed 借位坐标默认不外泄、一键清空坐标/整库、默认不上云。⑦ 情感豁免【诚实降级·补评审 gap：PWA 判不出人脸/人名/是否被收藏，故 PWA 阶段对资料一律默认 review 不 clean=靠『默认保守』兜底而非靠『豁免识别』；真正的含人脸/人名情感豁免推迟到原生 Vision，不在 PWA 文案空头承诺】。⑧ 端侧个性化阈值落 IndexedDB prefsStore，不进 profile.ts(其 line6-7 声明只供云脑、端侧 Selector 一律不接触)。",
+    "long_running": "增量+幂等+空闲跑+纠错闭环的前台流水线(黄佳《Harness》断点续跑)。① 稳定幂等键 dHash(orientation 归一化后算)：photoStore 记每张 dHash+结论+处理游标，重启读进度只处理新增、稳定项秒级跳过、重活 CLIP/OCR 绝不重复跑、手机切后台/锁屏/被杀也能断点续跑。② 分层省算省电：像素废片(秒)→多信号投票(便宜先滤资料)→仅不确定 top 跑 CLIP→仅资料跑 OCR(原生)；一次 embedding 复用类型分类+美学两任务；整批全是资料(报销季收据)快速短路直接进资料分区跳过钉地球与美学排序。③ 钉点增量：新过闸实拍点并入已有时空簇，簇只增不重算，簇代表可被更好的替换，钉点坐标用簇心(centroidLat/Lng)而非代表张坐标——代表刷新时点不跳(补评审 gap)。④ 纠错闭环：userOverride 写 IndexedDB+回写端侧 prefsStore 微调阈值。⑤【诚实纠正『后台持续生长』叙事——评审实证 gap：iOS PWA 后台 JS 被冻结、requestIdleCallback 支持差(降级 setTimeout 切片)、拿不到全相册/后台权限，故 PWA 阶段根本不是后台任务，而是『用户每次主动喂一批→前台 Page Visibility 空闲分批每批数十张不卡 UI→结果入库累积→多次选图地球叠加』；真正的后台增量扫描是原生 PhotoKit change observer+BGProcessingTask 才有，不在 PWA 承诺。】⑥ 稀有度分母随库规模自适应小库调低。",
+    "frost_role": "照片 agent=FROST『通用世界探索框架』里的专才 Worker/专家节点(frost-agent/agents/photos-curator 已有 contract.md，定义 read_album/edge_vision_tagger/edge_value_scorer/exif_geo/mark_place 五工具、执行型、强端侧强隐私)，专精端侧相册理解+地理钉图，不是独立 app。① 委托/有向树：总控持全局上下文做统一 HITL 入口，照片 Worker 只拿『整理某段相册』局部上下文、专注高质量完成、把 proposal/mark_place 建议上交审批，相册噪声留隔离上下文绝不回流主 agent(对齐 contract.md 信噪比铁律：几千张输入→几个 pin 输出)。② 路由/星形网络：registerIntent('photos', runPhotosCurator) 接 router.ts 分诊；mark_place 经 validator.ts registerActionValidator 校验。③ 群体/留痕 Stigmergy：钉点写共享地球 marker 状态，tour/open-dj 监听做后续。④ 分层记忆共享：去过的城市/地点偏好脱敏写 profile.ts(domain:'photos' 已在 ProfileDomain 枚举里) 供其他 Worker 复用。【诚实接入成本：复用 contract.md 已定义的 mark_place(别另造 addPhotoPin)；但要真路由必须先动内核——FrostIntent 加 photos、RadioAction 泛化为 FrostAction 纳入 mark_place、AgentResult.radioActions 与 validateActions/dispatch 随之泛化(已核实 types.ts:5-22/router.ts:34,86 硬绑)，不是『注册即接入』。】身份(Who/What)与方法(类型规则/价值标准/查重阈值/钉点逻辑=可复用 Skill 模块)分离。",
+    "pwa_vs_native": "同一套『type+价值+pinnable』schema 契约不变，只换底层零件(系统信号平滑替换启发式即升级)，六层骨架与 schema 一行不动。【PWA 现在能做到】EXIF 金信号(exifr 扩读 Make/Model/曝光/GPS，零模型成本，当前最该补)、宽高比命中屏幕分辨率表、纯色占比/唯一色数/文本密度像素启发式、端侧两段式 ensemble CLIP(transformers.js CDN 懒加载，浏览器本地跑·绝不走 edgeSafe.vision 网络路径)、dHash+时间分桶查重、有 GPS 才钉/无则待确认、IndexedDB 增量缓存(dHash 键)、requestIdleCallback/setTimeout 前台空闲分批。【必须诚实的 PWA 硬限制，不在文案承诺等同 Apple 精度】① HEIC+GPS：iPhone 默认 HEIC，exifr 在 PWA/Safari 上 GPS 解析失败率高，且 exifr 读 HEIC GPS 需正确 segment 配置不是加字段名就行→坐标做软闸而非硬闸，落地前必须先做真机取数验证(成败点，见 open_decisions)；② 拿不到全相册(系统选择器逐次多选)、拿不到删权限(只能给建议清单，反而天然安全)；③ 无系统级 isUtility/人脸/saliency/美学分，人物档与主体档是近似实现默认偏保留，情感豁免在 PWA 用『一律默认 review 保守兜底』不靠人脸识别；④ iOS PWA 后台 JS 被冻结、requestIdleCallback 支持差→不承诺后台自动扫，只能用户主动分批喂；⑤ CLIP 镜像(hf-mirror)不稳/40s 超时降级→isUtility 闸降级不否决。【原生 app 以后，接口不变只换零件】截图→PHAsset.mediaSubtype .photoScreenshot(系统级0成本最准)；资料/工具型 isUtility+美学分→VNCalculateImageAestheticsScores(isUtility+overallScore -1..1)；场景子类→VNClassifyImageRequest(约1303类 taxonomy)；相似分组→VNGenerateImageFeaturePrint+computeDistance；人脸/主体→Vision 人脸/saliency(情感豁免真正落地)；文档/OCR→DetectDocumentSegmentation+VNRecognizeText 量化资料可检索价值；全相册+后台增量+NPU→PhotoKit change observer+BGProcessingTask；位置补位→Significant Locations(端到端加密)做时空借位。",
+    "refactor_plan": [
+      {
+        "phase": "P0·先做与 FROST 对接无关、纯收益、今天就能动的",
+        "target": "src/app/lib/photoScreen.ts:39-49 readCaptureDate",
+        "change": "扩成 readExif：增补 Make/Model/Software/FNumber/ExposureTime/ISO/FocalLength/GPSLatitude/GPSLongitude，出 {capDate,hasCameraFields,hasGPS,lat,lng,softwareIsScreenshot,suspectExif}+一致性校验(海里/出生前/截图工具名→suspectExif)。这是『资料截图被判留』根因之一，评审共识第一优先。"
+      },
+      {
+        "phase": "P0",
+        "target": "src/app/lib/photoScreen.ts:52-78 decode + :268 dHash",
+        "change": "decode 的 createImageBitmap(line56) 加 {imageOrientation:'from-image'}、<img>兜底(line62) 同步做 orientation 归一化，dHash 算在归一化后缩图上——否则旋转照片/不同解码分支 dHash 漂移，主键照样不稳(补评审遗漏 gap)。"
+      },
+      {
+        "phase": "P0",
+        "target": "src/app/lib/photoScreen.ts:272 id 'p'+i+'_'(file.size%100000)",
+        "change": "改 dHash 为主键(复合 w:h 比例桶消歧 64bit 碰撞，size 辅助)，供 IndexedDB 增量幂等。"
+      },
+      {
+        "phase": "P0",
+        "target": "src/app/lib/photoScreen.ts:277/322 _canvas 全量驻留",
+        "change": "修 OOM：现状给每一张 result 挂 _canvas 全程驻留到 322 才 delete=大相册必 OOM；改单张闸跑完即吐 PhotoFeatures 小结论并立即释放 canvas。评审实证 bug。"
+      },
+      {
+        "phase": "P0",
+        "target": "src/app/lib/photoScreen.ts:81 旁 + :270 单规则",
+        "change": "新增 utilityMetrics(宽高比命中屏幕分辨率表/最大纯色块占比/量化唯一色数/二值化文本密度行结构)，融合 EXIF 投票出 isUtilityProb，替换 line270 脆弱 colorful<0.18&&contrast>0.55。"
+      },
+      {
+        "phase": "P0",
+        "target": "src/app/lib/photoScreen.ts:16-33 ScreenResult + :312-319 判定",
+        "change": "扩 photoType/isUtilityProb/pinnable/hasGPS/lat/lng/clusterId/source/userOverride/emotionalExempt；判定拆 verdict⟂pinnable 两正交输出，废片才 clean、资料默认 review·归档(PWA 一律默认 review 保守兜底)、实拍按价值留/待定。连根拔除翻车根因。"
+      },
+      {
+        "phase": "P1·端侧记忆/聚类/CLIP 升级",
+        "target": "src/app/lib/photoScreen.ts:167-231 CLIP 段",
+        "change": "CLIP_LABELS 改两段式 ensemble(先实拍↔资料聚正负两向量，实拍再判子类)，只对不确定/钉候选跑；CLIP 不可用 isUtility 不否决。【保持浏览器本地 transformers.js，绝不改走 edgeSafe.vision——那会出端】"
+      },
+      {
+        "phase": "P1",
+        "target": "src/app/lib/photoScreen.ts:281-290 查重",
+        "change": "DUP=8 一刀切改 EXIF 时间10分钟分桶(无日期单独桶)+海明≤2 严格/3~8 相似簇两档，资料型放宽/跳过。"
+      },
+      {
+        "phase": "P1",
+        "target": "新建 src/app/lib/photo/photoStore.ts + prefsStore.ts",
+        "change": "IndexedDB 增量幂等层(dHash 主键)+断点续跑游标+一键清空坐标；端侧个性化阈值落 prefsStore(不进 profile.ts)。原图/canvas/embedding 无字段位置。"
+      },
+      {
+        "phase": "P1",
+        "target": "新建 src/app/lib/photo/photoCluster.ts",
+        "change": "时间10分钟分桶→GPS DBSCAN(eps 数百米)→簇内 dHash 去重+选价值最高代表；钉点坐标用簇心 centroidLat/Lng 避免代表刷新点跳；反查地名用 EXIF 真坐标，PLACE_COORDS 仅城市级标签。"
+      },
+      {
+        "phase": "P1",
+        "target": "新建 src/app/lib/photo/critic.ts",
+        "change": "判定前用 EXIF 截图标志/GPS/dHash 确定性锚点否决 CLIP 概率误判；接 userOverride 回写 prefsStore 语言强化学习。"
+      },
+      {
+        "phase": "P2·钉地球链路(从零新建，独立子项目)",
+        "target": "新建 src/app/lib/photo/geoPinStore.ts + src/app/data/mapMarkers.ts",
+        "change": "【钉地球当前是 0(PhotosCuratorRunPage:172 只是文案；MAP_MARKERS 是 const 无发布订阅)，故从零建运行时 marker 存储+持久化+发布订阅，最务实直接复用 geoStickers 那套 localStorage emit/subscribe；地图层订阅 geoPinStore 动态并入 kind:'photo' 点并重建 toGeoJSON 源。复用 contract.md 已定义的 mark_place，不另造 addPhotoPin。】"
+      },
+      {
+        "phase": "P2",
+        "target": "src/app/components/PhotosCuratorRunPage.tsx",
+        "change": "接通真钉地球：只钉 pinnable===true 簇代表；UI 加『资料』分区(可检索/一键转正/彻底删)+『疑似有地点·待确认』+一键补地点+误判一键拉回(写 userOverride 回 prefsStore)；产 proposal 清单不直接删原图；分享地球坐标脱敏；接 requestIdleCallback 切片+断点续跑。"
+      },
+      {
+        "phase": "P2·FROST 协作层(最后，需动内核)",
+        "target": "frost-agent/harness/types.ts + router.ts + validator.ts + intentRegistry.ts",
+        "change": "【诚实承认要动内核：FrostIntent 加 'photos'、RadioAction 泛化为 FrostAction 联合纳入 mark_place、AgentResult.radioActions 与 validateActions/dispatch 随之泛化(types.ts:5-22/router.ts:34,86 硬绑 RadioAction/FrostIntent)。】registerActionValidator('mark_place', 校验经纬度合法+pinnable+价值阈值)、registerIntent('photos', runPhotosCurator)、新建 frost-agent/agents/photos-curator/index.ts 封装六层流水线产 proposal 绝不直接落地。"
+      }
+    ],
+    "open_decisions": [
+      "【成败点·落地前置任务而非 open question】坐标软闸硬度：必须先用你自己 iPhone 几张 HEIC 照片在 iOS Safari 真机做 exifr GPS 取数验证——量化 GPSLatitude/Longitude/Make/Model/DateTimeOriginal 各字段读出成功率，定 suspectExif 与软闸降级阈值。读得稳→坐标可较硬；读不出→坐标必须降为『有则钉、无则待确认』。这决定中国/iPhone 用户地球会不会长期空着。同时做第二个真机实测：dHash 在两条解码路径+旋转照片上的一致性，验证 orientation 归一化是否真把主键钉稳。",
+      "资料·屏内截图默认建议：本架构已把默认从『建议清理』改成『待定』(防误删纪念截图/逝者聊天)。你是否认同？还是对『明显临时网图/表情包』保留弱清理建议？信任 vs 整理效率的权衡。",
+      "钉地球颗粒度：同一次行程一簇照片，只钉簇内最佳一张+张数(地球干净)还是钉多张(信息全但点密)？默认前者，需确认。",
+      "无 GPS 实拍兜底：是否接受『时空借位(同行程相邻照片借坐标，打 borrowed 标记默认不外泄)』作为自动兜底，代价是坐标精度下降？还是只走『待确认地点·用户手动补』？",
+      "隐私默认：钉地球精确 EXIF 坐标是高敏轨迹，分享/截图地球时默认抽稀到街区/城市级、家庭高频点不外泄——这个偏保守默认你是否接受，还是想要可由用户逐点开关精度？",
+      "FROST 内核改动范围：把 photos 接成可路由 Worker 需动 types/router/validator(FrostIntent 加 photos、RadioAction 泛化为 FrostAction)。是现在就做泛化(一次到位但触内核)，还是 P0/P1 阶段先让 photos-curator 作为 PhotosCuratorRunPage 直调的端侧引擎、暂不进 router 分诊(解耦先跑通端侧机制)？建议后者：先把端侧六层机制与钉地球跑通，FROST 路由放最后。"
+    ]
+  },
+  "drafts": [
+    {
+      "framing": "把照片 agent 当成一个「具身循环」而非一次性函数：黄佳六大主轴(感知→记忆→推理→行动→反思→协作)是循环骨架，机制设计(类型优先 + verdict⟂pinnable 正交闸)是循环内容，Harness 工程之道(隔离/约束/舱壁/流水线/断点续跑/分级推理)是贯穿全层的工程底座。核心立场:现有 src/app/lib/photoScreen.ts 的 runScreen 是一个「把感知/记忆/推理/行动揉在一起、还让质量分单独决定留/钉」的一次性大函数——这正是用户实测翻车根因。要拆成六层闭环:每张照片走 per-photo 流水线(解码→EXIF金信号→废片闸→isUtility投票→必要才CLIP→查重选优→按类型算价值→出 verdict+pinnable)，阶段间只传结构化小结论(交接契约)，原图/canvas/embedding 绝不出端也绝不回流主上下文。三明治架构落地为:端侧像素/EXIF 确定性逻辑(上下两层面包)包住 CLIP 小模型概率判定(中间的肉)，验证必须确定性。两条铁律:① verdict(留/待定/可清理 建议)与 pinnable(能否钉地球)是两条正交输出，质量分降级为只管「废片过滤 + 簇内选优」，类型闸一票否决优先于坐标;② 一切删/钉走 suggest-then-confirm，人类保持主导权，绝不替用户删原图。照片 agent 是 FROST 内核里的一个专才 Worker(只建议→Validator 校验→落地)。",
+      "layers": [
+        {
+          "layer": "感知 (Perception)",
+          "responsibility": "系统与相册世界的接口层。对用户系统选择器多选进来的真实 File 逐张做 per-photo 认知漏斗:闸门0 解码缩图(长边256, HEIC createImageBitmap→<img>兜底)并算 dHash 稳定主键→闸门1 EXIF 金信号(最便宜最确定, readExif 读 Make/Model/Software/曝光/GPS + 一致性校验出 suspectExif)→闸门2 像素废片闸(sharpness<0.08/mean<28, 先过低光艺术豁免)→闸门3 isUtility 多信号投票(宽高比命中屏幕分辨率表/最大纯色块占比/量化唯一色数/二值化文本密度+行结构 + EXIF 无相机字段, 融合出 isUtility 概率)。把贵操作压到最后最少:廉价像素/EXIF 守门人先分流 90% 明显废片与资料。多模态融合成『这张照片的统一表征 PhotoFeatures』(像素 metrics + EXIF + GPS), 让 agent 理解『这是发生在某地的实拍』而非只看像素。原图/canvas 是高噪声高内存, 跑完只回吐结构化 PhotoFeatures, buffer 绝不留在主决策上下文(否则端侧 OOM)。",
+          "patterns": [
+            "注意力聚焦/认知漏斗(廉价评分器守门→分流→精筛, 主动忽视)",
+            "多模态融合/统一语义场(像素+EXIF+GPS 融合, 从『看』到『在』)",
+            "主动感知/信息觅食环(增量分批扫描 + 不确定性探针: 判不准才升级跑 CLIP 或问用户)",
+            "三明治架构-输入侧约束(像素/EXIF 确定性逻辑做上层面包)"
+          ],
+          "modules": [
+            "src/app/lib/photoScreen.ts: decode() 沿用 + 抽出 perceive() 闸门0-3",
+            "新增 readExif (由现 readCaptureDate:39-49 扩字段, 出 {capDate,hasCameraFields,hasGPS,lat,lng,softwareIsScreenshot,suspectExif})",
+            "新增 utilityMetrics() (在 fastMetrics:81 旁, 屏幕分辨率表/纯色块/唯一色数/文本密度)",
+            "fastMetrics():81 沿用(废片闸数值源)",
+            "dHash():131 沿用(主键, 闸门0 即算)",
+            "新增类型 PhotoFeatures(结构化交接契约对象)"
+          ]
+        },
+        {
+          "layer": "记忆 (Memory)",
+          "responsibility": "端侧持久化地基, 让『已筛过的别重筛、偏好沉淀、地球钉点随时间生长』。分层记忆:L1 工作记忆=当前这批 File;L3 长期存储=IndexedDB 照片索引库, 以 dHash 为主键写派生数据 {dHash,type,score,verdict,pinnable,hasGPS,lat,lng,exif摘要,clusterId,source,userOverride}。记忆生命周期四步:编码(算 dHash + 脱敏, 只写派生不写原图)→巩固(去重写入)→检索(重扫先查 dHash 命中即秒级跳过, 重活 CLIP/OCR 绝不重复跑)→遗忘(用户删掉的软删除)。情节记忆:每次整理会话存 Goal/Trajectory/Outcome/Reflection, 双键检索(目标相似+状态相似)支撑查重与举一反三归类。RAG 式知识解耦:经纬度→地名/POI 当可更新外挂(geoStickers.ts PLACE_COORDS 仅城市级标签『约』, 不作定位)。这一层把『稳定幂等键 + 增量扫描 + 用户偏好』统一进记忆治理。",
+          "patterns": [
+            "分层记忆/倒金字塔(L1 工作/L3 IndexedDB, 只存派生元数据保持端侧轻盈)",
+            "情节记忆/经验炼金术(整理会话 + 双键检索查重归类)",
+            "RAG/知识解耦(坐标→地名外挂, 模型不背地理)",
+            "对抗遗忘(高效遗忘: 不存原图全量特征)"
+          ],
+          "modules": [
+            "新增 src/app/lib/photoIndex.ts (IndexedDB 增量幂等层, dHash 主键, get/put/queryByCluster)",
+            "替换 photoScreen.ts:272 的 'p'+i+'_'+(file.size%100000) 非内容 id → dHash 主键",
+            "src/app/lib/taste.ts (用户口味/偏好沉淀, 已存在, 接纠错回写)",
+            "frost-agent/harness/profile.ts (长期画像, 常去地点先验写这里)",
+            "frost-agent/harness/memory.ts (FROST 共享长期存储, 跨 agent 复用地点经验)"
+          ]
+        },
+        {
+          "layer": "推理 (Reasoning)",
+          "responsibility": "逻辑引擎: 把 PhotoFeatures 推成『三件套 photoType + verdict + pinnable』。判定顺序固定『先类型后价值』:闸门4 仅对 isUtility 不确定(0.35~0.65)或将进钉候选者跑两段式 ensemble CLIP(先实拍↔资料二分纠偏 isUtility, 实拍再判子类; CLIP 不可用则 isUtility 闸降级为不否决·宁放过)→闸门7 按 value_by_type 算价值(风景=美学+地理稀有度, 人物=有人+主体清晰偏留, 资料=可检索性不套美学)。verdict⟂pinnable 两条正交:verdict 由类型+价值+重复共同决定且压倒性偏『宁可放过』(废片/严格重复张才 clean, 资料默认待定·归档不默认清理, 实拍价值≥60留/40~60待定);pinnable = 实拍类型 ∧ 有真坐标(或用户补) ∧ 价值达阈值 ∧ 簇代表, 资料型即使带坐标即使判留 pinnable 恒 false(类型一票否决高于坐标)。坐标软闸:有真 GPS 直接钉, 读不出但判实拍→『疑似有地点·待确认』中间态。分级推理(省算省电): System1 像素/EXIF 秒判废片资料, System2 仅少量不确定项上 CLIP。",
+          "patterns": [
+            "三明治架构-中间的肉(CLIP 概率判定被确定性逻辑夹住)",
+            "ReAct(单张『判定即实验』微闭环: 思考像截图→查EXIF/GPS→观察→改判, 设步数上限超限标待确认防死磕)",
+            "快/慢思考路由(System1 启发式秒判 / System2 CLIP 慢判, 自适应只对不确定项升级)",
+            "验证器模式(以 EXIF/像素确定性信号为裁判否决 CLIP 概率误判)"
+          ],
+          "modules": [
+            "photoScreen.ts:167-231 CLIP 改两段式 ensemble(CLIP_LABELS 聚正负向量, 只对不确定/钉候选跑)",
+            "新增 classify() 出 photoType + isUtility(融合 CLIP 纠偏闸门3 投票)",
+            "新增 valueByType() 替换 fastScore 单分(按类型分别算价值)",
+            "photoScreen.ts:312-319 判定改『先类型后价值』+ 新增正交 pinnable 布尔",
+            "ScreenResult:16-33 扩 photoType/isUtility/pinnable/hasGPS/lat/lng/clusterId/source/userOverride"
+          ]
+        },
+        {
+          "layer": "行动 (Action)",
+          "responsibility": "远征军: 把结论落成『建议而非执行』的可逆动作 + 真钉地球。查重选优(闸门5):按 EXIF 时间~10分钟分桶(无 DateTimeOriginal 单独无日期桶防跨年误删), 桶内 dHash 海明≤2 严格重复(留分高一张)/3~8 相似簇(只聚类选最佳, 其余标可清理不自动删), 资料型放宽/跳过去重防误杀连续聊天截图。时空聚类(闸门6, 新模块):有 GPS 实拍候选时间分桶→GPS 空间 DBSCAN(eps 数百米)成『一次经历』, 增量 agglomerative 新照只与相邻簇比对不重算全库。钉地球(闸门8):新增 addPhotoPin 只接 pinnable===true 的簇代表, 接 mapMarkers.ts 已有 kind:'photo' marker(lat/lng/thumb/full), 与 geoStickers mood 贴分层;簇代表可被更好的替换、clusterId 稳定。所有删/钉走 suggest-then-confirm: 产出 proposal 清单交 UI 确认, 移入待删相册而非物理删, 给撤回时间锁。",
+          "patterns": [
+            "suggest-then-confirm/人类保持主导权(只生成建议, 人 decision / AI choice / 系统 execution)",
+            "规划-执行 + 状态护具(大相册分批 DAG, 进度持久化断点续跑)",
+            "工具编排/能力语义化(读EXIF/算dHash/坐标→地名/写索引/addPhotoPin 封装成带语义工具)",
+            "闭环行动(钉点非 fire-and-forget: 簇代表刷新可回写)"
+          ],
+          "modules": [
+            "新增 src/app/lib/photoCluster.ts (时间分桶→GPS DBSCAN→簇内选代表, 增量)",
+            "photoScreen.ts:281-290 查重: dHash 前加时间分桶 + 海明拆≤2/3~8 两档 + 资料放宽",
+            "新增 addPhotoPin (接 mapMarkers.ts:33,56-60 kind:'photo'; 替换 PhotosCuratorRunPage 当前 addMoodSticker 路径)",
+            "PhotosCuratorRunPage.tsx: 改产出 proposal 清单 + 待删相册 + 撤回, 不直接操作原图",
+            "geoStickers.ts:32 addMoodSticker 路径降级为 mood 贴专用(照片钉走 addPhotoPin)"
+          ]
+        },
+        {
+          "layer": "反思 (Reflection)",
+          "responsibility": "灵魂工程学: 判定纠错 + 从用户留/删/纠正里学习。自我修正(修事):给类型/价值判定加 Critic 二次校验, 用 EXIF 截图标志/GPS 有无/像素指纹等外部确定性锚点否决 CLIP 概率误判(挑错强于一次判对);护栏四件:策略护栏写死『绝不删原图』、行为护栏在任何『标记可清理』前运行时拦截、审计护栏记录每次判定依据可追溯。反思记忆(修脑):用户每次『把误判资料拉回实拍/钉地球池』『撤钉』『把可清理拉回留』都写 userOverride 进 IndexedDB, 语言强化学习(不重训)生成自然语言教训回写 taste.ts/profile.ts: 微调 isUtility 阈值、留/钉门槛、常去地点先验, 同类误判下次少犯。跨任务概括(ExpeL 式):统计系统性误判(如最近纠正多是截图误判成地方照片)→对截图更保守。元学习(修法, 低频):大量会话后由元优化器重写判定阈值/类目定义。纠错是一等公民不是脚注。稀有度分母诚实标注: PWA 样本稀疏, 稀有度权重随库规模自适应。",
+          "patterns": [
+            "自我修正/Critic + 护栏(确定性锚点否决概率误判; 策略/行为/审计护栏)",
+            "反思记忆/语言强化学习(userOverride → 自然语言教训, 失败是资产)",
+            "元学习/双环学习(低频重写判定 System Prompt 阈值)",
+            "共同学习(人机双向: 纠错被记住, 越用越懂你)"
+          ],
+          "modules": [
+            "新增 critic 校验段(在 photoScreen 判定前用 EXIF/像素锚点否决 CLIP)",
+            "src/app/lib/taste.ts: 接收 userOverride 回写, 微调阈值与先验",
+            "frost-agent/harness/profile.ts: 常去地点先验、长期口味",
+            "新增 userOverride 字段写 IndexedDB(photoIndex.ts)",
+            "frost-agent/harness/validator.ts 风格: 行为护栏在动作落地前拦截『可清理』需确认"
+          ]
+        },
+        {
+          "layer": "协作 (Collaboration)",
+          "responsibility": "照片 agent 在 FROST 多 agent 交响乐团里的定位 = 专才 Worker / 专家节点, 专精『端侧相册理解 + 地理钉图』, 由 FROST 总 agent(router.ts 的 Manager/分诊台)按用户意图语义路由调度。委托模式:总控做全局规划与统一 HITL 确认入口, 照片 agent 只拿『整理某段相册』局部上下文、专注高质量完成、把 proposal 清单上交总控审批(对齐 router.ts 子 agent 只建议→validator 校验→返回的既有 Worker 契约)。群体/留痕(Stigmergy):照片 agent 把『已钉到地球的地点』写进共享环境(地球 marker 状态), 做世界探索/电台选片的 agent 监听该状态做后续动作, 彼此解耦。分层记忆/集体潜意识:沉淀的地点经验、用户偏好写进 FROST 共享长期存储(memory.ts/profile.ts), 让其他 agent 复用『这个用户去过哪、在意哪些地方』。隐私补丁在协作边界:跨 agent 共享时坐标抽稀、家庭/公司高频点不外泄。",
+          "patterns": [
+            "路由模式/星形网络(FROST router 语义分诊到 photos-curator Worker)",
+            "委托模式/有向树(Manager 全局上下文 + 统一 HITL; Worker 局部上下文上交 proposal)",
+            "群体/留痕 Stigmergy(钉点写共享地球状态, 其他 agent 监听解耦)",
+            "报文传输而非共享内存(只传结构化 proposal/marker, 不传原图/embedding)"
+          ],
+          "modules": [
+            "frost-agent/agents/photos-curator (已存在目录, 做成专才 Worker)",
+            "frost-agent/harness/router.ts (语义路由分诊到 photos-curator)",
+            "frost-agent/harness/validator.ts (注册 addPhotoPin/clean 动作校验器, registerActionValidator)",
+            "frost-agent/harness/memory.ts + profile.ts (地点经验/偏好共享给其他 curator)",
+            "src/app/data/mapMarkers.ts (共享地球状态: 钉点写 kind:'photo' marker)"
+          ]
+        }
+      ],
+      "data_model": "主键 = dHash(内容指纹, 64bit, 闸门0 解码即算, PWA 系统选择器每次给临时 File 也不漂移; 现 photoScreen.ts:272 的 'p'+i+'_'+(file.size%100000) 是非内容 id, 跨批次会漂移/碰撞, 必须替换)。size/lastModified 仅作辅助消歧。存储 = IndexedDB(新模块 src/app/lib/photoIndex.ts), 一条记录的字段: {dHash(PK), photoType, score, verdict('keep'|'review'|'clean'), pinnable(bool), hasGPS(bool), lat, lng, source('exif'|'user'|'borrowed'), exif摘要(capDate/make/model/softwareIsScreenshot/suspectExif), clusterId, isUtility(0-1), userOverride, status('done'|'failed'), 处理版本号}。隐私铁律: 进库只有派生数据, 原图/canvas/CLIP embedding 一律不入库不出端。索引: 按 dHash 主键(增量幂等查重)、按 clusterId(查同簇代表)。ScreenResult(现 photoScreen.ts:16-33) 是内存态(含 objectURL 给 UI), 落库时投影为上述派生记录。坐标是高敏轨迹: 提供一键清空坐标/整库、默认不同步上云。",
+      "pipeline_decision": "per-photo 流水线 = 责任链/Unix pipe, 9 道闸有严格阶段依赖必须串行, 阶段间只传结构化小结论(交接契约 Handoff Contract), 绝不把像素 buffer/embedding 往下传: 闸门0解码+dHash → 闸门1 EXIF金信号 → 闸门2 废片闸(先过低光艺术豁免) → 闸门3 isUtility 多信号投票 → 闸门4 仅不确定项跑 CLIP → 闸门5 时间分桶+dHash 查重选优 → 闸门6 GPS DBSCAN 时空聚类 → 闸门7 按类型算价值+选簇代表+反查地名 → 闸门8 出三件套+只写派生数据。决策核心是 verdict⟂pinnable 双正交输出: verdict(留/待定/可清理)是建议, 由类型+价值+重复定, 压倒性偏『宁可放过』(废片/严格重复才 clean; 资料默认待定·归档不默认清理——这是对评审的关键让步, 纪念截图/逝者聊天被默认标可清理是比资料误留严重得多的反向伤害; 实拍价值≥60留/40~60待定/<40且确属像素废片才 clean); pinnable 是独立布尔 = 实拍类型(非资料非废片非不确定) ∧ 有真坐标(或用户补) ∧ 价值达钉地球阈值 ∧ 簇内代表, 资料型即使带坐标即使判留 pinnable 恒 false(类型闸一票否决优先级高于坐标)。低置信(0.35~0.65)一律退『待定』不武断判死。质量分被彻底降级为只管『废片过滤 + 簇内选优』, 绝不再单独决定留/钉(=用户实测翻车根因)。可并行的只有同张内独立子判定(类型/废片/地标), 但端侧并行抢内存未必划算按设备能力决定; 查重/钉点有全局依赖必须串行。",
+      "safety_privacy": "白名单物理保证(不靠 prompt 口头约束): 感知/分析阶段工具集只授予只读能力(读缩略图/降采样像素/EXIF), 根本不提供 deleteAsset/writeOriginal/网络上传工具——能力不存在, 模型被诱导也删不掉、传不出。对应 plan 只读模式: 整个整理会话标记为系统级只读, 比『我没给删除工具』更强的架构级承诺。原图不出端 = 工具集无网络出口 + 进库只有派生数据(dHash/类型/分数/verdict/pinnable/坐标/exif摘要), 原图/canvas/embedding 绝不入库绝不出端。舱壁降级(单张失败不拖垮整轮): 每张是独立舱室, HEIC 解码失败/EXIF 缺失/坏图只标 status:failed 跳过, 缺 GPS 不钉地球但仍完成分类(部分结论优于全盘失败); CLIP 镜像挂/离线时 isUtility 闸降级为『不否决·宁放过』绝不让启发式单独误杀。suggest-then-confirm: 所有删/钉只产 proposal 清单交 UI 确认, 移入待删相册而非物理删 + 撤回时间锁; 黄金法则人 decision/AI choice/系统 execution; 绝不替用户删原图。坐标隐私(比原图不出端更被低估): 分享/截图地球时对 source=exif 精确坐标抽稀到街区/城市级, 家庭/公司高频点识别后默认不外泄, 一键清空坐标/整库, 默认不同步上云。人类保持主导权 + 纠错被记住(userOverride 回写)贯穿全程。",
+      "long_running": "增量 + 幂等 + 空闲跑 + 纠错闭环的后台流水线, 让地球钉点随时间持续生长, 绝不一次性全量卡死设备。① 稳定幂等键: dHash 为主键(内容指纹, 重扫只处理新增/变更, 稳定库秒级跳过, 重活 CLIP/OCR 绝不重复跑), 替换现 photoScreen.ts:272 漂移 id。② 状态护具/断点续跑: 整理整本相册是长任务, 手机随时切后台/锁屏/被杀进程, 维护持久化进度(IndexedDB 记已处理到哪 + 各 dHash 结论), 重启读进度只处理新增跳过已分析, 崩了不重头(对标 harness .claude-work 中间产物落文件)。③ 分层省算省电: 像素废片(秒)→多信号投票(便宜先滤资料)→仅不确定 top 跑 CLIP→仅资料跑 OCR(原生), 一次 embedding 复用类型分类+美学两任务; 整批全是资料(报销季收据)快速短路直接进资料分区跳过钉地球与美学排序。④ 钉点增量: 新过闸实拍点并入已有时空簇, 簇只增不重算, 簇代表可被更好的替换。⑤ 诚实对待 iOS PWA 限制(MEMORY 已记拿不到全相册/后台): 不承诺后台自动扫, 只能用户主动分批喂; 重推理用 requestIdleCallback(iOS 不支持降级 setTimeout 切片) + Page Visibility 前台空闲分批每批数十张不卡 UI; 结果入库累积多次选图地球叠加。⑥ 纠错闭环是一等公民: 每次拉回/撤钉/留写 userOverride 回写 taste.ts/profile.ts 个性化, 稀有度权重随库规模自适应(小库调低避免偏样带偏)。",
+      "frost_role": "照片 agent = FROST 这个『通用世界探索框架』交响乐团里的一个专才 Worker / 专家节点(frost-agent/agents/photos-curator 已有目录), 专精『端侧相册理解 + 地理钉图』, 不是独立 app。协作模式三件:① 路由/星形网络: FROST 总 agent(harness/router.ts 的分诊台/Manager)按用户意图语义路由把『整理相册/钉照片到地球』分诊给 photos-curator。② 委托/有向树: 总控持全局上下文做统一 HITL 确认入口, 照片 Worker 只拿局部上下文(整理某段相册)、专注高质量完成、把 proposal/钉点建议上交总控审批——严格对齐 router.ts 已有的『子 agent 只建议动作 → validator.ts 校验 → 返回』Worker 契约(新动作 addPhotoPin/clean 走 registerActionValidator 注册校验器, 内核不改)。③ 群体/留痕 Stigmergy: 钉点写进共享地球状态(mapMarkers.ts kind:photo marker), 做世界探索/电台选片的 curator 监听该状态做后续, 彼此解耦; 地点经验/用户偏好写 FROST 共享长期存储(harness/memory.ts + profile.ts)供其他 agent 复用『用户去过哪、在意哪些地方』。隐私边界在协作处生效: 跨 agent 共享坐标先抽稀、高频点不外泄。",
+      "refactor_plan": [
+        {
+          "target": "src/app/lib/photoScreen.ts:39-49 readCaptureDate",
+          "change": "扩成 readExif: parse 字段从 ['DateTimeOriginal','CreateDate','ModifyDate'] 增补 Make/Model/Software/FNumber/ExposureTime/ISO/FocalLength/GPSLatitude/GPSLongitude, 返回 {capDate,hasCameraFields,hasGPS,lat,lng,softwareIsScreenshot,suspectExif} + 一致性校验(GPS 在海里/时间在出生前/Make 是截图工具→suspectExif)。这是『资料截图被判留』根因之一, 评审共识先做。"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:272 的 id 'p'+i+'_'+(file.size%100000)",
+          "change": "改为以 dHash 为主键(辅以 size 消歧), 供 IndexedDB 增量复用。非内容 id 跨批次漂移/碰撞是断点续跑与查重失效根因。"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:81 fastMetrics 旁 + line 270 单规则",
+          "change": "新增 utilityMetrics(宽高比命中屏幕分辨率表/最大单一纯色块占比/量化唯一色数/二值化文本密度+行结构), 融合 EXIF 信号投票出 isUtility 概率, 替换 line 270 脆弱的 colorful<0.18&&contrast>0.55 单规则 和 line 317 tags 驱动 verdict。"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:16-33 ScreenResult",
+          "change": "增 photoType:string、isUtility:number、pinnable:boolean、hasGPS:boolean、lat/lng、clusterId、source:'exif'|'user'|'borrowed'、userOverride。把单 fastScore 决定留/钉拆成 verdict⟂pinnable 两条正交输出。"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:167-231 CLIP 段",
+          "change": "CLIP_LABELS 改两段式 ensemble(先实拍↔资料各多 prompt 聚正负两向量只算两次余弦, 实拍再判子类), 只对 isUtility 不确定(0.35~0.65)/将进钉候选的图跑; CLIP 不可用时 isUtility 不否决(宁放过)。"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:281-290 查重",
+          "change": "dHash 前加 EXIF 时间分桶(无 DateTimeOriginal 单独无日期桶防跨年误删), 海明拆 ≤2 严格重复/3~8 相似簇两档(原 ≤8 一刀切误杀), 资料型放宽/跳过去重。"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:312-319 判定段",
+          "change": "改『先类型后价值』: 废片才 clean; 资料默认 review(归档, 豁免含人脸/人名/收藏的情感截图, 不再因 tags 含截图/文档就笼统判); 实拍按价值留/待定。新增正交 pinnable = isUtility 低 && (hasGPS||userPinned) && 非废片 && 簇代表 && 价值达阈值。"
+        },
+        {
+          "target": "新建 src/app/lib/photoCluster.ts",
+          "change": "时间10分钟分桶→GPS DBSCAN(eps 数百米)→簇内 dHash 去重 + 选价值最高代表; 增量 agglomerative 只与相邻簇比对不重算全库; 反查地名用 EXIF GPS 真坐标, geoStickers.ts PLACE_COORDS 仅城市级标签标『约』不作定位。"
+        },
+        {
+          "target": "新建 src/app/lib/photoIndex.ts",
+          "change": "IndexedDB 增量幂等层(dHash 主键), 写派生数据 + 断点续跑进度 + userOverride; get 命中即跳过重活。原图/canvas/embedding 不入库。"
+        },
+        {
+          "target": "src/app/components/PhotosCuratorRunPage.tsx",
+          "change": "接通真钉地球: 替换当前 addMoodSticker(geoStickers.ts:32) 路径, 新增 addPhotoPin 接 mapMarkers.ts 已有 kind:'photo' marker(line 33,56-60), 只钉 pinnable===true 的簇代表, 与 mood 贴分层; UI 加『资料』分区(可检索/一键转正/彻底删)、『疑似有地点·待确认』中间态 + 一键补地点、误判一键拉回(写 userOverride 回写 taste.ts/profile.ts)、产 proposal 清单不直接删原图、分享地球坐标脱敏。"
+        },
+        {
+          "target": "frost-agent/agents/photos-curator + harness/validator.ts",
+          "change": "把照片 agent 做成 FROST 专才 Worker: 通过 registerActionValidator 注册 addPhotoPin/clean 动作校验器(只放行 pinnable===true 的钉点、clean 仅建议), 接 router.ts 语义路由; 地点经验/偏好写 harness/memory.ts + profile.ts 供其他 curator 复用。"
+        },
+        {
+          "target": "src/app/lib/taste.ts + frost-agent/harness/profile.ts",
+          "change": "建纠错闭环: 接收 userOverride 语言强化学习回写(微调 isUtility 阈值、留/钉门槛、常去地点先验), 跨任务概括系统性误判, 稀有度权重随库规模自适应。"
+        }
+      ],
+      "pwa_vs_native": "同一套『type + 价值 + pinnable』schema 契约不变, 只换底层实现——这是平滑升级的关键。【PWA 现在能做到】EXIF 金信号(exifr 扩读 Make/Model/曝光/GPS, 零模型成本, 当前最该补)、宽高比命中屏幕分辨率表、纯色占比/唯一色数/文本密度像素启发式、ensemble CLIP(transformers.js CDN 懒加载)做实拍↔资料二分与子类、dHash+时间分桶查重、有 GPS 才钉/无则待确认、IndexedDB 增量缓存(dHash 键)、requestIdleCallback/setTimeout 切片前台空闲分批。【必须诚实的 PWA 局限, 不在文案承诺等同 Apple 精度】① HEIC+GPS: iPhone 默认 HEIC, exifr 在 PWA/Safari 上 GPS 解析失败率高→坐标做了软闸降级而非硬闸, 落地前先做真机 HEIC+GPS 取数验证(成败点, 需用户拍板); ② 拿不到全相册(系统选择器逐次多选)、拿不到删权限(只能给建议清单引导用户去系统相册自己删, 反而天然安全); ③ 无系统级 isUtility/人脸/saliency/美学分, 人物档与主体档是近似实现默认偏保留; ④ iOS PWA 后台 JS 被冻结、requestIdleCallback 支持差→不承诺后台自动扫; ⑤ CLIP 镜像(hf-mirror)不稳/离线→isUtility 闸降级不否决。【原生 app 以后升级, 接口不变只换零件】截图→PHAsset.mediaSubtype .photoScreenshot(系统级0成本最准); 资料/工具型 + 美学分→VNCalculateImageAestheticsScores 的 isUtility / overallScore(-1..1); 场景子类→VNClassifyImageRequest(约1303类 taxonomy); 相似分组→VNGenerateImageFeaturePrint+computeDistance; 人脸/主体→Vision 人脸/saliency; 文档/OCR→DetectDocumentSegmentation+VNRecognizeText 量化资料可检索价值; 全相册+后台增量+NPU→PhotoKit change observer + BGProcessingTask; 位置补位→Significant Locations(端到端加密)做时空借位。原则: 所有 PWA 判别都是『建议+置信度+纠错记忆』, 把每个启发式零件平滑替换为系统信号即升级。"
+    },
+    {
+      "framing": "把现状 photoScreen.ts 那个「单函数 runScreen + 质量分单独决定留/钉」彻底改判：照片 agent 不是一个打分器，而是一条「感知→记忆→推理→行动→反思→协作」的端侧具身闭环 Worker。三条母题贯穿全层：① 三明治架构(黄佳《设计模式》)——上下面包是确定性逻辑(EXIF金信号/像素废片闸/dHash/屏幕分辨率表/类型闸/坐标软闸),中间夹一层概率模型(CLIP ensemble),「生成可概率、验证必确定」;② Harness 工程之道(黄佳《Harness》)——隔离/约束/舱壁,流水线只在阶段间传结构化小结论(Handoff Contract),工具白名单把「原图不出端/绝不删原图」做成物理保证而非口头约束,断点续跑,按难度分模型;③ 机制核心——类型优先 + 钉地球正交闸(verdict ⟂ pinnable),质量分降级为只管废片过滤+簇内选优,资料型不钉/不删/默认归档,坐标软闸「有则钉、无则待确认」,dHash 做稳定主键。落地视角=「重构优先」:不是另起炉灶,而是把现有 runScreen 八步逻辑拆成六层模块、把脆弱单规则换成多信号投票、把非内容 id 换成 dHash 主键、把单决定的质量分拆成两条正交输出。最高优先级偏置:宁可放过、绝不误杀珍视照片/纪念截图(用户实测翻车根因就是只用质量分单决定留/钉)。",
+      "layers": [
+        {
+          "layer": "感知",
+          "responsibility": "把一张 File 解码成一组带置信度的便宜信号,按性价比依次过四道闸(EXIF金信号→像素废片闸→资料 isUtility 多信号投票→必要时才 CLIP),贵操作压到最后最少。每张照片是独立『舱室』:HEIC 解码失败/EXIF 缺失/损坏图只标 status:failed 跳过,绝不中断整轮(优雅降级,部分结论优于全盘失败)。预算管理器按设备充电/算力动态下发 CLIP 精筛比例(具身约束=代谢能量)。",
+          "patterns": [
+            "认知漏斗(注意力聚焦:评分器→分流→重排→质量探针,主动忽视而非全处理)",
+            "统一语义场(多模态融合:像素+EXIF+GPS+可选OCR 融成一张照片的统一表征)",
+            "三明治上层面包(确定性 EXIF/分辨率表/像素闸约束概率模型输入)",
+            "舱壁/优雅降级(单张坏图锁在沙箱,status:failed 不污染整轮)",
+            "分级推理(像素秒级→多信号投票便宜→仅不确定 0.35~0.65 跑 CLIP,省算省电)"
+          ],
+          "modules": [
+            "src/app/lib/photo/perception/decode.ts(沿用现 decode,长边256,HEIC createImageBitmap→<img>兜底;dHash 在这步算出做幂等主键)",
+            "src/app/lib/photo/perception/exif.ts(readCaptureDate 扩成 readExif:Make/Model/Software/FNumber/ExposureTime/ISO/FocalLength/GPSLat/GPSLng→{capDate,hasCameraFields,hasGPS,lat,lng,softwareIsScreenshot,suspectExif};海里坐标/出生前时间/截图工具名→标 suspectExif 不盲信)",
+            "src/app/lib/photo/perception/junkGate.ts(沿用 fastMetrics 的 sharpness<0.08/mean<28,但先过低光/艺术豁免:colorful 不低或有高光点或 CLIP beautiful 不低→夜景/星空/虚焦不判废)",
+            "src/app/lib/photo/perception/utilityVote.ts(新:宽高比命中屏幕分辨率表+最大单一纯色块占比+量化唯一色数(直方图尖峰)+二值化文本密度+行结构,融合 EXIF 投票出 isUtility 概率,替换 photoScreen.ts:270 那条脆弱 colorful<0.18&&contrast>0.55 单规则)",
+            "src/app/lib/photo/perception/clipEnsemble.ts(改两段式:先实拍↔资料各多 prompt 聚正负两向量只算两次余弦纠偏 isUtility,实拍再判子类;只对 0.35~0.65 不确定或将进钉候选跑;CLIP 不可用时 isUtility 闸降级为不否决·宁放过)"
+          ]
+        },
+        {
+          "layer": "记忆",
+          "responsibility": "长期本地照片索引=L3 长期存储,以 dHash 为内容指纹主键做增量幂等:重扫只处理新增/变更,稳定库秒级跳过,重活(CLIP/OCR)绝不重复跑。进库只有派生数据(原图/canvas/embedding 永不入库)。沉淀用户纠错与地点先验,支撑『越用越懂你』。地名/POI 当可更新外部知识(推理 vs 知识解耦)。",
+          "patterns": [
+            "分层记忆/倒金字塔(L1 当前批=工作记忆,L3 IndexedDB 索引=长期存储;Agent≈OS 内核主动调度)",
+            "对抗遗忘(只存关键派生元数据+指纹,不存原图全量特征,保持端侧轻盈)",
+            "情节记忆双键检索(目标相似性『这类以前怎么归』+状态相似性『和库内哪张视觉最像』,既支撑查重又支撑举一反三归类)",
+            "RAG 知识解耦(经纬度→地名/POI 当外部可更新知识,模型不背地理)",
+            "幂等主键(dHash 替换 photoScreen.ts:272 那个 'p'+i+'_'+file.size%100000 的非内容、跨批漂移会碰撞的 id)"
+          ],
+          "modules": [
+            "src/app/lib/photo/memory/photoStore.ts(新 IndexedDB 层,主键 dHash,记录 PhotoRecord 派生数据+status+处理游标;重扫先查命中即跳过=增量幂等;提供一键清空坐标/整库)",
+            "src/app/lib/photo/memory/clusterStore.ts(时空簇 clusterId 持久化,簇只增不重算,簇代表可被更好的替换)",
+            "src/app/lib/photo/memory/placeDict.ts(从 geoStickers.ts 抽出 PLACE_COORDS,仅作就近城市级标签『约』,不作定位;真坐标钉点走 EXIF GPS)",
+            "frost-agent/harness/profile.ts(复用 recordSignals('photos',{...}):把常去地点/偏好类型/纠错倾向沉淀进跨会话画像,与 books/movies/music 同构)"
+          ]
+        },
+        {
+          "layer": "推理",
+          "responsibility": "把信号融成三件套:photoType(类型)、verdict(留/待定/可清理 建议)、pinnable(能否钉地球)。核心=类型优先 + verdict⟂pinnable 正交:质量分被彻底降级为只管废片过滤+簇内选优,绝不再单独决定留/钉。判定顺序固定:解码→EXIF→废片闸→isUtility 投票→(不确定才)CLIP→查重选优→按类型算价值→出 verdict+pinnable。压倒性偏置『宁可放过』。",
+          "patterns": [
+            "三明治下层面包(类型闸/坐标闸是确定性验证器,否决 CLIP 概率误判;『验证必须确定』)",
+            "ReAct 微闭环(单张:思考『像截图』→行动『查 EXIF/GPS』→观察『有 GPS 且非截图标志』→修正『改判实拍』;判不准设步数上限,超限标待确认不无限纠结)",
+            "类型优先决策树(verdict 由类型+价值+重复定;pinnable=实拍∧真坐标(或用户补)∧达钉阈值∧簇代表;资料型即便有坐标被判留 pinnable 恒 false)",
+            "按类型算价值(value_by_type:风景=美学+地理稀有度,人物=有人/主体清晰,资料=可检索性非美;稀有度分母=IndexedDB 累积全库,小库自动调低权重)",
+            "时空聚类(时间10分钟分桶→GPS DBSCAN eps 数百米,每簇=一次经历,增量 agglomerative 只比相邻簇)"
+          ],
+          "modules": [
+            "src/app/lib/photo/reason/classify.ts(融合 EXIF+utilityVote+CLIP 出 photoType,六大类型体系:实拍有地点价值/实拍人与生活/资料屏内生成/资料拍摄文字/实拍无地点待补位/废片/不确定)",
+            "src/app/lib/photo/reason/valueByType.ts(实拍按美学+地理稀有度+是否簇代表;资料不进美学排序,按可检索/唯一/近期另立一档)",
+            "src/app/lib/photo/reason/dedup.ts(改 photoScreen.ts:281:EXIF 时间10分钟分桶(无 DateTimeOriginal 单独无日期桶不跨年误删),海明≤2 严格重复/3~8 相似簇两档,资料型放宽/跳过去重防误杀连续截图)",
+            "src/app/lib/photo/reason/photoCluster.ts(新:时空 DBSCAN 把散点变经历,簇内 dHash 去重+选价值最高代表,反查地名优先 EXIF GPS)",
+            "src/app/lib/photo/reason/verdict.ts(出 verdict⟂pinnable 两条正交输出,替换 photoScreen.ts:312-319 的 tags 驱动单决定;资料默认待定·归档非可清理,情感截图(含人脸/人名/收藏过)从任何可清理建议豁免)"
+          ]
+        },
+        {
+          "layer": "行动",
+          "responsibility": "suggest-then-confirm 是行为底线:agent 默认只读相册、只产建议清单(建议钉哪些、建议哪些可清理),绝不替用户删原图、绝不直接钉。所有删/钉走 UI 二次确认。钉地球只接 pinnable===true 的簇代表,接 mapMarkers.ts 已有 kind:photo marker;资料归独立可检索分区;无 GPS 实拍进『疑似有地点·待你确认』中间态。人负责 decision、AI 负责 choice、系统负责 execution。",
+          "patterns": [
+            "人类保持主导权(只读沙箱+HITL 强制确认+确定性护栏;可逆+时间锁:移入待删而非物理删,给撤回机会)",
+            "工具白名单物理保证(分析阶段工具集根本没有 deleteAsset/writeOriginal/网络上传,能力不存在则幻觉也删不掉/传不出;比 prompt『请不要删』强)",
+            "工具编排语义化(把读EXIF/算dHash/坐标→地名/写索引/生成 marker 封装成带语义描述的工具,按需编排)",
+            "流水线 Handoff Contract(阶段间只传结构化小 JSON {dHash,type,score,verdict,pinnable,lat,lng,clusterId},绝不把像素buffer/embedding 往下传,端侧内存生命线)",
+            "委托审批流(建议清单上交,UI 渲染『建议卡片』,等用户明确批准才落地)"
+          ],
+          "modules": [
+            "src/app/lib/photo/action/proposal.ts(产出 Proposal{pins:簇代表[], cleanable:建议清理[], archive:资料[], needPlace:待确认地点[]},纯建议不执行)",
+            "src/app/lib/photo/action/pinToEarth.ts(新 addPhotoPin,只接 pinnable===true 簇代表,接 mapMarkers.ts kind:photo marker(line33,56-60),替换 PhotosCuratorRunPage 当前误用的 addMoodSticker(geoStickers.ts:32)路径,与 mood 贴分层)",
+            "src/app/lib/photo/action/shareDeidentify.ts(分享/截图地球时对 source=exif 精确坐标抽稀到街区/城市级,家庭/公司高频点识别后默认不外泄)",
+            "frost-agent/harness/validator.ts(registerActionValidator('pin_photo'/'archive_photo'/'mark_cleanable'):动作必须过 Boundary 校验;mark_cleanable 永远只标不删=确定性护栏)",
+            "src/app/components/PhotosCuratorRunPage.tsx(改造结果区:三档外加『资料』分区(可检索/一键转正/彻底删)+『疑似有地点·待确认』+一键补地点+误判一键拉回入口)"
+          ]
+        },
+        {
+          "layer": "反思",
+          "responsibility": "判定前内部纠错(Critic 用确定性锚点否决 CLIP 概率误判)+从用户每次『留/删/纠正/撤钉/拉回』里学(纠错是一等公民不是脚注):不重训模型,生成自然语言教训写 userOverride 进 IndexedDB,回写 taste.ts/profile.ts 微调 isUtility 阈值/留钉门槛/常去地点先验,让同类误判下次少犯。",
+          "patterns": [
+            "自我修正+护栏(Critic 用 EXIF 截图标志/GPS有无/像素指纹否决概率误判,能力不对称:挑错强于一次判对;策略护栏写死绝不删原图、行为护栏拦截标可清理动作、审计护栏记每次判据可追溯)",
+            "反思记忆/语言强化学习(用户纠正不重训,生成自然语言教训如『用户保留大量孩子连拍→这类高价值不要判重复』注入下次判定)",
+            "跨任务概括 ExpeL(『最近 8/10 纠正都是把截图误判成地方照片→今后对截图更保守』)",
+            "失败是资产(每次纠正是最宝贵训练信号,异常是最具价值数据)",
+            "稀有度分母诚实标注(PWA 样本天然稀疏偏倚,稀有度权重随库规模自适应,小库调低避免被偏样带偏)"
+          ],
+          "modules": [
+            "src/app/lib/photo/reflect/critic.ts(判定前二次校验:用确定性锚点否决 CLIP 概率误判,如 CLIP 判风景但 isUtility 投票高+有截图 Software→压回资料)",
+            "src/app/lib/photo/reflect/override.ts(写 userOverride 进 photoStore:拉回实拍/撤钉/可清理拉回留;含人脸/人名/收藏过的情感豁免登记)",
+            "src/app/lib/photo/reflect/learn.ts(从 override 提炼自然语言教训,调 profile.recordSignals('photos',{correctedTypes,lovedPlaces})回写,微调本地阈值)",
+            "src/app/lib/photo/memory/thresholds.ts(可被 learn.ts 微调的本地阈值:isUtility 门槛/留钉价值阈/低光豁免,默认偏保留)"
+          ]
+        },
+        {
+          "layer": "协作",
+          "responsibility": "照片 agent 是 FROST 交响乐团里的专才 Worker(专精端侧相册理解与地理钉图),由 FROST 总控(Router/Manager)按用户意图分诊调度;只拿『整理某段相册』的局部上下文、专注高质量完成、把建议清单上交总控做统一 HITL。沉淀的地点经验/用户偏好写进 FROST 共享长期存储,让世界探索/电台选片等其他 agent 复用『这个用户去过哪、在意哪些地方』。",
+          "patterns": [
+            "委托模式(FROST 总控全局规划+统一 HITL 入口;照片 agent 只拿局部上下文专注完成,上交建议清单审批;Manager 全局/Worker 局部)",
+            "路由模式(registerIntent('curate_photos', handler) 注册进 intentRegistry,Router 按 description 语义匹配分诊;边界过 validateActions)",
+            "群体/留痕 Stigmergy(照片 agent 把已钉地点写进共享环境 mapMarkers 状态,其他 agent 监听该状态做后续动作,彼此解耦)",
+            "分层记忆共享(地点/偏好沉淀进 profile.ts 共享画像,跨 agent 复用)",
+            "端侧契约复用(走 edgeSafe.vision/classify 统一入口,带兜底+health,换端侧模型 Qwen-VL→Phi 只改 viteEdge 不动调用点)"
+          ],
+          "modules": [
+            "frost-agent/agents/photo-curator/index.ts(新 Worker:封装六层流水线,产出 AgentResult{建议清单+trace},绝不直接落地)",
+            "frost-agent/harness/intentRegistry.ts(registerIntent('curate_photos', runPhotoCurator):接进 Router 分诊,与 radio 那套 skill 同构)",
+            "frost-agent/harness/validator.ts(registerActionValidator 注册 pin_photo/archive_photo/mark_cleanable)",
+            "frost-agent/edge/contract.ts(edgeSafe.vision 入口给 CLIP/OCR/VL 用,兜底+health,curator 调用点无需 try-catch)",
+            "frost-agent/harness/profile.ts(photos 域共享画像,供 tour/open-dj 等其他 Worker 复用地点偏好)"
+          ]
+        }
+      ],
+      "data_model": "主键=dHash(内容指纹,在感知层 decode 步算出;稳定、PWA 系统选择器每次给临时 File 也不变;size/lastModified 仅辅助消歧)。替换现 photoScreen.ts:272 那个 'p'+i+'_'+(file.size%100000) 的非内容、跨批漂移会碰撞的 id。IndexedDB(库名 pe.photos,store=photos 主键 dHash + store=clusters 主键 clusterId)。PhotoRecord 字段(只存派生,原图/canvas/CLIP embedding 一律不入库):{ dHash(主键), photoType, verdict:'keep'|'review'|'clean', pinnable:boolean, hasGPS, lat, lng, source:'exif'|'user'|'borrowed', exif摘要{capDate,make,model,softwareIsScreenshot,suspectExif}, sharpness/exposure/colorful/contrast 四像素分, isUtilityProb, valueScore, clusterId, dupOf, userOverride, status:'ok'|'failed'|'pending', updatedAt }。ClusterRecord:{ clusterId, repDHash(簇代表,可被更好的替换), memberDHashes[], centroidLat/Lng, timeBucket, placeLabel }。Thresholds(可被反思层 learn.ts 微调):{ isUtilityGate, keepValueGate, pinValueGate, lowLightExempt }。隐私:经纬度是高敏轨迹,提供一键清空坐标/整库,默认不同步上云,分享时脱敏(shareDeidentify)。对应现状 ScreenResult(photoScreen.ts:16-33)需扩 photoType/isUtility/pinnable/hasGPS/lat/lng/clusterId/source/userOverride 共九个字段。",
+      "pipeline_decision": "per-photo 是一条有依赖的串行流水线(黄佳《Harness》流水线型),九闸:闸0 解码+dHash → 闸1 EXIF金信号 → 闸2 像素废片闸 → 闸3 资料 isUtility 多信号投票 → 闸4 仅不确定(0.35~0.65)或将进钉候选跑 CLIP → 闸5 查重(时间分桶+海明≤2严格/3~8相似簇,资料放宽) → 闸6 时空聚类(DBSCAN 把散点变经历) → 闸7 按类型算价值+簇内选代表+反查地名 → 闸8 出三件套+只写派生数据。每闸只把结构化小结论(Handoff Contract)传给下闸,绝不把像素 buffer/embedding 往下传。核心决策=verdict⟂pinnable 两条正交输出:verdict(留/待定/可清理)是建议,由类型+价值+重复共同决定,压倒性偏置『宁可放过』——废片/相似簇非代表→可清理;实拍价值≥60留/40~60待定/<60且确属废片才可清理;资料·拍摄文字默认待定·归档绝不默认可清理(可能是报销凭证/证件);资料·屏内生成默认待定(纪念截图/和逝者聊天记录被默认标可清理是比资料误留严重得多的反向伤害);仅 dHash 严格重复或纯临时网图特征极强且无人脸无人名才给弱可清理。pinnable(独立布尔)=实拍类型(非资料非废片非不确定) ∧ 有真坐标(或用户已补) ∧ 价值达钉阈 ∧ 簇内代表;资料型即便带坐标被判留,pinnable 恒 false(类型一票否决优先级高于坐标)。质量分被彻底降级为只管废片过滤+簇内选优,绝不再单独决定留/钉(这是用户实测翻车的根因修正)。",
+      "safety_privacy": "白名单物理保证(黄佳《Harness》最该用满的一条,不靠 prompt 口头约束):① 分析阶段 agent 的工具集里根本没有 deleteAsset/writeOriginal/网络上传——能力不存在则幻觉也删不掉、原图也传不出端,做成端侧沙箱;对应 plan 只读模式=整个整理会话系统级只读承诺。② 所有删/钉走 validator.ts 的 registerActionValidator 闸,mark_cleanable 校验器永远只产『标记』动作不产『删除』动作=确定性护栏。舱壁降级:每张照片是独立舱室,HEIC 解码失败/EXIF 缺失/损坏图只标 status:failed 跳过,单张失败绝不中断整轮;缺 GPS 的照片不钉地球但仍完成分类(部分结论优于全盘失败)。suggest-then-confirm:agent 永远停在『生成建议清单』这一步,人负责 decision(是否真删/真钉)、AI 负责 choice(建议哪些)、系统负责 execution(执行已确认的);即便用户点清理也走『移入待删+延迟』而非立即物理删,给撤回机会(可逆+时间锁)。坐标抽稀:分享/截图地球时对 source=exif 精确坐标降到街区/城市级,家庭/公司高频点识别后默认不外泄(比『原图不出端』更被低估的洞)。隐私边界:进库只有派生数据(dHash/类型/分数/verdict/pinnable/坐标/exif摘要),原图/canvas/embedding 永不入库;经纬度高敏轨迹提供一键清空、默认不上云。情感豁免:含人脸/人名/被收藏过/反复查看过的截图从任何可清理建议豁免,默认待定·留。",
+      "long_running": "设计成『增量 + 幂等 + 空闲跑 + 纠错闭环』后台流水线,让地球钉点随时间持续生长,绝不一次性全量卡死设备(黄佳《Harness》断点续跑刚需)。① 稳定幂等键 dHash 做内容指纹:维护持久化进度(photoStore 记每 asset 的 dHash 与结论+处理游标),重启后只处理新增/变更,稳定库秒级跳过,重活(CLIP/OCR)绝不重复跑;手机随时切后台/锁屏/被杀进程也能从断点续跑,不从头再来。② 分层省算:像素废片(秒)→多信号投票(便宜先滤掉大多数资料型)→仅不确定 top 候选跑 CLIP→仅资料档案跑 OCR;一次 image embedding 复用于类型分类+美学价值两任务;整批全是资料(报销季拍一堆收据)做快速短路:整批 isUtility 高→直接进资料分区、跳过钉地球与美学排序、PWA 阶段跳过 OCR。③ 调度(诚实对待 iOS PWA 限制):不承诺后台自动扫,重推理用 requestIdleCallback(iOS 不支持降级 setTimeout 切片)+Page Visibility 前台空闲分批、每批数十张不卡 UI;结果入库累积,多次选图在地球上叠加。④ 钉点增量:新过闸实拍点并入已有时空簇,簇只增不重算,簇代表可被更好的替换(钉点稳定的是 clusterId 而非具体某张,新批次刷新某簇最佳则原地更新缩略图引用、坐标基本不变)。⑤ 纠错闭环:每次 override 写 IndexedDB 并回写 taste.ts/profile.ts,纠错是一等公民。⑥ 单张舱壁降级:坏图 status:failed 不拖垮整轮。",
+      "frost_role": "照片 agent = FROST 多 agent 系统(交响乐团)里的一个专才 Worker/专家节点,专精『端侧相册理解与地理钉图』,对齐 MEMORY 里 frost-agent 的内核定位(通用世界探索框架、端侧模型做选择,不是电台)。协作模式:① 委托模式——FROST 总控(Router/Manager)做全局规划与统一 HITL 入口(向用户要确认的唯一出口),照片 Worker 只拿『整理某段相册』的局部上下文、专注高质量完成、把建议清单上交总控审批(Manager 全局上下文/Worker 局部上下文,审批流『执行前审拆解、交付前审成果』)。② 路由模式——registerIntent('curate_photos', runPhotoCurator) 注册进 intentRegistry.ts(与 radio 那套 skill 同构),Router 按 description 语义匹配分诊调度;产出动作过 validator.ts 的 Boundary 校验。③ 群体/留痕(Stigmergy)——照片 agent 把已钉到地球的地点写进共享环境(mapMarkers 状态),tour/open-dj 等其他 Worker 监听该状态做后续动作,彼此解耦无需直接通信(报文传输而非共享内存)。④ 分层记忆共享——沉淀的地点经验/用户偏好写进 profile.ts 的 photos 域共享画像,让做世界探索/电台选片的 agent 复用『这个用户去过哪、在意哪些地方』。⑤ 端侧契约复用——CLIP/OCR/VL 都走 edgeSafe.vision 统一入口(带兜底+health),换端侧模型(Qwen-VL→Phi/MNN)只改 viteEdge 不动 curator 调用点。身份与方法分离:Worker 定义 Who/What(照片整理身份),类型规则/价值标准/查重阈值/钉点逻辑拆成可复用 Skill 模块定义 How/Standard。",
+      "refactor_plan": [
+        {
+          "target": "src/app/lib/photoScreen.ts:39 readCaptureDate",
+          "change": "扩成 readExif:parse 字段从 ['DateTimeOriginal','CreateDate','ModifyDate'] 增补 Make/Model/Software/FNumber/ExposureTime/ISO/FocalLength/GPSLatitude/GPSLongitude,返回 {capDate,hasCameraFields,hasGPS,lat,lng,softwareIsScreenshot,suspectExif};海里坐标/出生前时间/截图工具名→标 suspectExif。这是资料截图被判留根因之一,先做。迁到 perception/exif.ts"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:272 id 生成",
+          "change": "把 'p'+i+'_'+(file.size%100000) 改为 dHash 为主键(辅以 size 消歧),供 IndexedDB 增量复用;dHash 在闸0 已算出正好复用。这是断点续跑/查重幂等的地基,先做"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:270 + :317 资料判定",
+          "change": "新建 perception/utilityVote.ts 多信号投票(宽高比命中屏幕分辨率表/最大纯色块占比/量化唯一色数/二值化文本密度+行结构,融合 EXIF),替换那条脆弱 colorful<0.18&&contrast>0.55 单规则 和 tags 含截图/文档就笼统 review 的逻辑。先做(三件最硬之一)"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:16-33 ScreenResult",
+          "change": "扩 photoType:string、isUtility:boolean、pinnable:boolean、hasGPS:boolean、lat/lng、clusterId、source:'exif'|'user'|'borrowed'、userOverride 九字段;作为阶段间 Handoff Contract 的结构化小结论"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:167-231 CLIP",
+          "change": "CLIP_LABELS 改两段式 ensemble(先实拍↔资料各多 prompt 聚正负两向量只算两次余弦纠偏 isUtility,实拍再判子类),只对 isUtility 不确定(0.35~0.65)/将进钉候选跑;CLIP 不可用时 isUtility 不否决·宁放过。迁到 perception/clipEnsemble.ts"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:281-290 查重",
+          "change": "dHash 前加 EXIF 时间10分钟分桶(无 DateTimeOriginal 单独无日期桶不跨年误删),海明拆 ≤2 严格重复/3~8 相似簇两档,资料型放宽/跳过去重防误杀连续聊天截图。迁到 reason/dedup.ts"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:312-319 判定",
+          "change": "改『先类型后价值』并拆成 verdict⟂pinnable 两条正交输出:废片才 clean,资料默认 review·归档(豁免情感截图),实拍按价值留/待定;新增 pinnable=isUtility===false && (hasGPS||userPinned) && 非废片 && 簇代表 && 价值达阈。迁到 reason/verdict.ts,这是翻车根因总修正"
+        },
+        {
+          "target": "新建 src/app/lib/photo/reason/photoCluster.ts",
+          "change": "时间10分钟分桶→GPS DBSCAN(eps 数百米)→簇内 dHash 去重+选价值最高代表;反查地名用 EXIF GPS 真坐标,geoStickers PLACE_COORDS 仅作就近城市级标签『约』不作定位;增量 agglomerative 新照只比相邻簇"
+        },
+        {
+          "target": "新建 src/app/lib/photo/memory/photoStore.ts",
+          "change": "IndexedDB 增量层(dHash 主键)做幂等:重扫先查命中即跳过,持久化进度+游标支持断点续跑;一键清空坐标/整库;原图/canvas/embedding 不入库"
+        },
+        {
+          "target": "src/app/components/PhotosCuratorRunPage.tsx",
+          "change": "结果区三档外加『资料』分区(可检索/一键转正/彻底删)+『疑似有地点·待确认』中间态+一键补地点+误判一键拉回(写 override 回写 taste/profile);分享地球坐标脱敏;替换当前误用的 addMoodSticker 路径"
+        },
+        {
+          "target": "新建 src/app/lib/photo/action/pinToEarth.ts",
+          "change": "addPhotoPin 只接 pinnable===true 簇代表,接 mapMarkers.ts 已有 kind:photo marker(line33,56-60),与 geoStickers 的 mood 贴分层"
+        },
+        {
+          "target": "frost-agent/harness/intentRegistry.ts + validator.ts",
+          "change": "registerIntent('curate_photos', runPhotoCurator) 接进 Router 分诊;registerActionValidator 注册 pin_photo/archive_photo/mark_cleanable;新建 frost-agent/agents/photo-curator/index.ts 封装六层流水线产出建议清单(绝不直接落地)"
+        },
+        {
+          "target": "新建 src/app/lib/photo/reflect/(critic.ts/override.ts/learn.ts)",
+          "change": "Critic 用确定性锚点否决 CLIP 概率误判;override 写 userOverride;learn 从纠错提炼自然语言教训回写 profile.recordSignals('photos',...)微调本地阈值。纠错是一等公民"
+        }
+      ],
+      "pwa_vs_native": "同一套『type + 价值 + pinnable』schema 契约不变,只换底层实现(身份与方法分离,系统信号平滑替换启发式零件即升级)。【PWA 现在能做到】EXIF 金信号(exifr 扩读 Make/Model/曝光/GPS,零模型成本,当前最该补)、宽高比命中屏幕分辨率表、纯色占比/唯一色数/文本密度像素启发式、两段式 ensemble CLIP 做实拍↔资料二分与子类、dHash+时间分桶查重、有 GPS 才钉/无则待确认、IndexedDB 增量缓存(dHash 主键)、requestIdleCallback/setTimeout 切片前台分批。【必须诚实的 PWA 硬限制,不在文案承诺等同 Apple 精度】① HEIC+GPS:iPhone 默认 HEIC,exifr 在 PWA/Safari 上 GPS 解析失败率高——所以坐标做了降级软闸而非硬闸,建议落地前先用你自己 iPhone 几张 HEIC 做一次真机 exifr GPS 取数验证(决定中国/iPhone 用户地球会不会长期空着,是成败点);② 拿不到全相册(系统选择器逐次多选)、拿不到删权限(只能给建议清单引导用户去系统相册自己删,反而天然安全);③ 无系统级 isUtility/人脸/saliency/美学分,人物档与主体档是近似实现、默认偏保留;④ iOS PWA 后台 JS 被冻结、requestIdleCallback 支持差→不承诺后台自动扫,只能用户主动分批喂照片;⑤ CLIP 镜像(hf-mirror)不稳/离线→isUtility 闸降级为不否决。【原生 app 以后,接口不变只换零件】截图→PHAsset.mediaSubtype .photoScreenshot(系统级0成本最准);资料/工具型 isUtility 与美学分→VNCalculateImageAestheticsScores(isUtility + overallScore -1..1);场景子类→VNClassifyImageRequest(约1303类层级 taxonomy);相似分组→VNGenerateImageFeaturePrint+computeDistance(从0.35重标定);人脸/主体→Vision 人脸/saliency;文档/OCR→DetectDocumentSegmentation+VNRecognizeText;全相册+后台增量+NPU→PhotoKit change observer+BGProcessingTask;位置补位→Significant Locations(端到端加密)做时空借位。"
+    },
+    {
+      "framing": "视角=「隐私安全与端侧约束优先」。把照片 agent 重铸成一个具身六层闭环（感知→记忆→推理→行动→反思→协作），底座是 Harness 三件套：①白名单做物理保证（能力不存在＞口头约束）②舱壁降级（单张/单阶段失败被锁在沙箱，不污染整轮）③分级推理省算省电（认知漏斗：贵操作压到最后、最少）。核心范式迁移=「质量分单决留/钉」→「类型优先 + verdict⟂pinnable 双正交输出」（用户实测翻车根因被连根拔除）。全链贯穿三明治架构：确定性逻辑（像素/EXIF/dHash/校验器/工具白名单）包住中间一层概率模型（CLIP/未来 Vision），生成可以概率、验证必须确定。四条隐私物理保证落到架构而非文案：原图/canvas/embedding 永不出端（分析阶段工具集里根本没有网络/上传工具，无出口）；绝不删原图（工具集里根本没有 deleteAsset/writeOriginal，且整会话 plan 只读模式）；进库只有派生小结论 {dHash,type,score,verdict,pinnable,hasGPS,lat,lng,exif摘要,clusterId,source,userOverride}；一切删/钉走 suggest-then-confirm，人负责 decision、AI 负责 choice、系统负责 execution。诚实承认 PWA 硬限制（无后台/无全相册/HEIC-GPS 读不出），机制靠『坐标软闸+待确认中间态+增量幂等』在限制下不崩。",
+      "layers": [
+        {
+          "layer": "感知",
+          "responsibility": "把一整部相册逐张『看出关键』，且把贵操作压到最后最少。单张照片走固定 8 闸认知漏斗：解码缩图(长边256)→EXIF金信号→像素废片闸→资料isUtility多信号投票→(仅不确定才)CLIP兜底→查重分桶→时空聚类→出三件套。质量分被彻底降级为只服务『废片过滤+簇内选优』，绝不单独决定留/钉。多模态融合=像素+EXIF+地理+(可选)OCR 融成统一表征再判类型。诚实对待 PWA：HEIC-GPS 高失败率→坐标降为软信号；无人脸/saliency/美学分→人物档与主体档是近似实现，默认偏保留。",
+          "patterns": [
+            "注意力聚焦/认知漏斗(廉价评分器先分流90%废片，贵算子只用在少数)",
+            "多模态融合/统一语义场(像素+EXIF+GPS+OCR→在场感，决定钉不钉)",
+            "主动感知/信息觅食(不确定性探针:0.35~0.65退『待定』不武断;承认无知是常态)",
+            "三明治上层面包(像素/EXIF确定性约束包住CLIP概率判定)",
+            "具身认知/预算管理器(按电量·是否充电动态下发CLIP精筛比例)"
+          ],
+          "modules": [
+            "src/app/lib/photoScreen.ts:decode(闸0,算dHash主键)",
+            "photoScreen.ts:readExif(由readCaptureDate:39扩字段:Make/Model/Software/曝光/GPS+suspectExif一致性校验)",
+            "photoScreen.ts:fastMetrics(闸1废片:sharpness<0.08/mean<28+低光艺术豁免)",
+            "新增 utilityMetrics(闸3:宽高比命中屏幕分辨率表+最大纯色块占比+量化唯一色数+二值化文本密度行结构,替换:270脆弱单规则)",
+            "photoScreen.ts:visionClassify(闸4改两段式ensemble:先实拍↔资料二分纠偏isUtility,实拍再判子类;限modelTopN)",
+            "新增 src/app/lib/photoCluster.ts(闸6时空DBSCAN)"
+          ]
+        },
+        {
+          "layer": "记忆",
+          "responsibility": "已筛过的别重筛、偏好要沉淀、坐标是高敏轨迹要治理。倒金字塔分层记忆：L1=当前批 / L3=IndexedDB 长期照片索引(dHash为主键)。记忆生命周期四步：编码(算dHash+脱敏,原图/embedding不入库)→巩固(去重写派生小结论)→检索(重扫先查索引,命中秒级跳过,重活CLIP/OCR绝不重复跑)→遗忘(用户删的结论软删+坐标可一键清空)。情节记忆：每次整理会话=Goal/Trajectory/Outcome/Reflection,用户的留/删/纠正沉淀成可复用经验。RAG式：经纬度→地名当可更新外部知识，模型不背地理。",
+          "patterns": [
+            "分层记忆/倒金字塔(L1批×L3索引,Agent=OS内核主动调度)",
+            "记忆生命周期四步(编码脱敏/巩固去重/检索跳过/遗忘软删)",
+            "情节记忆/双键检索(目标相似+状态相似→既查重又举一反三归类)",
+            "RAG/知识解耦(坐标→地名外挂,可更新,不背进模型)",
+            "对抗遗忘(索引只留派生元数据+指纹,不存原图全量特征,保持端侧轻盈)"
+          ],
+          "modules": [
+            "新增 IndexedDB 缓存层(主键dHash,值={type,score,verdict,pinnable,hasGPS,lat,lng,exif摘要,clusterId,source,userOverride})",
+            "photoCluster.ts(增量agglomerative:新照只与时间相邻簇比对,簇只增不重算)",
+            "src/app/data/geoStickers.ts:PLACE_COORDS(城市级字典,仅作就近标签『约』,不作定位)",
+            "src/app/lib/taste.ts/profile.ts(用户偏好/常去地点先验沉淀,被纠错回写)",
+            "frost-agent/memory(共享长期存储:地点经验跨agent复用)"
+          ]
+        },
+        {
+          "layer": "推理",
+          "responsibility": "先分清是什么、再谈值不值/钉不钉。判定顺序固定『先类型后价值』，输出两条正交线：verdict(留/待定/可清理 建议,压倒性偏置宁可放过)⟂pinnable(实拍∧真坐标或已补∧达钉阈值∧簇代表)。资料型即使带坐标即使判留,pinnable恒false(类型一票否决高于坐标)。价值按类型分别算(value_by_type:风景=美学+地理稀有度,人物=有人/主体清晰,资料=可检索性非美)。地理稀有度分母=IndexedDB历史累积,小库时权重自适应调低。System1快思考(像素/EXIF启发式秒判大多数)/System2慢思考(仅0.35~0.65不确定项升级CLIP)。",
+          "patterns": [
+            "三明治中间层(Temperature>0概率生成被上下游确定性包夹)",
+            "快/慢思考路由(廉价启发式System1兜底,CLIP/未来Vision System2只接长尾)",
+            "类比/情节参数化(从相似簇归类新照,不变逻辑+可变参数)",
+            "ReAct微闭环(思考『像截图』→行动查EXIF/GPS→观察→修正改判;死循环防护:判不准设步数上限退『待人确认』)",
+            "CoT白盒化(每张给可追溯理由链:用什么判据得出什么verdict)"
+          ],
+          "modules": [
+            "photoScreen.ts 判定段(:312-319 改:废片才clean,资料默认review归档+情感截图豁免,实拍按价值留/待定;不再因tags含截图/文档笼统review)",
+            "新增 verdictDecision(决策树:类型+价值+重复→verdict)",
+            "新增 pinnableGate(正交布尔=isUtility===false&&(hasGPS||userPinned)&&非废片&&簇代表&&价值达阈值)",
+            "value_by_type 价值函数(按类型分档,资料不进美学排序)",
+            "photoCluster.ts(簇内选价值最高一张为代表+反查地名先用EXIF真坐标)"
+          ]
+        },
+        {
+          "layer": "行动",
+          "responsibility": "建议而非执行、绝不删原图、原图不出端——全部用『能力边界(工具集缺失)』做物理保证，不靠口头约束。整理一整本相册=长程任务,规划器拆分批DAG,状态护具持久化进度,随时被杀进程可断点续跑。钉地球=『坐标→marker』工具调用,只钉pinnable===true的簇代表。所有删/合并只产出proposal清单交UI确认。可逆+时间锁:即便点清理也走『移入待删/延迟』而非物理删。",
+          "patterns": [
+            "白名单即安全边界(分析agent工具集只有本地只读+无网络无deleteAsset→幻觉也删不掉/传不出)",
+            "plan只读模式(整会话系统级只读,比『没给删除工具』更强的架构承诺)",
+            "suggest-then-confirm/HITL(高风险写操作前强制挂起,人负责decision/AI负责choice/系统负责execution)",
+            "规划-执行+状态护具(分批DAG,进度持久化IndexedDB,断点续跑)",
+            "工具编排(读EXIF/算dHash/坐标→地名/写索引/生成marker封装成语义化工具)",
+            "舱壁降级(单张坏图/HEIC解码失败只标status:failed跳过,绝不中断整轮;缺GPS不钉但仍完成分类)"
+          ],
+          "modules": [
+            "src/app/components/PhotosCuratorRunPage.tsx(运行页:选图+时间段+三档结果;接断点续跑游标)",
+            "新增 addPhotoPin(接 mapMarkers.ts kind:'photo' marker:33/56-60,只钉pinnable簇代表;替换当前走addMoodSticker的临时路径)",
+            "src/app/data/mapMarkers.ts(MapMarker已有lat/lng/thumb/full,与geoStickers的mood贴分层)",
+            "requestIdleCallback切片调度(iOS不支持降级setTimeout)+Page Visibility前台空闲分批",
+            "『待删相册』软删容器(时间锁+撤回,绝不调用原图删除API)"
+          ]
+        },
+        {
+          "layer": "反思",
+          "responsibility": "判定前内部纠错(Critic)+从用户留/删/纠正里学(纠错是一等公民不是脚注)。批评家用外部确定性锚点(EXIF截图标志/GPS有无/dHash)否决模型概率误判(能力不对称:挑错强于一次判对)。语言强化学习:用户每次『把误判资料拉回实拍/钉地球池』『撤钉』『把可清理拉回留』都写userOverride进IndexedDB,并回写taste.ts/profile.ts:微调isUtility阈值、留/钉门槛、常去地点先验。ExpeL式跨任务概括:发现系统性误判(如总把截图误判成地方照片)→对截图更保守。",
+          "patterns": [
+            "自我修正/批评家(EXIF/GPS/dHash确定性锚点否决CLIP概率误判)",
+            "护栏四种(策略:绝不删原图/绝不出端;行为:标可清理前运行时拦截;审计:每次判定可追溯;权限:工具白名单)",
+            "反思记忆/语言强化学习(用户纠正→自然语言教训写偏好,不重训,下次Prompt注入)",
+            "元学习/修法(低频:系统性误判→重写isUtility阈值/类目定义)",
+            "失败是资产(用户每次纠正不是噪声是最宝贵训练信号)"
+          ],
+          "modules": [
+            "新增 userOverride 写入(IndexedDB,纠错一等公民)",
+            "回写 src/app/lib/taste.ts/profile.ts(阈值/门槛/地点先验个性化)",
+            "审计日志(每张:阶段+判据+verdict理由链,供UI『为什么这张被建议清理』)",
+            "『一键拉回实拍/钉地球池』纠错入口(资料分区UI;有地点意义的菜单/招牌/票根靠它拉回)",
+            "稀有度分母自适应(PWA样本稀疏偏倚,库小时权重调低)"
+          ]
+        },
+        {
+          "layer": "协作",
+          "responsibility": "照片 agent 是 FROST 多agent内核里的专才Worker——专精『端侧相册理解与地理钉图』,由FROST总控(Router/Manager)按用户意图分诊调度。委托模式:总控做全局规划+统一HITL确认入口,照片agent只拿『整理某段相册』局部上下文,把建议清单上交总控审批(被动中断/交付前审)。留痕/群体:已钉地点写进共享环境(地球marker状态),其他agent(世界探索/电台选片)监听该状态做后续,彼此解耦。集体潜意识:地点经验/用户偏好写FROST共享长期存储,跨agent复用『这个用户去过哪、在意哪些地方』。",
+          "patterns": [
+            "委托/严格有向树(Manager全局上下文/Worker局部上下文;Manager处审拆解+审成果)",
+            "路由/星形网络(Router语义匹配description→意图识别→自动委派,照片agent是一个专家节点)",
+            "群体/留痕Stigmergy(钉到地球的状态=共享环境,其他agent监听间接通信)",
+            "报文传输而非共享内存(agent间只传结构化小结论,不传像素/embedding)",
+            "专业化收益(全能agent各70分,专才各90分)"
+          ],
+          "modules": [
+            "frost-agent/harness/router.ts(dispatch按意图委派;为photo意图注册handler+description做路由依据)",
+            "frost-agent/harness/validator.ts(registerActionValidator注册pin_photo/archive动作校验器,最小权限:未注册一律拒绝)",
+            "frost-agent/edge/contract.ts(edgeSafe:端侧契约入口,永不抛错+健康追踪)",
+            "frost-agent/memory+profile(共享长期存储,地点/偏好跨agent复用)",
+            "新增 photo-curator agent 定义(Who/What局部上下文,上交proposal给总控HITL)"
+          ]
+        }
+      ],
+      "data_model": "主键=dHash(内容指纹,稳定幂等)。彻底废弃 photoScreen.ts:272 现用的 'p'+i+'_'+(file.size%100000)——它非内容、跨批次会漂移/碰撞,是『稳定库无法秒级跳过、重活重复跑』的根因。dHash 在闸0解码时已算出,正好复用;size/lastModified 仅作辅助消歧。IndexedDB 一个 store『photos』,key=dHash,value=派生小结论 { dHash, photoType, fastScore, modelScore?, score, verdict('keep'|'review'|'clean'), pinnable, isUtility, hasGPS, lat?, lng?, source('exif'|'user'|'borrowed'), exifSummary{capDate,Make,Model,softwareIsScreenshot,suspectExif}, clusterId, userOverride?, status('done'|'failed'), scannedAt }。硬约束物理落地:原图/canvas/CLIP embedding 一律不写入——store 的 schema 里根本没有这些字段的位置,即便代码想存也无处可放。坐标是高敏个人轨迹:提供一键清空坐标/整库,默认不同步上云。第二个 store『clusters』:key=clusterId,value={ repDHash(簇代表,可被更好的替换), count, centroidLat, centroidLng, timeBucket }——钉点稳定的是 clusterId 而非具体某张,簇只增、簇代表可刷新。ScreenResult(photoScreen.ts:16-33)对应扩字段:增 photoType:string、isUtility:boolean、pinnable:boolean、hasGPS:boolean、lat/lng、clusterId、source、userOverride。",
+      "pipeline_decision": "per-photo 固定 8 闸流水线(责任链/Unix pipe),阶段间只传结构化小 JSON(交接契约/报文传输,绝不把像素buffer/embedding往下传,这是端侧不OOM的生命线):闸0解码缩图长边256+算dHash主键 → 闸1 EXIF金信号(最先最便宜最确定:Make/Model/Software/曝光/GPS+海里/出生前/截图工具名一致性校验标suspectExif) → 闸2像素废片闸(sharpness<0.08模糊/mean<28太暗,先过低光艺术豁免:夜景/星空/虚焦/雪雾不判废) → 闸3资料isUtility多信号投票(宽高比命中屏幕分辨率+最大纯色块占比+量化唯一色数+二值化文本密度行结构+EXIF无相机字段/含截图Software) → 闸4仅对不确定(0.35~0.65)或将进钉候选跑两段式ensemble CLIP(先实拍↔资料二分纠偏isUtility,实拍再判子类;CLIP不可用时isUtility降级为不否决·宁放过,绝不让启发式单独误杀) → 闸5查重分桶(先EXIF时间~10分钟分桶,无DateTimeOriginal单独无日期桶不跨年误删;桶内dHash海明≤2严格重复/3~8相似簇;资料型放宽/跳过去重防误杀连续聊天截图) → 闸6时空DBSCAN(有GPS实拍候选,时间桶内空间聚类eps数百米,每簇=一次经历) → 闸7按value_by_type算价值+簇内选代表+反查地名 → 闸8出三件套+只写派生数据。决策=两条正交线:verdict(留/待定/可清理 建议)由类型+价值+重复决定,压倒性偏置『宁可放过、绝不误杀珍视照片/纪念截图』(关键让步:资料·屏内生成默认『待定』而非初版的『建议清理』,因为误删纪念截图/和逝者聊天记录是比『资料被误留』严重得多的反向伤害);pinnable 是与 verdict 完全正交的独立布尔=实拍类型 ∧ 真坐标(或用户已补) ∧ 价值达钉阈值 ∧ 簇内代表,资料型即使带坐标即使判留 pinnable 恒false(类型闸优先级高于坐标)。质量分在全链只做两件事:废片过滤、簇内选优——绝不再单独决定留/钉(这是连根拔除用户实测翻车根因)。",
+      "safety_privacy": "四条硬约束全部落成『架构层物理保证』而非文案承诺。①原图/canvas/embedding不出端:分析阶段 agent 的工具集里根本不放任何网络/上传工具(白名单即安全边界)——没有网络出口,即便模型被诱导也传不出;canvas/embedding 是函数内局部变量,处理完即释放(photoScreen.ts:322 已delete _canvas),IndexedDB schema 无这些字段位置,无处可存。②绝不替用户删原图:工具集里根本没有 deleteAsset/writeOriginal 这类工具(能力不存在,幻觉也删不掉),且整个整理会话处于 plan 只读模式(系统级只读承诺,比『我没给删除工具』更强)。删除操作永远只动 agent 自建的整理标签/相册引用,绝不触碰原始照片文件。③进库只有派生小结论:IndexedDB store schema 只定义 {dHash,type,score,verdict,pinnable,坐标,exif摘要,clusterId,source,userOverride}。④suggest-then-confirm:所有删/钉走 HITL——人负责 decision(是否真删/真钉)、AI 负责 choice(建议哪些)、系统负责 execution(执行已确认的)。即便点清理也走『移入待删相册+时间锁延迟』而非物理删,给撤回机会。⑤舱壁降级:单张坏图/HEIC解码失败/EXIF缺失只标 status:failed 跳过,故障锁在单张沙箱内,绝不污染整轮;缺GPS不钉但仍完成分类(部分结论优于全盘失败)。⑥坐标隐私(比『原图不出端』更被低估):分享/截图地球时对 source=exif 精确坐标抽稀(降街区/城市级)+家庭/公司高频点识别后默认不外泄;source=borrowed 借位坐标默认不外泄;提供一键清空坐标/整库,默认不同步上云。⑦渐进自治:遇高风险/低置信(<0.6)/伦理敏感(纪念截图/逝者聊天)强制偏保留,人保留最终中止权与解释权。",
+      "long_running": "设计成『增量+幂等+空闲跑+纠错闭环』后台流水线,让地球钉点随时间持续生长,绝不一次性全量卡死设备。①断点续跑(状态护具):维护持久化进度(IndexedDB,类比书里 .claude-work/log-analysis.md),记录已处理到哪+各dHash结论;重扫先读进度,只处理新增/变更,稳定库秒级跳过,重活CLIP/OCR绝不重复跑——这把『增量扫描』和『查重』统一进记忆治理。②稳定幂等键:dHash为主键(内容指纹,PWA系统选择器每次给临时File也不变),size/lastModified仅辅助消歧;每次只能拿到部分相册时也能幂等去重,避免重复钉点/重复建议。③分层省算:像素废片(秒)→多信号投票(便宜,先滤掉大多数资料型)→仅不确定top候选跑CLIP→仅资料档案跑OCR;一次image embedding复用于类型分类+美学价值两任务;整批全是资料(报销季拍一堆收据)快速短路,跳过钉地球与美学排序与OCR。④调度(诚实对待iOS PWA):MEMORY已记iOS PWA拿不到后台/全相册,所以不承诺后台自动扫——PWA只能用户主动分批喂照片,重推理用 requestIdleCallback(iOS不支持降级setTimeout切片)+Page Visibility前台空闲分批、每批数十张不卡UI,结果入库累积、多次选图在地球上叠加。⑤钉点增量:新过闸实拍点并入已有时空簇,簇只增不重算,簇代表可被更好的替换(原地更新缩略图引用、坐标基本不变)。⑥纠错闭环:userOverride写库并回写taste.ts/profile.ts,同类误判下次少犯。⑦稀有度分母诚实标注:PWA样本稀疏偏倚,稀有度权重随库规模自适应,小库调低,避免被偏样带偏。",
+      "frost_role": "照片 agent = FROST 多agent内核(『通用世界探索框架,端侧模型做选择』)里的一个专才 Worker / 专家节点,专精『端侧相册理解与地理钉图』,不是独立app。三种协作姿态:①委托模式(严格有向树):FROST总控(router.ts 的 dispatch/Manager)持全局上下文、做全局规划+统一HITL确认入口;照片agent只拿『整理某段相册』的局部上下文、专注高质量完成、把『建议清单(proposal)』上交总控审批(对应『执行前审拆解、交付前审成果』)。②路由(星形网络):router.ts 靠 agent 的 description 做语义匹配→意图识别→自动委派,需为 photo 意图注册 intentHandler;照片agent的动作(pin_photo/archive)经 validator.ts registerActionValidator 注册校验器,未注册一律拒绝(最小权限,与现有 switch/radio 动作同一套boundary)。③群体/留痕(Stigmergy):照片agent把『已钉到地球的地点』写进共享环境(mapMarkers 状态),世界探索/电台选片等agent监听该状态做后续(如电台按用户去过的城市选片),彼此解耦、报文传输而非共享内存。④集体潜意识/分层记忆:照片agent沉淀的地点经验+用户偏好写进 FROST 共享长期存储(memory/profile),让其他agent复用『这个用户去过哪、在意哪些地方』。专业化收益:一个全能agent三维度各70分,三个专才各领域90分。",
+      "refactor_plan": [
+        {
+          "target": "src/app/lib/photoScreen.ts:39-49 readCaptureDate",
+          "change": "扩成 readExif:parse 字段从['DateTimeOriginal','CreateDate','ModifyDate']增补 Make/Model/Software/FNumber/ExposureTime/ISO/FocalLength/GPSLatitude/GPSLongitude,返回{capDate,hasCameraFields,hasGPS,lat,lng,softwareIsScreenshot,suspectExif};做海里/出生前/截图工具名一致性校验。这是『资料截图被判留』根因之一,评审共识第一优先。"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:272 id 生成",
+          "change": "把 'p'+i+'_'+(file.size%100000) 改为以闸0已算出的 dHash 为主键(辅以size消歧),供 IndexedDB 增量幂等复用。这是『稳定库无法秒级跳过、重活重复跑』的根因修正。"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:81 fastMetrics 旁 / :270 单规则",
+          "change": "新增 utilityMetrics(宽高比命中屏幕分辨率表+最大单一纯色块占比+量化唯一色数+二值化文本密度行结构),融合EXIF信号投票出 isUtility 概率,替换 :270 那条脆弱的 colorful<0.18&&contrast>0.55 单规则 和 :317 tags 驱动 verdict。"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:16-33 ScreenResult",
+          "change": "增字段 photoType:string、isUtility:boolean、pinnable:boolean、hasGPS:boolean、lat/lng、clusterId、source:'exif'|'user'|'borrowed'、userOverride。schema 仍只含派生数据,绝不增原图/embedding字段(物理保证)。"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:167-231 CLIP",
+          "change": "CLIP_LABELS 改两段式 ensemble(先实拍↔资料各多prompt聚正负两向量只算两次余弦,实拍再判子类),只对isUtility不确定/将进钉候选的图跑;CLIP不可用时isUtility降级为不否决·宁放过。"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:281-290 查重",
+          "change": "dHash前加EXIF时间分桶(无DateTimeOriginal单独无日期桶防跨年误删),海明拆≤2严格重复/3~8相似簇两档,资料型放宽/跳过去重防误杀连续聊天截图/同模板表情包。"
+        },
+        {
+          "target": "src/app/lib/photoScreen.ts:312-319 判定段",
+          "change": "改『先类型后价值』:废片才clean,资料默认review(归档,不再因tags含截图/文档就笼统review,而是默认待定且豁免情感截图含人脸/人名/收藏),实拍按价值留/待定;新增正交 pinnable=isUtility===false&&(hasGPS||userPinned)&&非废片&&簇代表&&价值达阈值。"
+        },
+        {
+          "target": "新建 src/app/lib/photoCluster.ts",
+          "change": "时间10分钟分桶→GPS DBSCAN(eps数百米)→簇内dHash去重+选价值最高代表;增量agglomerative新照只与相邻簇比对;反查地名用EXIF真坐标,geoStickers.ts PLACE_COORDS 仅作就近城市级标签(标『约』)不作定位。"
+        },
+        {
+          "target": "新建 IndexedDB 缓存层",
+          "change": "store『photos』key=dHash + store『clusters』key=clusterId,做增量幂等+断点续跑进度;提供一键清空坐标/整库。原图/canvas/embedding 无字段位置。"
+        },
+        {
+          "target": "src/app/components/PhotosCuratorRunPage.tsx + 新增 addPhotoPin",
+          "change": "替换当前走 geoStickers.ts:32 addMoodSticker 的临时钉点路径,新增 addPhotoPin 接 mapMarkers.ts 已有 kind:'photo' marker(:33/56-60),只钉 pinnable===true 的簇代表,与 mood 贴分层;UI 增『资料』分区(可检索/一键转正/彻底删)+『疑似有地点·待确认』中间态+一键补地点+误判一键拉回入口(写userOverride回写taste.ts/profile.ts)+分享地球时坐标脱敏;接断点续跑游标+requestIdleCallback切片。"
+        },
+        {
+          "target": "frost-agent/harness/router.ts + validator.ts",
+          "change": "为 photo 意图注册 intentHandler(description 做路由依据),把照片agent接成 FROST 专才Worker;在 validator.ts 用 registerActionValidator 注册 pin_photo/archive 动作校验器(最小权限,未注册一律拒绝),与现有 switch/radio 同一套 boundary。"
+        }
+      ],
+      "pwa_vs_native": "同一套『type+价值+pinnable』schema 契约不变,只换底层零件实现(平滑替换为系统信号即升级)。【PWA 现在能做到】EXIF金信号(exifr 扩读 Make/Model/曝光/GPS,零模型成本,当前最该补)、宽高比命中屏幕分辨率、纯色占比/唯一色数/文本密度像素启发式、两段式 ensemble CLIP 做实拍↔资料二分与子类、dHash+时间分桶查重、有GPS才钉/无则待确认、IndexedDB 增量缓存(dHash为键)、requestIdleCallback前台空闲分批。【必须诚实的 PWA 硬限制,文案不承诺等同Apple精度】①HEIC+GPS:iPhone默认HEIC,exifr在PWA/Safari上GPS解析失败率高→坐标做了降级为软闸而非硬闸,落地前先做一次真机HEIC+GPS取数验证(成败点);②拿不到全相册(系统选择器逐次多选)、拿不到删权限(只能给建议清单引导用户去系统相册自己删,反而天然安全);③无系统级isUtility/人脸/saliency/美学分,人物档与主体档是近似实现、默认偏保留;④iOS PWA后台JS被冻结、requestIdleCallback支持差→不承诺后台自动扫,只能用户主动分批喂;⑤CLIP镜像(hf-mirror)不稳/离线→isUtility闸降级为不否决。【原生app以后升级,接口不变只换零件】截图→PHAsset.mediaSubtype .photoScreenshot(系统级0成本最准);资料/工具型与美学分→VNCalculateImageAestheticsScores 的 isUtility + overallScore(-1..1);场景子类→VNClassifyImageRequest(约1303类层级taxonomy);相似分组→VNGenerateImageFeaturePrint+computeDistance(从0.35起重标定);人脸/主体→Vision 人脸/saliency;文档/OCR→DetectDocumentSegmentation+VNRecognizeText(给资料档『可检索价值』);全相册+后台增量+NPU→PhotoKit change observer+BGProcessingTask;位置补位→Significant Locations(端到端加密)做时空借位。原则:所有PWA判别都是『建议+置信度+纠错记忆』,把每个启发式零件平滑替换为系统信号即完成升级,六层骨架与schema契约一行不动。"
+    }
+  ],
+  "crits": [
+    {
+      "design": "这是一份高完成度、高融合度的合成稿——把黄佳两本书的六主轴/21模式/三明治/HITL 与 Harness 的隔离·白名单·舱壁·断点续跑·分级推理，逐条焊到照片 agent 的机制（type-first + verdict⟂pinnable 正交 + 资料默认 review + dHash 主键 + 坐标软闸 + 分享抽稀）上，骨架对、立场对、对 PWA 局限的诚实度也对。但它把「评论文档」当成了「落地蓝图」：大量笔墨在复述三套材料的术语，而对接现有代码的关键事实有 5 处失真，导致重构计划里最关键的「接通真钉地球 + 进 FROST 协作」这一段是建在错误前提上的。最该采纳的硬核（去 verdict/pinnable 耦合、dHash 主键、readExif 金信号、IndexedDB 增量幂等、单张舱壁降级、白名单物理保证）全部成立且应立即做；但「替换 addMoodSticker 路径」「接 mapMarkers 已有 marker」「registerActionValidator 注册即接入、内核不改」这三句是空想，需推倒重写对接层。\n\n证据级核对（已逐文件读）：\n- 行号全中：readCaptureDate 在 39-49、fastMetrics 81、dHash 131、CLIP 167-231、脆弱单规则 colorful<0.18&&contrast>0.55 在 270、漂移 id 'p'+i+'_'+(file.size%100000) 在 272、查重 DUP=8 在 281-290、判定段 312-319。架构对现状的诊断精准。\n- OOM 隐患属实且比架构说的更严重：photoScreen.ts:277 给「每一张」result 都挂了 _canvas（不是只 top N），整批 File 解码后的 canvas 全程驻留到 322 行才 delete——大相册必 OOM，架构「buffer 绝不留主上下文」的主张正确，但没点名现状是「全量驻留」这个具体 bug。\n- profile.ts 有显式隐私边界（第6-7行）：本模块只在云脑侧读、端侧 Selector 一律不接触。架构反复说「userOverride 回写 profile.ts 微调端侧 isUtility 阈值」与这条边界直接冲突——端侧阈值学习必须落在端侧存储（IndexedDB/taste 风格），不能塞进只供云脑的 profile。这是融合时没对齐的硬伤。",
+      "integration": 4,
+      "completeness": 5,
+      "feasibility": 3,
+      "gaps": [
+        "钉地球对接是空想：PhotosCuratorRunPage.tsx 当前根本不钉地球。第172行只是文案写「已钉到地球(tab1)与日历」，实际没有任何向 MAP_MARKERS / geoStickers 的写入；全文 grep 不到 addMoodSticker / addPhotoPin / mark_place / MAP_MARKERS。所以重构计划里『替换当前 addMoodSticker(geoStickers.ts:32) 路径』『接 mapMarkers.ts 已有 kind:photo marker』是建在不存在的事实上——真相是：钉地球链路是 0，需从零建，且 MAP_MARKERS 是 import 期一次性构建的 const（mapMarkers.ts:64），没有 append/persist 运行时 API，addPhotoPin 必须新建一套『运行时 marker 存储+持久化+geojson 重建+地图源刷新』，这块工作量被架构完全低估/漏报。",
+        "与现有 photos-curator 契约打架：contract.md 已经定义了落地动作叫 mark_place（type:'mark_place', entity:{kind:'photo'}, lat/lng/date/tags/note，第75-85行），架构却另造一个 addPhotoPin，全程不提 mark_place、不做取舍，等于平白制造两个竞争命名。要么复用 mark_place、要么明确弃用并说明迁移，不能假装契约不存在。",
+        "『内核不改、registerActionValidator 注册即接入』被过度简化：validateActions 的签名死锁在 RadioAction[]（validator.ts:44）、router 只校验 result.radioActions（router.ts:86）、FrostIntent 是封闭枚举且无 photos（types.ts:5-13）、intentRegistry 无 photos handler、EDGE_INTENTS/ALL_CLOUD 路由也不含 photos。mark_place/addPhotoPin 不是 RadioAction，AgentResult.radioActions 也装不下它。真要把 photos-curator 变成可路由的 Worker，必须动 types（加 intent、把动作类型从 RadioAction 泛化）、动 router/intentRegistry——这些都是内核改动，架构『注册校验器即可、内核不改』的说法只对了一半，误导落地排期。",
+        "端侧阈值学习落点与隐私边界冲突：profile.ts 明文『只在云脑侧读取，端侧 Selector 一律不接触』（第6-7行）。架构多处主张 userOverride 回写 profile.ts 来微调端侧 isUtility 阈值/留钉门槛，这会让端侧判定依赖一个声明为云脑专用的模块。个性化阈值应落在端侧 IndexedDB（photoIndex）或新建端侧偏好层，profile.ts 只收『脱敏标签计数』那种云脑画像信号——两类数据没区分开。",
+        "HEIC+GPS 这个被自己标为『成败点』的真机验证，始终停留在『落地前先验证、需用户拍板』，但没给可执行的验证方案（用 exifr 在 iOS Safari 实测哪些字段、失败率怎么量化、降级阈值怎么定）。把整套坐标软闸/待确认中间态/时空借位都压在一个未验证假设上，却把验证本身踢给『open question』，这是架构层把最大风险外包给了用户决策，不够工程化。",
+        "isUtility 多信号投票全是『纸面算法』、零落地细节：宽高比命中屏幕分辨率表（表从哪来？iPhone/安卓/折叠屏几十种且随机型增长）、最大纯色块占比、量化唯一色数、二值化文本密度+行结构——这些在长边 256 的缩图上阈值极敏感、机型适配工作量大，架构当成『便宜信号秒判』，但没有任何阈值/权重/融合公式，比现状那条单规则强的前提是这套真能调准，存在『换一个脆弱启发式堆叠成五个脆弱启发式』的风险，需要真机标注集验证，架构未承认这点。",
+        "『资料默认 review 不默认 clean』『情感截图(含人脸/人名/收藏)豁免』是正确且关键的让步，但 PWA 端根本判不出人脸/人名/是否被收藏（架构自己也承认无人脸 API），所以这条『情感豁免』在 PWA 阶段几乎无法执行，等于把安全性寄托在一个 PWA 做不到的能力上。应明说：PWA 阶段对资料一律 review 不 clean（靠『默认保守』而非『靠豁免识别』），把豁免推迟到原生 Vision，否则是空头承诺。",
+        "断点续跑/增量在 iOS PWA 系统选择器模式下是半残的：每次只能逐次多选、且拿到的是临时 File，dHash 主键确实能跨批次去重（这点对），但『重扫只处理新增』在 PWA 永远拿不到『全相册全集』，所以无法判断什么是『新增』、也无法做『稳定库秒级跳过整本』——只能在用户重复喂入时去重。架构把原生才有的『PhotoKit change observer 增量』叙事和 PWA 能做的『重复喂入去重』混在一句里，读者会高估 PWA 的增量能力。"
+      ],
+      "best_ideas": "1) verdict ⟂ pinnable 双正交、把质量分彻底降级为『只管废片过滤+簇内选优』——这是直击用户实测翻车根因(312-319 单 fastScore 同时决定留/钉)的最高价值修正，必做。2) dHash 闸门0 即算、作内容主键替换 272 行漂移 id——一举解决断点续跑/增量/查重三处失效根因，零额外成本(dHash 本就在算)，性价比最高。3) readExif 金信号(扩 readCaptureDate 读 Make/Model/Software/GPS + suspectExif 一致性校验)——最便宜最确定的守门人，是『资料截图被判留』的根因之一，应排第一优先。4) 白名单物理保证 + plan 只读：感知阶段工具集根本不含 delete/upload，把『原图不出端·绝不删原图』做成能力级而非 prompt 级约束——这是三套材料融合得最漂亮的一处。5) 资料默认 review 而非 clean（纪念截图/逝者聊天的反向伤害远重于资料误留）——伦理判断正确，是对评审最该坚持的让步。6) 单张舱壁降级（HEIC 解码失败/缺 GPS 只标 failed 跳过，不拖垮整轮）+ CLIP 不可用时 isUtility 降级为『不否决·宁放过』——真机鲁棒性的关键。7) 分享时对 source=exif 精确坐标抽稀到街区/城市级、家庭高频点不外泄——比『原图不出端』更被低估的隐私洞，确实是亮点。",
+      "verdict": "采纳骨架与机制，推倒对接层重做。这份架构的『思想合成』可打 5 分：六层闭环 + 三明治 + Harness 底座 + verdict⟂pinnable + 隐私铁律，方向全对，且对 PWA 局限的诚实度罕见地高。但它把对现有代码的对接当成了既成事实来描述，实测有 5 处失真，其中『PhotosCuratorRunPage 当前根本不钉地球（只有文案、无写入）』『mapMarkers 是 import 期 const 无运行时 API』『validateActions/FrostIntent 死锁在 radio、photos 无法路由』三处直接击穿『接已有代码、内核不改、注册即接入』的可行性叙事——所以落地分只能给 3。建议落地顺序：①先做与对接无关、纯收益的三件（dHash 主键 / readExif / verdict⟂pinnable 拆分 + isUtility 投票替换 270 脆弱单规则 + 修 277 行 _canvas 全量驻留的 OOM），这些今天就能动且不依赖 FROST；②再把『钉地球链路』作为一个独立的、被诚实标注为『从零新建』的子项目（运行时 marker 存储 + 持久化 + 地图源刷新 + 复用而非另造 mark_place）；③FROST 协作层放最后，且必须先承认要动 types/router/validator 内核，而不是『注册即接入』。把端侧阈值学习从 profile.ts（云脑专用）挪到端侧存储，把『情感豁免』明确推迟到原生，把 HEIC+GPS 真机验证从 open question 升级为落地前置任务——做完这四个修正，它就是一份真能照着写代码的成熟蓝图。"
+    },
+    {
+      "design": "骨架站得住，行号引用经核对属实，verdict正交拆分是灵魂，但有三处事实错误且工时被低估。",
+      "integration": 4,
+      "completeness": 4,
+      "feasibility": 3,
+      "gaps": [
+        "addMoodSticker误用路径不存在，需从零新建钉点写入链",
+        "edgeSafe.vision是网络VLM违反原图不出端",
+        "clipEnsemble余弦现有pipeline拿不到embedding不可实现",
+        "validateActions硬绑RadioAction类型有断层",
+        "recordSignals只吃字符串无法回写数值阈值",
+        "64bit dHash作唯一主键有碰撞漏处理风险",
+        "废片闸与艺术豁免时序倒置CLIP触发不了",
+        "缺真机样本标注与阈值标定计划"
+      ],
+      "best_ideas": "verdict正交pinnable加类型一票否决是必采灵魂；dHash主键、readExif读GPS标suspectExif、资料默认归档加情感豁免、白名单物理沙箱可立即做。",
+      "verdict": "采纳骨架，打回三处事实错误后再落地：删addMoodSticker表述、禁用edgeSafe.vision保隐私、补阈值标定；先做dHash加readExif加verdict拆分。"
+    },
+    {
+      "design": "这份架构的「设计质量」高于多数同类合成物，但不是没有硬伤。强项：六层骨架(感知→记忆→推理→行动→反思→协作)真实对位三股材料，没有套壳；最核心的范式迁移——把「质量分单决留/钉」拆成「类型优先 + verdict⟂pinnable 双正交输出」——是连根拔除用户实测翻车根因的正确手术，而且它把『质量分降级为只管废片过滤+簇内选优』讲得很到位，这是全案最值钱的一刀。隐私四条做成「架构层物理保证而非文案」(白名单无网络/无deleteAsset工具、IndexedDB schema 根本没有原图/embedding字段的位置、plan只读) 是把 Harness 第3节『白名单即安全边界』用满了，落地姿态正确。8 闸认知漏斗把贵操作(CLIP)压到最后最少，对应注意力聚焦/具身预算，端侧成本意识真实。资料型默认『待定·归档』而非『建议清理』(防误删纪念截图/逝者聊天)是有人味、且伦理敏感强制偏保留接住了人机4原则。\n\n设计层的真实缺陷有四:(1) 坐标软闸『有则钉、无则待确认』是被 HEIC-GPS 失败率逼出来的合理让步,但它把成败完全押在『真机 exifr 能否稳定读出 HEIC GPS』这一个未验证的二元假设上——架构自己也承认这是『成败点』,却仍把整条钉地球主线建在它上面,属于带病上路。(2) 地理稀有度用 IndexedDB 历史累积做分母,在 PWA『只拿得到用户选的那几批』的稀疏偏样下,分母本身是污染的;架构虽口头说『库小时权重自适应调低』,但没给任何具体函数/阈值,等于把一个统计学陷阱用一句免责声明盖过去。(3) utilityMetrics 那套像素启发式(宽高比命中屏幕分辨率表+纯色块占比+量化唯一色数+二值化文本密度行结构)在『带风景的截图』『拍的招牌菜单』上必然糊,架构承认分不开、改用纠错入口兜——但这等于把核心分类难题外包给用户手动拉回,PWA 阶段 isUtility 的真实精度会比文案给人的印象低得多。(4) 两段式 ensemble CLIP『先实拍↔资料二分,实拍再判子类』是好主意,但 CLIP 跑在 hf-mirror 懒加载 + 40s 超时降级的现状下,『将进钉候选都要跑 CLIP』会让钉地球这条线高度依赖一个随时可能降级为『不否决』的概率组件,稳定性存疑。",
+      "integration": 3,
+      "completeness": 4,
+      "feasibility": 2,
+      "gaps": [
+        "【事实错误·最严重】架构反复声称要『替换 PhotosCuratorRunPage.tsx 当前走 geoStickers.ts:32 addMoodSticker 的临时钉点路径』——但经核验 PhotosCuratorRunPage.tsx 里根本没有任何 sticker/marker/pin/addMoodSticker 代码,只有 runScreen 调用 + 结果展示;第172行『已钉到地球』纯属 UI 文案,背后没有实现。钉地球在现有代码里是 vaporware,不存在可被替换的『临时路径』。addMoodSticker 实际被 MyMapTab.tsx:467 和 MoodRunPage.tsx:28 使用,架构把别处的路径张冠李戴到了照片页。重构计划第10条整条建立在这个不存在的前提上。",
+        "【未解决的集成断点】addPhotoPin 计划 push 进 mapMarkers.ts 的 MAP_MARKERS 数组,但该模块没有任何发布订阅机制(对比 geoStickers 有 subscribeMood/emit)。MyMapTab.tsx:132 通过 useMemo(()=>MAP_MARKERS.filter, [visibleKinds, markersReady]) 消费,markersReady 是一次性 flag——运行时 push 一个新 photo marker 根本不会触发地球重渲染。架构要么得给 mapMarkers 加 subscribe 层(未提),要么照搬 geoStickers 的 localStorage 发布订阅(更顺,但架构反而要废掉它)。这是『钉地球』从能想到能看见之间被漏掉的一环。",
+        "【数据模型keystone的稳定性漏洞·未flag】整个增量/查重/IndexedDB/断点续跑都押在『dHash 是稳定内容主键』上。但 dHash 算自 256px 缩图 canvas(photoScreen.ts:268),而 decode() 有两条解码路径(createImageBitmap vs <img> 兜底)、且全程零 EXIF orientation 处理(已核实)。同一张照片若走不同解码分支、或带 EXIF 旋转标志,像素布局不同 → dHash 不同 → 主键漂移,正是架构想根治的『稳定库无法秒级跳过』问题以另一种形式复发。架构只批判了旧 id 的 size%100000 碰撞,却没意识到自己钦定的替代键也有解码/朝向不确定性,需先做 orientation 归一化才能当幂等主键。",
+        "【exifr GPS 是净新增,非『扩字段』】现状 exifr 只 parse ['DateTimeOriginal','CreateDate','ModifyDate'] 三个日期字段(photoScreen.ts:43),根本没碰 GPS/Make/Model。架构把它说成『扩 readCaptureDate→readExif』听起来轻量,但 PWA/Safari 下 HEIC 的 GPS 解析失败率是这整套坐标软闸的生死线,且 exifr 读 HEIC GPS 需要正确的 segment 配置,不是加几个字段名就行。架构第一优先级『补 EXIF 金信号』的工作量被低估。",
+        "【长期任务调度自我矛盾】Q6/long_running 反复强调『增量+幂等+空闲跑+后台流水线让钉点持续生长』,但同段又诚实承认 iOS PWA 后台 JS 被冻结、requestIdleCallback 支持差、拿不到全相册、只能用户主动分批喂。两句话放在一起,『后台流水线』『持续生长』的叙事其实被自己的硬限制否掉了大半——PWA 阶段它根本不是后台任务,是『用户每次手动喂一批、前台空闲切片跑、结果叠加』。文案的雄心和可落地性之间有落差,容易让人误以为 PWA 就能自动长出地球。",
+        "【userOverride 回写 taste.ts/profile.ts 缺接口】反思层大量依赖『纠错回写 taste.ts/profile.ts 微调阈值/门槛/地点先验』。但 taste.ts 现状只 export 一个 getTasteSummary()(只读字符串摘要),没有可写阈值的结构;frost-agent/harness/profile.ts 是 FROST 侧、与端侧照片偏好不在一处。『回写个性化』这条闭环在现有代码里没有可写入的落点,属于要新建而非『回写』,架构用词掩盖了工作量。",
+        "【validator/intentRegistry 接入可行但描述过简】注册 pin_photo/archive 动作校验器 + 为 photo 意图 registerIntent 在机制上完全成立(validator.ts:15 registerActionValidator、intentRegistry.ts:19 registerIntent 都现成)。但现有 RadioAction 类型(validator 里 validateActions 接的是 RadioAction[])与照片动作 schema 不同,photo 动作要么扩 RadioAction 联合类型、要么另开通道,架构没点出这个类型层的接缝。",
+        "【簇代表刷新 vs 只增不重算的潜在矛盾未消解】钉点稳定靠 clusterId、簇代表可被更好的替换、坐标基本不变——但若新代表的真坐标与旧代表偏出几百米(同一次行程不同点),『坐标基本不变』就不成立,地球上的点会跳。架构提了刷新规则但没定义代表坐标用簇心还是代表张坐标,边界没收死。"
+      ],
+      "best_ideas": "最该采纳、且经得起推敲的是这几条:(1) verdict⟂pinnable 双正交 + 类型一票否决高于坐标(资料型即便带GPS即便判留 pinnable 恒false)——这是连根拔除『质量分单决留/钉』翻车根因的正确范式,也是全案最有原创价值的结论,务必落地。(2) 把质量分彻底降级为『只管废片过滤 + 簇内选优』,绝不单独决定留/钉——一句话锁死了旧实现 line 312-319 的病灶,精准。(3) 资料·屏内生成默认『待定·归档』而非『建议清理』+ 情感截图(含人脸/人名/收藏)豁免——这是比技术更重要的伦理判断,误删纪念截图/逝者聊天的反向伤害远大于资料被误留,这条让步体现了对真实用户的尊重,是评审应坚决保留的。(4) 隐私做成物理保证而非文案:分析阶段工具集里根本不放网络/上传/deleteAsset 工具、IndexedDB schema 无原图/embedding 字段位置——把『不可能做坏事』写进能力边界而非口头约束,这是 Harness 工程之道最该被照搬的一条,本案用满了。(5) dHash 替换 size%100000 这个跨批漂移/碰撞的伪主键——方向绝对正确(只是要先补 orientation 归一化才能真稳)。(6) 坐标分享抽稀(降街区/城市级)+ 家庭/公司高频点默认不外泄——这是比『原图不出端』更被低估的隐私洞,作者点出来了,加分。",
+      "verdict": "叙事层是上乘的合成——三股材料(机制/设计模式/Harness)在六层骨架上对位真实、不套壳,核心范式迁移(verdict⟂pinnable、质量分降级、隐私物理保证、资料默认待定)是经得起推敲的好结论,值得作为方向定稿。但作为『可落地架构』它有一处事实错误和三处工程硬伤,必须在动工前修正:① 最严重的是它反复声称要替换 PhotosCuratorRunPage 里『当前走 addMoodSticker 的临时钉点路径』——这个路径在现有代码里根本不存在(该文件零 pin 代码,第172行只是文案),钉地球目前是 vaporware,重构计划第10条建在虚构前提上,会误导排期。② addPhotoPin 要 push 进的 MAP_MARKERS 没有发布订阅,运行时新增不会让地球重渲染(只有 geoStickers 有 subscribeMood),这个集成断点架构没接。③ 被钦定为稳定主键的 dHash 算自有两条解码分支、且零 EXIF orientation 处理的 canvas,主键会漂移——它批判了旧 id 却没发现新键同病,需先补朝向归一化。④ 整条坐标主线押在『真机 HEIC GPS 能读出』这个未验证假设上,且长期任务的『后台持续生长』叙事被 PWA 硬限制自我否定。结论:作为愿景文档 4.5/5,作为施工蓝图 2.5/5。建议——先做两件实测把假设证伪/证实(真机 exifr HEIC+GPS 取数;dHash 在两条解码路径+旋转照片上的一致性),再把『钉地球』从文案变成真实的 marker 发布订阅链路(最务实是直接复用 geoStickers 那套 localStorage emit/subscribe,而非新造),然后才谈 IndexedDB 增量与纠错回写。核心范式(双正交+类型优先+隐私物理保证+资料默认保留)照单全收,落地路径必须按以上 gaps 重排优先级。"
+    }
+  ]
+}

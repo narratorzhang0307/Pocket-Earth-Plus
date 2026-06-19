@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, Play, Square, RotateCcw, Check } from 'lucide-react';
+import { ChevronLeft, Play, Square, RotateCcw, Check, Gavel, Archive, MapPin } from 'lucide-react';
 import PixelAvatar from './PixelAvatar';
 import { COUNCIL_AGENTS } from '../council/agents';
 import { COUNCIL_MODES, modeDef, runCouncil, type CouncilMode, type CouncilMsg, type CouncilBackend } from '../council/engine';
+import { runCourtroom } from '../council/courtroom/stages';
+import { saveCase } from '../council/courtroom/caseStore';
+import type { Verdict, CourtStage } from '../council/courtroom/types';
+import { addUserMark, spreadCoord } from '../data/userMarks';
+import { geocodeCity } from '../data/geoStickers';
 
 // 圆桌议事运行页（我们的像素风）：选谁入场 + 选讨论模式 + 出题 → 多 agent 轮流发言。
 // 机制是频道群聊式的多 agent 同台（见 council/engine.ts），UI 完全是 Pocket Earth 风格；与各 curator 解耦。
@@ -20,22 +25,52 @@ export default function CouncilPage({ onBack }: Props) {
   const [messages, setMessages] = useState<CouncilMsg[]>([]);
   const [speaking, setSpeaking] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [stage, setStage] = useState<CourtStage | null>(null);    // 法庭当前阶段
+  const [verdict, setVerdict] = useState<Verdict | null>(null);   // 结构化裁决产物
+  const [saved, setSaved] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages.length, speaking]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages.length, speaking, verdict]);
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const toggle = (id: string) => setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  // 法庭模式需正反各一人，故要求「庭长以外」≥2；其余模式 ≥2 即可
+  const nonChairCount = [...selected].filter((id) => id !== 'chair').length;
+  const canStart = mode === 'courtroom' ? nonChairCount >= 2 : selected.size >= 2;
+
   const start = async () => {
-    if (selected.size < 2) return;
-    setMessages([]); setPhase('run'); setRunning(true);
+    if (!canStart) return;
+    setMessages([]); setVerdict(null); setStage(null); setSaved(false); setPinned(false); setPhase('run'); setRunning(true);
     const ac = new AbortController(); abortRef.current = ac;
     const ids = COUNCIL_AGENTS.filter((a) => selected.has(a.id)).map((a) => a.id);
-    await runCouncil({ mode, agentIds: ids, topic, rounds, backend, onMessage: (m) => setMessages((prev) => [...prev, m]), onSpeaker: setSpeaking, signal: ac.signal });
-    setRunning(false); setSpeaking(null);
+    const onMessage = (m: CouncilMsg) => setMessages((prev) => [...prev, m]);
+    if (mode === 'courtroom') {
+      // 法庭走新的流水线庭审引擎：议题里若能识别出城市，则带上地理锚点（裁决可钉地球）
+      const g = geocodeCity(topic);
+      const geo = g ? { lat: g.lat, lng: g.lng, place: g.place } : undefined;
+      await runCourtroom({ agentIds: ids, topic, rounds, backend, geo, onMessage, onSpeaker: setSpeaking, onStage: setStage, onVerdict: setVerdict, signal: ac.signal });
+    } else {
+      // 其余三模式仍走旧引擎，零改动
+      await runCouncil({ mode, agentIds: ids, topic, rounds, backend, onMessage, onSpeaker: setSpeaking, signal: ac.signal });
+    }
+    setRunning(false); setSpeaking(null); setStage(null);
   };
-  const stop = () => { abortRef.current?.abort(); setRunning(false); setSpeaking(null); };
+  const stop = () => { abortRef.current?.abort(); setRunning(false); setSpeaking(null); setStage(null); };
+
+  // 存为判例（端侧判例库）
+  const onSaveCase = () => { if (verdict) { saveCase(verdict); setSaved(true); } };
+  // 钉到地球（仅议题带地理锚点 + 置信≥0.6；suggest-then-confirm）
+  const canPin = !!verdict?.geo && (verdict?.confidence ?? 0) >= 0.6;
+  const onPin = () => {
+    if (!verdict?.geo) return;
+    const id = 'council-' + verdict.id;
+    const [lng, lat] = spreadCoord(id, verdict.geo.lng, verdict.geo.lat, 0.4);
+    addUserMark({ id, kind: 'council', lng, lat, label: (verdict.topic || '议事').slice(0, 18),
+      meta: { verdict: verdict.verdict, confidence: verdict.confidence, ruleEstablished: verdict.ruleEstablished, place: verdict.geo.place, date: verdict.createdAt.slice(0, 10) } });
+    setPinned(true);
+  };
 
   const speaker = speaking ? COUNCIL_AGENTS.find((a) => a.id === speaking) : null;
 
@@ -120,18 +155,19 @@ export default function CouncilPage({ onBack }: Props) {
           </div>
 
           {/* 开始 */}
-          <button onClick={start} disabled={selected.size < 2}
+          <button onClick={start} disabled={!canStart}
             className="w-full flex items-center justify-center gap-1.5 border-2 border-black bg-black text-[#7CFF6B] py-2.5 font-pixel text-[10px] tracking-widest shadow-[2px_2px_0_rgba(0,0,0,0.85)] active:translate-y-px disabled:opacity-40">
             <Play className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} /> 开始议事（{selected.size} 人 · {modeDef(mode).label}）
           </button>
-          {selected.size < 2 && <div className="text-center text-[10px] text-black/40">至少选两个人才能开始讨论</div>}
+          {!canStart && <div className="text-center text-[10px] text-black/40">{mode === 'courtroom' ? '法庭模式：至少选两名「庭长以外」的人当正反方' : '至少选两个人才能开始讨论'}</div>}
         </div>
       ) : (
         <>
-          {/* 议题条 */}
+          {/* 议题条（法庭模式显示当前阶段） */}
           <div className="px-3 py-2 border-b-2 border-black bg-black shrink-0 flex items-center gap-2" style={{ color: ACCENT }}>
             <span className="font-pixel text-[8px] tracking-wider shrink-0">{modeDef(mode).emoji} {modeDef(mode).label}</span>
             <span className="text-[11px] text-white truncate flex-1">{topic || '自由发挥'}</span>
+            {stage && <span className="font-pixel text-[7px] tracking-wider shrink-0 text-[#caa64a] animate-pulse">⚖ {stage}</span>}
             <span className="font-pixel text-[7px] tracking-wider shrink-0 opacity-80">{backend === 'cloud' ? '☁ 云端' : '🖥 端侧'}</span>
           </div>
 
@@ -158,7 +194,37 @@ export default function CouncilPage({ onBack }: Props) {
                 <span className="font-pixel text-[8px] text-black/45 tracking-widest animate-pulse">{speaker.name} 正在发言…</span>
               </div>
             )}
-            {!running && messages.length > 0 && <div className="text-center font-pixel text-[8px] text-black/30 py-1 tracking-widest">— 讨论结束 —</div>}
+            {/* 结构化裁决产物（法庭流水线的终点：庭审纪要） */}
+            {verdict && (
+              <div className="border-2 border-black bg-[#FFFCF2] shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
+                <div className="flex items-center justify-between px-2.5 py-1.5" style={{ background: '#caa64a' }}>
+                  <span className="font-pixel text-[7px] tracking-widest text-black flex items-center gap-1"><Gavel className="w-3 h-3" strokeWidth={2.5} />VERDICT · 庭审裁断</span>
+                  <span className="font-pixel text-[7px] text-black/70">置信 {Math.round(verdict.confidence * 100)}%</span>
+                </div>
+                <div className="px-2.5 py-2 space-y-1.5">
+                  {!!verdict.issues.length && <div className="flex flex-wrap gap-1">{verdict.issues.map((s, i) => <span key={i} className="font-pixel text-[6px] border border-black/30 px-1 py-0.5 bg-[#f5edd6]">争点·{s}</span>)}</div>}
+                  <div className="text-[12px] text-black/80 leading-relaxed">{verdict.verdict}</div>
+                  {verdict.dissent && <div className="text-[10px] text-black/55 leading-snug">保留分歧 · {verdict.dissent}</div>}
+                  {verdict.ruleEstablished && <div className="text-[11px] text-black/65 italic border-l-2 pl-2" style={{ borderColor: '#caa64a' }}>裁判要旨 · {verdict.ruleEstablished}</div>}
+                  {verdict.critique && <div className="text-[10px] text-[#a05a2c] leading-snug">复核 · {verdict.critique}</div>}
+                  {!running && (
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={onSaveCase} disabled={saved}
+                        className="flex-1 flex items-center justify-center gap-1 border-2 border-black bg-white px-2 py-1.5 text-[11px] font-bold shadow-[1px_1px_0_#000] active:translate-y-px disabled:opacity-50">
+                        <Archive className="w-3.5 h-3.5" strokeWidth={2.5} /> {saved ? '已存判例' : '存为判例'}
+                      </button>
+                      {canPin && (
+                        <button onClick={onPin} disabled={pinned}
+                          className="flex-1 flex items-center justify-center gap-1 border-2 border-black px-2 py-1.5 text-[11px] font-bold shadow-[1px_1px_0_#000] active:translate-y-px text-black disabled:opacity-50" style={{ background: '#caa64a' }}>
+                          <MapPin className="w-3.5 h-3.5" strokeWidth={2.5} /> {pinned ? `已钉 ${verdict.geo?.place}` : `钉到 ${verdict.geo?.place}`}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {!running && messages.length > 0 && <div className="text-center font-pixel text-[8px] text-black/30 py-1 tracking-widest">— {mode === 'courtroom' ? '庭审结束' : '讨论结束'} —</div>}
             <div ref={endRef} />
           </div>
 

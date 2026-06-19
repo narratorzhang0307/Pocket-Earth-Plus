@@ -42,6 +42,42 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startTrackId, start
   const djAudioRef = useRef<HTMLAudioElement>(null);
   const lastIntroIdRef = useRef<string | null>(null);
   const lastSegIdRef = useRef<string | null>(null);
+  // iOS 兼容的音量闪避：iOS Safari 下 <audio>.volume 只读（赋值无效），DJ 说话时音乐压不下去。
+  // 必须经 Web Audio 的 GainNode 才能在 iOS 上真正压低。生产域名下 OSS 音频带 CORS → 可用 Web Audio；
+  // 本地（localhost，OSS 不给 CORS）不设 crossOrigin、退回 element.volume（桌面有效，不破坏本地播放）。
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const musicSrcRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const musicGainRef = useRef<GainNode | null>(null);
+  const useWebAudio = typeof location !== 'undefined' && !/^(localhost|127\.|0\.0\.0\.0)/.test(location.hostname);
+  // 懒建音频图（须在用户手势里调，iOS 才允许 resume）：audioRef → gain → destination。
+  const ensureGraph = () => {
+    const el = audioRef.current;
+    if (!el || !el.crossOrigin) return;            // 没设 crossOrigin（本地）→ 不走 Web Audio，避免跨域污染成静音
+    try {
+      if (!audioCtxRef.current) {
+        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!Ctx) return;
+        audioCtxRef.current = new Ctx();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      if (!musicSrcRef.current) {
+        const src = ctx.createMediaElementSource(el);
+        const gain = ctx.createGain();
+        gain.gain.value = el.volume;
+        src.connect(gain).connect(ctx.destination);
+        musicSrcRef.current = src;
+        musicGainRef.current = gain;
+      }
+    } catch { /* Web Audio 不可用 → 退回 element.volume */ }
+  };
+  // 设主音乐音量：同时写 element.volume（桌面有效）与 gain（iOS 上靠它真正压低）
+  const setMusicLevel = (v: number) => {
+    const el = audioRef.current;
+    if (el) el.volume = v;
+    const g = musicGainRef.current;
+    if (g) { try { g.gain.value = v; } catch { /* ignore */ } }
+  };
 
   const city: RadioCity | undefined = cities[cityIndex];
   const hasPodcast = !!city && city.podcast.length > 0;
@@ -156,13 +192,14 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startTrackId, start
     const dj = djAudioRef.current;
     if (!main) return;
     if (djUrl && dj) {
+      ensureGraph();
       if (dj.src !== djUrl) { dj.src = djUrl; dj.load(); dj.currentTime = 0; }
       dj.volume = 1;
-      main.volume = DUCK_VOL;
+      setMusicLevel(DUCK_VOL);                       // 音乐压低做背景（iOS 经 gain，桌面经 volume）
       if (isPlaying && isOpen) dj.play().catch(() => {}); else dj.pause();
     } else {
       if (dj) dj.pause();
-      main.volume = 1;
+      setMusicLevel(1);                              // 恢复音乐音量
     }
   }, [djUrl, isPlaying, isOpen]);
 
@@ -191,6 +228,7 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startTrackId, start
   };
   const toggleDj = () => {
     if (mode !== 'music' || !track?.introAudioUrl) return;
+    ensureGraph();                                   // 用户手势内建图 + resume，iOS 上 gain 才能生效
     const turningOn = !intro;
     setIntro(turningOn);
     setIsPlaying(true);
@@ -207,25 +245,40 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startTrackId, start
     goItem(1);
   };
 
+  // 缓存可用音色：iOS/首帧 getVoices() 可能为空，监听 voiceschanged 填充（不阻塞发声）
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const ttsRestoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const load = () => { voicesRef.current = window.speechSynthesis.getVoices(); };
+    load();
+    window.speechSynthesis.addEventListener?.('voiceschanged', load);
+    return () => { window.speechSynthesis.removeEventListener?.('voiceschanged', load); if (ttsRestoreTimer.current) clearTimeout(ttsRestoreTimer.current); };
+  }, []);
+
   // frost 回答时穿插 TTS（端侧 Web Speech）：说话时把音乐压低，说完恢复（恢复到 DJ 态或正常音量）
   const speakTTS = (text: string) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window) || !text) return;
     try {
+      const restore = () => { if (ttsRestoreTimer.current) { clearTimeout(ttsRestoreTimer.current); ttsRestoreTimer.current = null; } setMusicLevel(intro ? DUCK_VOL : 1); };
+      restore();                          // 先无条件恢复上一次可能卡住的压低（cancel 不一定触发上条的 onend）
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = 'zh-CN';
-      const zh = window.speechSynthesis.getVoices().find((v) => /zh|Chinese|中文/i.test(v.lang) || /zh|Chinese|中文/i.test(v.name));
-      if (zh) u.voice = zh;
-      const main = audioRef.current;
-      u.onstart = () => { if (main) main.volume = 0.15; };          // 压低城市音乐 / 播客背景
-      const restore = () => { if (main) main.volume = intro ? DUCK_VOL : 1; };
+      const pool = voicesRef.current.length ? voicesRef.current : window.speechSynthesis.getVoices();
+      const zh = pool.find((v) => /zh|Chinese|中文/i.test(v.lang) || /zh|Chinese|中文/i.test(v.name));
+      if (zh) u.voice = zh;               // 取不到也无妨：u.lang='zh-CN' 会让 iOS 系统中文音色发声
+      u.onstart = () => setMusicLevel(0.15);                       // 压低城市音乐 / 播客背景
       u.onend = restore; u.onerror = restore;
+      // 兜底：cancel/无回调路径下也按文本长度估时强制恢复，避免音乐永久卡在 0.15
+      ttsRestoreTimer.current = setTimeout(restore, Math.min(20000, text.length * 220 + 3000));
       window.speechSynthesis.speak(u);
-    } catch { /* TTS 不可用则静默降级 */ }
+    } catch { setMusicLevel(intro ? DUCK_VOL : 1); }
   };
   const sendChat = async () => {
     const text = chatInput.trim();
     if (!text || chatBusy) return;
+    ensureGraph();                                   // 用户手势内建图，frost 说话(TTS)时 iOS 也能压低音乐
     const history = chat.slice(-6).map((m) => ({ role: (m.role === 'dj' ? 'frost' : 'user') as 'user' | 'frost', text: m.text }));
     setChat((c) => [...c, { role: 'user', text }]);
     setChatInput('');
@@ -251,8 +304,9 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startTrackId, start
       {isOpen && city && (
         <audio
           ref={audioRef}
+          crossOrigin={useWebAudio ? 'anonymous' : undefined}
           onTimeUpdate={(e) => setPlaySec(e.currentTarget.currentTime)}
-          onLoadedMetadata={(e) => setDurSec(e.currentTarget.duration)}
+          onLoadedMetadata={(e) => { const d = e.currentTarget.duration; if (Number.isFinite(d) && d > 0) setDurSec(d); }}
           onEnded={onEnded}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}

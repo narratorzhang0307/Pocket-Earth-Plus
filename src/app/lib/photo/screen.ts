@@ -1,0 +1,70 @@
+// 编排器：单张走串行流水线（Handoff Contract，阶段间只传 PhotoFeatures/PhotoResult 小结论，
+// 原图/canvas 绝不留主上下文），再查重聚类→Critic 纠错→持久化。舱壁降级：单张坏图跳过不中断整轮。
+import { extractFeatures, readExif } from './features';
+import { ensureVision, classifyVision } from './vision';
+import { classify, valueByType, decide, dedupAndCluster, inRange } from './reasoning';
+import { applyCritic, applySoftBias, applyUserOverride } from './critic';
+import { getKnown, putPhoto } from './store';
+import type { PhotoResult, ScreenOpts } from './types';
+
+type Progress = (done: number, total: number, phase: string) => void;
+
+export async function runScreen(files: File[], opts: ScreenOpts, onProgress?: Progress): Promise<PhotoResult[]> {
+  const maxSize = opts.maxAnalyze || 256;
+
+  // ① 读 EXIF 日期做时间段过滤（cheap；贵的 decode/CLIP 压到后面、最少）
+  onProgress?.(0, files.length, '读取拍摄日期');
+  const inrange: File[] = [];
+  for (let i = 0; i < files.length; i++) {
+    try { const ex = await readExif(files[i]); if (inRange(ex.capDate, opts.fromYM, opts.toYM)) inrange.push(files[i]); }
+    catch { if (opts.fromYM == null && opts.toYM == null) inrange.push(files[i]); }   // 读不出日期且没设范围 → 收进来
+    onProgress?.(i + 1, files.length, '读取拍摄日期');
+  }
+
+  // ② 端侧模型仅在勾选时预热一次（超时/失败优雅降级，绝不卡死）
+  let modelReady = false;
+  if (opts.useModel) { onProgress?.(0, 1, '加载端侧模型…'); modelReady = await ensureVision((s) => onProgress?.(0, 1, s)); }
+
+  // ③ 逐张：features → 查记忆 →（需要才）CLIP → classify → value → decide
+  const results: PhotoResult[] = [];
+  for (let i = 0; i < inrange.length; i++) {
+    onProgress?.(i + 1, inrange.length, '端侧逐张分析');
+    const file = inrange[i];
+    let ex: Awaited<ReturnType<typeof extractFeatures>> = null;
+    try { ex = await extractFeatures(file, maxSize); } catch { ex = null; }   // 舱壁：坏图/HEIC 解码失败 → 跳过
+    if (!ex) continue;
+    const { features, canvas } = ex;
+    const known = await getKnown(features.dHash);
+    // 跑 CLIP 条件：开了模型 ∧ 就绪 ∧ 没跑过 ∧（资料临界 / 钉候选 / 无相机信息）
+    let vision: Awaited<ReturnType<typeof classifyVision>> = null;
+    const wantVision = modelReady && !known?.hadVision &&
+      ((features.isUtilityProb >= 0.3 && features.isUtilityProb <= 0.7) || (features.hasCameraFields && features.hasGPS) || !features.hasCameraFields);
+    if (wantVision) { onProgress?.(i + 1, inrange.length, '端侧模型精筛'); try { vision = await classifyVision(canvas); } catch { vision = null; } }
+    // canvas 出此作用域即可 GC（修 OOM：不挂到 result 上）
+
+    const c = classify(features, vision);
+    const valueScore = valueByType(features, c.photoType);
+    const dec = decide(c.photoType, valueScore, features.hasGPS);
+    const r: PhotoResult = {
+      id: features.dHash, uid: features.dHash + ':' + i, url: URL.createObjectURL(file), name: file.name, date: features.capDate,
+      w: features.w, h: features.h, photoType: c.photoType, valueScore, verdict: dec.verdict, pinnable: dec.pinnable,
+      needPlace: dec.needPlace, hasGPS: features.hasGPS, lat: features.lat, lng: features.lng,
+      pinSource: features.hasGPS ? 'exif' : undefined, tags: c.tags, reason: c.reason, features,
+    };
+    applyCritic(r);
+    applySoftBias(r);              // 端侧纠错统计 → 临界张有界软偏置（铁证不翻、只动临界）
+    applyUserOverride(r, known);
+    results.push(r);
+  }
+
+  // ④ 查重 + 时空聚类（簇代表才 pinnable）
+  onProgress?.(0, 1, '查重聚类');
+  const final = dedupAndCluster(results);
+
+  // ⑤ 持久化（只写派生小结论，原图/canvas/embedding 无字段位置）
+  for (const r of final) {
+    try { await putPhoto({ id: r.id, photoType: r.photoType, valueScore: r.valueScore, verdict: r.verdict, pinnable: r.pinnable, hasGPS: r.hasGPS, lat: r.lat, lng: r.lng, hadVision: !!(opts.useModel && modelReady), userOverride: r.userOverride, ts: Date.now() }); } catch { /* 隐私模式忽略 */ }
+  }
+  for (const r of final) delete r.features;   // 释放
+  return final;
+}

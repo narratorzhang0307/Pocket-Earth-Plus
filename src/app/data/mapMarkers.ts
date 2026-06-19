@@ -4,10 +4,14 @@
 
 import musicCities from './music-cities.json';
 import { photoPoints } from './photos';
-import { moviePoints } from './movies';
-import { bookPoints } from './books';
+// 只引类型（编译期擦除，不会把 movies/books 及其 douban 大 JSON 拉进首屏 chunk）；
+// 真正的数据在 ensureHeavyMarkers() 里动态 import。
+import type { MoviePoint } from './movies';
+import type { BookPoint } from './books';
 
-export type MarkerKind = 'music' | 'photo' | 'movie' | 'book' | 'travel';
+// 'custom' = 用户用「造物主」meta-agent 自建的 agent 的落点（咖啡馆/球鞋/鸟类…全归这一类，
+// 地球只认这一个通用类、不学习具体自定义 agent；各 agent 的身份/颜色在 meta 里，详见 lib/agent/）。
+export type MarkerKind = 'music' | 'photo' | 'movie' | 'book' | 'travel' | 'council' | 'custom';
 
 export interface MapMarker {
   id: string;
@@ -27,8 +31,10 @@ export const MARKER_KINDS: { kind: MarkerKind; label: string; color: string }[] 
   { kind: 'movie', label: '电影', color: '#ffb000' },
   { kind: 'book', label: '书', color: '#b388ff' },
   { kind: 'travel', label: '行程', color: '#ff3b6b' },
+  { kind: 'council', label: '议事', color: '#caa64a' },
+  { kind: 'custom', label: '自建', color: '#ff8a3d' },
 ];
-export const KIND_COLOR: Record<MarkerKind, string> = { music: '#00ff88', photo: '#00e5ff', movie: '#ffb000', book: '#b388ff', travel: '#ff3b6b' };
+export const KIND_COLOR: Record<MarkerKind, string> = { music: '#00ff88', photo: '#00e5ff', movie: '#ffb000', book: '#b388ff', travel: '#ff3b6b', council: '#caa64a', custom: '#ff8a3d' };
 
 // 确定性微偏移：同城 / 重合的点在城市附近散开（约 ±0.03°≈3km），放大后能看出分布在不同位置；
 // 缩小时这点偏移看不出来，由地图层的聚合再把重合的只显示一个。
@@ -57,22 +63,36 @@ const photoMarkers: MapMarker[] = photoPoints.map((p) => {
     author: p.author, authorLink: p.authorLink, photoLink: p.photoLink };
 });
 
-// 电影点：豆瓣观影记录按国家落到代表城市（坐标与散开已在 movies.ts 算好），琥珀色小点
-const movieMarkers: MapMarker[] = moviePoints.map((m) => ({
-  id: 'mv-' + m.id, kind: 'movie', lat: m.lat, lng: m.lng, label: m.title,
-}));
+// 首屏地图只先渲染音乐 + 照片标记（数据小）。电影 / 书标记体量大（含豆瓣简介，约 1.3MB JSON），
+// 改为地图就绪后懒加载补入（见 ensureHeavyMarkers），把大 JSON 移出首屏关键路径。
+export const MAP_MARKERS: MapMarker[] = [...musicMarkers, ...photoMarkers];
 
-// 书点：读过的书钉到「故事/作者之地」（坐标在 books.ts），紫色点
-const bookMarkers: MapMarker[] = bookPoints.map((b) => ({
-  id: 'bk-' + b.id, kind: 'book', lat: b.lat, lng: b.lng, label: b.title,
-}));
-
-export const MAP_MARKERS: MapMarker[] = [...musicMarkers, ...photoMarkers, ...movieMarkers, ...bookMarkers];
-
-// 点击查详情用的查找表（按带前缀的 marker id）：geojson 里只放 id，详情走这里查，保持要素轻量
+// 点击查详情用的查找表（按带前缀的 marker id）：geojson 里只放 id，详情走这里查，保持要素轻量。
+// 电影 / 书表初始为空，懒加载完成后填充（同一 Map 对象就地填充，外部持有的引用仍有效）。
 export const photoById = new Map(photoPoints.map((p) => ['p-' + p.id, p]));
-export const movieById = new Map(moviePoints.map((m) => ['mv-' + m.id, m]));
-export const bookById = new Map(bookPoints.map((b) => ['bk-' + b.id, b]));
+export const movieById = new Map<string, MoviePoint>();
+export const bookById = new Map<string, BookPoint>();
+
+let heavyLoaded = false;
+let heavyPromise: Promise<void> | null = null;
+// 懒加载电影 / 书标记 + 详情查找表：动态 import movies/books（含 douban 大 JSON），
+// 把点 push 进 MAP_MARKERS、就地填充 byId 表。地图层在 resolve 后重建 marks 源即可显示这些点。
+export function ensureHeavyMarkers(): Promise<void> {
+  if (heavyLoaded) return Promise.resolve();
+  if (heavyPromise) return heavyPromise;
+  heavyPromise = Promise.all([import('./movies'), import('./books')]).then(([mv, bk]) => {
+    for (const m of mv.moviePoints) {
+      MAP_MARKERS.push({ id: 'mv-' + m.id, kind: 'movie', lat: m.lat, lng: m.lng, label: m.title });
+      movieById.set('mv-' + m.id, m);
+    }
+    for (const b of bk.bookPoints) {
+      MAP_MARKERS.push({ id: 'bk-' + b.id, kind: 'book', lat: b.lat, lng: b.lng, label: b.title });
+      bookById.set('bk-' + b.id, b);
+    }
+    heavyLoaded = true;
+  });
+  return heavyPromise;
+}
 
 // 转 GeoJSON，交给 mapbox symbol 图层原生渲染（贴地 / 背面遮挡 / 重叠碰撞都由 mapbox 处理）
 export function toGeoJSON() {

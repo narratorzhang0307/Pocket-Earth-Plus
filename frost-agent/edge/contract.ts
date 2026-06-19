@@ -5,6 +5,7 @@
 // 换端侧模型(Qwen→Phi / MNN…)只改 viteEdge 实现与本契约，调用点不动。
 import type { EdgeModel } from './types';
 import { httpEdge } from './httpEdge';
+import { webllmEdge, isWebllmReady } from './webllmEdge';
 import { recordHealth } from '../harness/health';
 
 export const EDGE_CAPABILITIES = ['available', 'chat', 'classify', 'rank', 'embed', 'vision'] as const;
@@ -26,5 +27,17 @@ export function withFallback(edge: EdgeModel): EdgeModel {
   };
 }
 
-/** 推荐的端侧入口：带兜底 + 健康追踪的 httpEdge，curator / router 调用点统一用它。 */
-export const edgeSafe: EdgeModel = withFallback(httpEdge);
+// 端侧双后端路由：文本三件套(chat/classify/rank)优先浏览器内 Qwen（webllmEdge，真端侧、不出端），
+// 未加载则回退服务端 /api/edge（httpEdge → ollama/MNN/stub）；embed/vision 文本小模型不做，始终走 httpEdge。
+// 对调用点透明：edgeSafe 接口不变，curator/router 无感知切换。
+const routed: EdgeModel = {
+  available: async () => (isWebllmReady() ? true : httpEdge.available()),
+  chat: (p, o) => (isWebllmReady() ? webllmEdge.chat(p, o) : httpEdge.chat(p, o)),
+  classify: (t, l) => (isWebllmReady() ? webllmEdge.classify(t, l) : httpEdge.classify(t, l)),
+  rank: (q, c) => (isWebllmReady() ? webllmEdge.rank(q, c) : httpEdge.rank(q, c)),
+  embed: (t) => httpEdge.embed(t),
+  vision: (i, p) => httpEdge.vision(i, p),
+};
+
+/** 推荐的端侧入口：带兜底 + 健康追踪 + 端侧Qwen/服务端双路由，curator / router 调用点统一用它。 */
+export const edgeSafe: EdgeModel = withFallback(routed);

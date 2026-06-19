@@ -12,7 +12,13 @@ import CouncilPage from './CouncilPage';
 import MoodRunPage from './MoodRunPage';
 import PublicPlazaPage from './PublicPlazaPage';
 import SkillForgePage from './SkillForgePage';
+import FrostBuddyPage from './FrostBuddyPage';
+import FrostBuddy from './FrostBuddy';
+import OnDeviceBrainPanel from './OnDeviceBrainPanel';
+import AgentForgePage from './AgentForgePage';
+import { getCustomAgents, subscribeCustomAgents, type AgentManifest } from '../lib/agent';
 import { getLearnedSkills, subscribeSkills, type LearnedSkill } from '../../../frost-agent/harness/skillForge';
+import { startHeartbeat } from '../../../frost-agent/harness/heartbeat';
 
 interface AgentItem {
   name: string;
@@ -30,14 +36,10 @@ const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
       { name: 'movies-curator', role: '把电影钉到取景地 / 故事地', status: '契约就位' },
       { name: 'photos-curator', role: '端侧整理相册，高价值照片钉地球', status: '契约就位' },
       { name: 'travel-curator', role: '按喜好端侧规划行程，完成即钉星球', status: '契约就位' },
-    ],
-  },
-  {
-    title: 'CUSTOM',
-    sub: '自定义 agent · 造星球 / 记心情',
-    items: [
       { name: 'planet-builder', role: '说一个主题，抓 Unsplash 照片造一颗主题星球', status: '可运行' },
       { name: 'mood-curator', role: '记录全球赛博漫游的心情，钉到地图', status: '可运行' },
+      { name: 'podcast-curator', role: '城市播客：每座城一段深度文化叙事', status: '可运行' },
+      { name: 'skill-forge', role: '一句话描述 → 云脑拟稿 → 安全审查 → 装成快捷技能', status: '可运行' },
     ],
   },
   {
@@ -48,30 +50,16 @@ const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
     ],
   },
   {
-    title: 'RADIO',
-    sub: '电台 · 城市播客',
-    items: [
-      { name: 'podcast-curator', role: '城市播客：每座城一段深度文化叙事', status: '可运行' },
-    ],
-  },
-  {
     title: 'PLAZA',
     sub: 'agent 代理社交 · 前瞻',
     items: [
       { name: 'public-plaza', role: '委派你的 agent 去公共广场，带画像遇见相似的人，夜里回来报告', status: '可运行' },
     ],
   },
-  {
-    title: 'FORGE',
-    sub: '教 frost 学新技能 · 安全闸',
-    items: [
-      { name: 'skill-forge', role: '一句话描述 → 云脑拟稿 → 安全审查 → 装成快捷技能', status: '可运行' },
-    ],
-  },
 ];
 
 
-type Running = 'music' | 'podcast' | 'movies' | 'books' | 'photos' | 'travel' | 'planet' | 'council' | 'mood' | 'plaza' | 'forge' | null;
+type Running = 'frost' | 'music' | 'podcast' | 'movies' | 'books' | 'photos' | 'travel' | 'planet' | 'council' | 'mood' | 'plaza' | 'forge' | 'agentforge' | null;
 const RUN_BY_NAME: Record<string, Running> = {
   'music-curator': 'music', 'podcast-curator': 'podcast', 'movies-curator': 'movies',
   'books-curator': 'books', 'photos-curator': 'photos', 'travel-curator': 'travel',
@@ -84,8 +72,15 @@ export default function MusicAgentsTab() {
   // P2-I：已学技能（点击=路由到其目标 agent）
   const [learned, setLearned] = useState<LearnedSkill[]>(getLearnedSkills());
   useEffect(() => subscribeSkills(() => setLearned([...getLearnedSkills()])), []);
+  // 造物主造出的自建 agent（展示在控制台、可直接运行）
+  const [customAgents, setCustomAgents] = useState<AgentManifest[]>(getCustomAgents());
+  useEffect(() => subscribeCustomAgents(() => setCustomAgents([...getCustomAgents()])), []);
+  // 启动 FROST heartbeat：进入控制台即定期产「主动建议」（此前 startHeartbeat 全仓零调用，建议链路静默常关）。
+  // 幂等（只起一个定时器），卸载时清理。
+  useEffect(() => startHeartbeat(), []);
   const runSkill = (target: string) => { const t = RUN_BY_NAME[target]; if (t) setRunning(t); };
 
+  if (running === 'frost') return <FrostBuddyPage onBack={() => setRunning(null)} onRun={runSkill} />;
   if (running === 'music') return <MusicCuratorPage onBack={() => setRunning(null)} />;
   if (running === 'podcast') return <PodcastCuratorPage onBack={() => setRunning(null)} />;
   if (running === 'movies') return <MoviesCuratorPage onBack={() => setRunning(null)} />;
@@ -97,6 +92,7 @@ export default function MusicAgentsTab() {
   if (running === 'mood') return <MoodRunPage onBack={() => setRunning(null)} />;
   if (running === 'plaza') return <PublicPlazaPage onBack={() => setRunning(null)} />;
   if (running === 'forge') return <SkillForgePage onBack={() => setRunning(null)} onRun={runSkill} />;
+  if (running === 'agentforge') return <AgentForgePage onBack={() => setRunning(null)} />;
 
   return (
     <div className="h-full flex flex-col bg-[#EAEAEA] font-sans">
@@ -122,6 +118,55 @@ export default function MusicAgentsTab() {
 
       {/* agent 分组列表（可滚动） */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+        {/* 置顶：总 agent FROST —— 统领所有子 agent 的宠物入口（点进去跟它对话）*/}
+        <button
+          onClick={() => setRunning('frost')}
+          className="w-full text-left flex items-center gap-3 border-2 border-black p-2.5 shadow-[3px_3px_0_rgba(0,0,0,0.85)] active:translate-y-px"
+          style={{ background: '#d9d9d9' }}
+        >
+          <div className="shrink-0 flex items-center justify-center" style={{ width: 100, height: 76 }}><FrostBuddy state="idle" cycle color="#1d3e57" glow={false} size={11} /></div>
+          <div className="min-w-0 flex-1">
+            <div className="font-pixel text-[11px] tracking-wider text-black">FROST</div>
+            <div className="text-[10.5px] text-black/60 leading-snug mt-0.5">我是弗洛斯特。在上界司命所创造的一切事物中，弗洛斯特是最完美的，最有威力的，也是最难以理解的。</div>
+          </div>
+          <span className="shrink-0 font-pixel text-[6px] uppercase tracking-wider border border-black bg-black text-[#7CFF6B] px-1.5 py-1">▶ RUN</span>
+        </button>
+
+        {/* 端侧大脑：一键把 Qwen3 加载进浏览器（WebGPU），意图/选择本地跑、不出端 */}
+        <OnDeviceBrainPanel />
+
+        {/* 造物主：一个能造 agent 的 agent —— 说一句话长出新的 curator */}
+        <button
+          onClick={() => setRunning('agentforge')}
+          className="w-full text-left flex items-center gap-2.5 border-2 border-black p-2.5 shadow-[3px_3px_0_rgba(0,0,0,0.85)] active:translate-y-px"
+          style={{ background: '#fff1e6' }}
+        >
+          <div className="shrink-0 w-10 h-10 border-2 border-black flex items-center justify-center text-[20px]" style={{ background: '#ff8a3d' }}>🛠</div>
+          <div className="min-w-0 flex-1">
+            <div className="font-pixel text-[11px] tracking-wider text-black">AGENT-FORGE · 造物主</div>
+            <div className="text-[10px] text-black/60 leading-snug mt-0.5">说一句话，让 frost 造一个新 agent（端侧/云 Qwen 拟稿 → 安全闸 → 钉地球）</div>
+          </div>
+          <span className="shrink-0 font-pixel text-[6px] uppercase tracking-wider border border-black bg-black text-[#ff8a3d] px-1.5 py-1">▶ RUN</span>
+        </button>
+
+        {/* 已造的自建 agent（造物主产出，直接可跑） */}
+        {customAgents.length > 0 && (
+          <div className="space-y-2">
+            <div className="font-pixel text-[8px] tracking-widest text-black/55 px-0.5">我的自建 AGENT</div>
+            {customAgents.map((a) => (
+              <button key={a.id} onClick={() => setRunning('agentforge')}
+                className="w-full text-left flex items-center gap-2.5 border-2 border-black p-2 bg-white shadow-[2px_2px_0_rgba(0,0,0,0.85)] active:translate-y-px">
+                <div className="shrink-0 w-8 h-8 border-2 border-black flex items-center justify-center text-[16px]" style={{ background: a.color }}>{a.emoji}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] font-bold truncate">{a.name}</div>
+                  <div className="text-[10px] text-black/55 leading-tight truncate">{a.desc || a.domain}</div>
+                </div>
+                <span className="shrink-0 font-pixel text-[6px] uppercase tracking-wider border border-black px-1.5 py-1" style={{ background: a.color }}>▶ RUN</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {GROUPS.map((g) => (
           <div key={g.title}>
             <div className="flex items-baseline justify-between mb-2">
@@ -134,14 +179,12 @@ export default function MusicAgentsTab() {
                 const runnable = !!target;
                 const plaza = a.name === 'public-plaza';   // 代理社交：克制的区分色（石板蓝灰）
                 const dot = plaza ? '#6b7a8f' : '#00ff88';
-                const isMusic = a.name === 'music-curator';  // 音乐：用淡灰底色，和别的 agent 区分（低调、不刺眼）
                 return (
                   <button
                     key={a.name}
                     onClick={runnable ? () => setRunning(target) : undefined}
-                    style={isMusic ? { background: '#d9d9d9' } : undefined}
                     className={`w-full text-left flex items-center gap-3 bg-white border-2 border-black p-2.5 shadow-[2px_2px_0_rgba(0,0,0,0.85)] transition-colors ${
-                      runnable ? (isMusic ? 'active:translate-y-px' : plaza ? 'hover:bg-[#6b7a8f]/10 active:translate-y-px' : 'hover:bg-[#00ff88]/10 active:translate-y-px') : 'cursor-default'
+                      runnable ? (plaza ? 'hover:bg-[#6b7a8f]/10 active:translate-y-px' : 'hover:bg-[#00ff88]/10 active:translate-y-px') : 'cursor-default'
                     }`}
                   >
                     {/* 方块（呼应地图标记）；代理社交用区分色 */}

@@ -1,6 +1,11 @@
 node_modules
 dist
 .env
+.env.*
+*.pem
+*.key
+*credentials*
+*secret*
 .DS_Store
 *.local
 
@@ -22,3 +27,10 @@ resource-library/world-photos.json
 
 # 本地生成 / 准备用的临时产物，不入库
 outputs/
+
+# 第三方研究项目（hermes / openhanako / claude-desktop-buddy 等，各有上游来源，不进本仓库备份）
+hermes-agent-main/
+openhanako-main/
+Frost Buddy/
+docx_render_qa/
+*.zip

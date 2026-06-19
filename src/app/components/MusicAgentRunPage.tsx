@@ -4,6 +4,7 @@ import { runFrost } from '../../../frost-agent/harness/router';
 import type { PlaylistEntry } from '../../../frost-agent/harness/types';
 import { buildDayProgram, type DayProgram } from '../../../frost-agent/agents/radio-24h-director';
 import { RADIO_CITIES, resolveTracksByIds, type ResolvedTrack } from '../../../frost-agent/data/radio';
+import { recommendMusic, recordPlay, type MusicRecs } from '../lib/music/plays';
 import AgentLuIcon from './AgentLuIcon';
 import UserZhaIcon from './UserZhaIcon';
 
@@ -17,6 +18,7 @@ interface Turn {
   trace?: string[];
   playlist?: PlaylistEntry[];
   program?: DayProgram;
+  recs?: MusicRecs;
 }
 
 interface Props {
@@ -47,6 +49,7 @@ export default function MusicAgentRunPage({ onBack, embedded }: Props) {
   useEffect(() => {
     const a = audioRef.current;
     if (!a || !cur) return;
+    recordPlay({ id: cur.id, title: cur.title, artist: cur.artist, city: cur.cityNameZh });   // 记一次收听 → 听歌记忆 + 回流口味
     let fell = false;
     setSrcMode('real');
     a.src = cur.audioUrl;
@@ -99,6 +102,13 @@ export default function MusicAgentRunPage({ onBack, embedded }: Props) {
     setTurns((t) => [...t, { role: 'frost', text: program.reply, program }]);
   };
 
+  // 懂我推荐：基于听歌记忆，本地双轨选曲（命中口味 + 破茧探索），全用现有曲库
+  const recommend = () => {
+    if (busy) return;
+    const recs = recommendMusic();
+    setTurns((t) => [...t, { role: 'frost', text: recs.basis, recs }]);
+  };
+
   const play = (trackIds: string[], startIndex = 0) => {
     const tracks = resolveTracksByIds(trackIds);
     if (!tracks.length) { setHint('没有可播放的曲目'); setTimeout(() => setHint(''), 1800); return; }
@@ -115,9 +125,12 @@ export default function MusicAgentRunPage({ onBack, embedded }: Props) {
       {embedded ? (
         <div className="flex items-center justify-between px-3 py-1.5 border-b-2 border-black bg-white shrink-0">
           <span className="font-pixel text-[7px] text-black/40 tracking-widest">电台 agent · 和 FROST 对话</span>
-          <button onClick={generateDay} disabled={busy} className="flex items-center gap-1 border-2 border-black bg-black text-[#7CFF6B] px-2 py-1 font-pixel text-[7px] tracking-widest active:translate-y-px disabled:opacity-40">
-            <Radio className="w-3 h-3" strokeWidth={2.5} /> 24H
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={recommend} disabled={busy} className="border-2 border-black bg-[#00ff88] text-black px-2 py-1 font-pixel text-[7px] tracking-widest active:translate-y-px disabled:opacity-40">♪ 懂我</button>
+            <button onClick={generateDay} disabled={busy} className="flex items-center gap-1 border-2 border-black bg-black text-[#7CFF6B] px-2 py-1 font-pixel text-[7px] tracking-widest active:translate-y-px disabled:opacity-40">
+              <Radio className="w-3 h-3" strokeWidth={2.5} /> 24H
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex items-center gap-2 px-3 py-2.5 border-b-2 border-black bg-white shrink-0">
@@ -128,6 +141,7 @@ export default function MusicAgentRunPage({ onBack, embedded }: Props) {
             <div className="font-pixel text-[11px] tracking-wider truncate">MUSIC-CURATOR</div>
             <div className="text-[9px] text-black/45 truncate">电台 agent · {RADIO_CITIES.length} 城在库</div>
           </div>
+          <button onClick={recommend} disabled={busy} className="border-2 border-black bg-[#00ff88] text-black px-2 py-1.5 font-pixel text-[7px] tracking-widest active:translate-y-px disabled:opacity-40">♪ 懂我</button>
           <button onClick={generateDay} disabled={busy} className="flex items-center gap-1 border-2 border-black bg-black text-[#7CFF6B] px-2 py-1.5 font-pixel text-[7px] tracking-widest active:translate-y-px disabled:opacity-40">
             <Radio className="w-3 h-3" strokeWidth={2.5} /> 24H
           </button>
@@ -240,6 +254,33 @@ export default function MusicAgentRunPage({ onBack, embedded }: Props) {
                 </div>
               </div>
             )}
+
+            {/* 懂我推荐：双轨（命中口味 + 破茧探索） */}
+            {turn.recs && (['forYou', 'explore'] as const).map((key) => {
+              const list = turn.recs![key];
+              if (!list.length) return null;
+              const label = key === 'forYou' ? '根据你常听' : '不妨试试';
+              const color = key === 'forYou' ? '#00ff88' : '#ffb000';
+              return (
+                <div key={key} className="border-2 border-black bg-white shadow-[2px_2px_0_rgba(0,0,0,0.85)] overflow-hidden">
+                  <div className="px-3 py-2 border-b-2 border-black flex items-center justify-between gap-2" style={{ background: color + '22' }}>
+                    <span className="font-pixel text-[7px] tracking-widest text-black/60">{label}</span>
+                    <button onClick={() => play(list.map((s) => s.id), 0)} className="border-2 border-black px-2 py-1 font-pixel text-[7px] tracking-wider active:translate-y-px" style={{ background: color }}>▶ 播 {list.length}</button>
+                  </div>
+                  <div className="divide-y divide-black/10">
+                    {list.map((s, si) => (
+                      <button key={s.id} onClick={() => play(list.map((x) => x.id), si)} className="w-full text-left px-3 py-2 hover:bg-black/5 active:bg-black/10 transition-colors flex gap-2 items-center">
+                        <span className="font-pixel text-[7px] text-black/35 w-4 shrink-0">{String(si + 1).padStart(2, '0')}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[12px] truncate">{s.title}<span className="text-black/45"> · {s.artist}</span></div>
+                          <div className="text-[10px] text-black/40 truncate">{[s.genre, s.city].filter(Boolean).join(' · ')}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
             </div>
           </div>
         ))}

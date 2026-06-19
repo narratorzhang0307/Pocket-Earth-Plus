@@ -9,6 +9,7 @@ export interface NormalizedRequest {
   messages: { role: string; content: string }[];
   json?: boolean;
   temperature?: number;
+  model?: string;   // 可选：覆盖 adapter 默认模型（中间件读 env 传入，如 QWEN_MODEL）
 }
 
 /** 某 provider 的具体 HTTP 请求（中间件据此 fetch）。 */
@@ -37,5 +38,7 @@ export function buildProviderRequest(provider: string, req: NormalizedRequest, k
 }
 
 // ——— 注册内置 adapter（加新模型在此追加一行 import + register）———
+import { dashscopeAdapter } from './dashscope';
+registerProvider(dashscopeAdapter);   // 通义 Qwen（DashScope）—— 现役云脑
 import { deepseekAdapter } from './deepseek';
-registerProvider(deepseekAdapter);
+registerProvider(deepseekAdapter);    // DeepSeek —— 回退云脑（未配 DashScope key 时）
