@@ -4,7 +4,7 @@
 // 全云 Qwen 协同（搜索需联网，属云协同；核心交互/选择仍可端侧）。解耦：只依赖共享 geocodeCity + 本模块 pin/manifest，不碰内核、不碰别的 agent。
 // 工程纪律（书里反复强调）：硬步数上限防死循环、动作去重、JSON 约束、每步舱壁降级、进度持久化（断点续传）。
 import { getFrostBrain } from '../../../../frost-agent/harness/brain';
-import { resolvePlace } from './geocode';
+import { resolvePlace } from '../skills/resolvePlace';
 import type { AgentManifest } from './manifest';
 import { GEO_LABEL } from './manifest';
 import type { CustomDraft } from './engine';

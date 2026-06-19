@@ -1,10 +1,12 @@
-// 真实地理编码（破"只认 ~100 城"限制）。三级：本地表 → Mapbox → 缓存。
+// 可复用 Skill（app 层）· 地理编码 / 地名→坐标（resolvePlace）
+// 把「任意地名解析成坐标」抽成一个 skill，破"只认 ~100 城"限制。三级：本地表 → Mapbox → 缓存。
 //   1. 本地表 geocodeCity（即时/免费/主要城市精确）——命中即返回，不耗网络。
 //   2. Mapbox Geocoding v6（全球长尾：任意国家/城市/区）——本地表未命中时兜底。
 //      注：Mapbox 中国数据到「城市/区」级可靠，POI/山名级有限（如「天目山」可能认偏）；
-//      故 pin 时由 spreadCoord 抖散，落点为城市/区级、由 label 承载具体地点名。
+//      故 pin 时由 spreadCoord 抖散（见 [markPlace] skill），落点为城市/区级、由 label 承载具体地点名。
 //   3. localStorage 缓存（同名不重复请求 + 首次后离线可用）。
-// 解耦：只读应用层 token（import.meta.env，与 mapbox.ts 同源）+ 复用 geocodeCity，不碰内核。
+// 任何 agent / 场景 `import { resolvePlace }` 直接复用（造物主引擎、建图研究流水线都在用）。
+// app 层 skill（依赖 geoStickers + Mapbox token=import.meta.env，故不入内核 frost-agent/skills/）。
 import { geocodeCity } from '../../data/geoStickers';
 
 const MAPBOX_TOKEN = ((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_MAPBOX_TOKEN) || '';
