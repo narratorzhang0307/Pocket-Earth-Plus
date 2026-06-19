@@ -1,33 +1,17 @@
 // 感知层：三种输入归一成「候选书名 + 可选评分」。书封截图只走端侧 vision（原图不出端）。
 import { visionExtract } from '../skills/visionExtract';
+import { parseRating as parseRatingText, parseTitle as parseTitleText } from '../skills/parseInput';
 
-const CN_NUM: Record<string, number> = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5 };
+// 从一句话抽用户评分（→ 0-5 星）。解耦进 [parseInput] skill（确定性·不费云）。
+export const parseRating = (text: string): number | undefined => parseRatingText(text, /满分|神作|封神|此生最爱/);
 
-export function parseRating(text: string): number | undefined {
-  const stars = (text.match(/★/g) || []).length;
-  if (stars) return Math.min(5, stars);
-  let m = text.match(/([0-9一二两三四五])\s*星(半)?/);
-  if (m) { const n = /[0-9]/.test(m[1]) ? +m[1] : CN_NUM[m[1]]; return Math.max(0, Math.min(5, n + (m[2] ? 1 : 0))); }   // 三星半 → 4
-  m = text.match(/([0-9]+(?:\.[0-9])?)\s*分/);
-  if (m) { const v = parseFloat(m[1]); return Math.max(0, Math.min(5, Math.round(v > 5 ? v / 2 : v))); }
-  if (/神作|封神|此生最爱/.test(text)) return 5;
-  return undefined;
-}
-
-// 抽书名：《》优先；否则去「读了/在读/读完/标记/这本书」等噪声与评分尾巴
+// 抽书名：《》优先；否则去评分尾巴 + 通用标记词 + 书噪声词（解耦进 [parseInput]）。
+// 保留去噪后整段，不取最长段——否则含空格的多词书名被截断。
 export function parseTitle(text: string): string {
-  const t = (text || '').trim();
-  const quoted = t.match(/《([^》]+)》/);
-  if (quoted) return quoted[1].trim();
-  let s = t
-    .replace(/[0-9一二两三四五]\s*星半?|[0-9]+(?:\.[0-9])?\s*分|★+/g, ' ')
-    .replace(/(帮我|给我|请|麻烦)?(标记|记录|记一下|记一笔|收藏|添加|标一下|标下)一?下?/g, ' ')
-    .replace(/我?(刚|今天|昨天|最近)?(读完了?|读了|看完了?|看了|在读|刷完了?|啃完了?|读过)/g, ' ')
-    .replace(/这本(书|小说)?|的?这本|想读|推荐/g, ' ')
-    .replace(/[，,。.！!？?；;~、]+/g, ' ')
-    .trim();
-  // 保留整段（含词间空格），不再取最长段——否则含空格的多词书名被截断（同电影 sense 的修复）
-  return s.replace(/\s+/g, ' ').trim();
+  return parseTitleText(text, {
+    verbs: /我?(刚|今天|昨天|最近)?(读完了?|读了|看完了?|看了|在读|刷完了?|啃完了?|读过)/g,
+    nouns: /这本(书|小说)?|的?这本|想读|推荐/g,
+  });
 }
 
 // 截图认书：解耦进 [visionExtract]（原图只进端侧 VL→脱敏→按 schema 结构化）。端侧未就绪→''（手填兜底）。

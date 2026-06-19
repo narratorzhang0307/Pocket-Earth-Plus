@@ -1,5 +1,7 @@
-// 记忆层：端侧持久化读书索引（IndexedDB `pe-books`，归一书名为主键，幂等）+ localStorage 纠错偏好。镜像 lib/movie/store.ts。
+// 记忆层：端侧持久化读书索引（IndexedDB `pe-books`，归一书名为主键，幂等）+ localStorage 纠错偏好。
+// IDB 读写与 placeFix/ratingFix 收口到 [keyedStore] skill；这里只声明实体类型 + 绑库名（薄壳）。
 import type { GeoTarget, BookTags } from './types';
+import { keyedStore, correctionsStore, type Corrections } from '../skills/keyedStore';
 
 export interface StoredBook {
   key: string;
@@ -13,45 +15,13 @@ export interface StoredBook {
   ts: number;
 }
 
-const DB = 'pe-books', STORE = 'index', VER = 1;
-let dbp: Promise<IDBDatabase | null> | null = null;
-function open(): Promise<IDBDatabase | null> {
-  if (dbp) return dbp;
-  dbp = new Promise((res) => {
-    try {
-      if (typeof indexedDB === 'undefined') return res(null);
-      const req = indexedDB.open(DB, VER);
-      req.onupgradeneeded = () => { const d = req.result; if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: 'key' }); };
-      req.onsuccess = () => res(req.result);
-      req.onerror = () => res(null);
-    } catch { res(null); }
-  });
-  return dbp;
-}
-function tx(mode: IDBTransactionMode): Promise<IDBObjectStore | null> {
-  return open().then((d) => { try { return d ? d.transaction(STORE, mode).objectStore(STORE) : null; } catch { return null; } });
-}
+const store = keyedStore<StoredBook>('pe-books');
+export const getKnownBook = (key: string): Promise<StoredBook | null> => store.get(key);
+export const putBook = (b: StoredBook): Promise<void> => store.put(b);
+export const allBooks = (): Promise<StoredBook[]> => store.all();
 
-export async function getKnownBook(key: string): Promise<StoredBook | null> {
-  const s = await tx('readonly'); if (!s) return null;
-  return new Promise((res) => { const r = s.get(key); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); });
-}
-export async function putBook(b: StoredBook): Promise<void> {
-  const s = await tx('readwrite'); if (!s) return;
-  try { s.put(b); } catch { /* 隐私模式忽略 */ }
-}
-export async function allBooks(): Promise<StoredBook[]> {
-  const s = await tx('readonly'); if (!s) return [];
-  return new Promise((res) => { const r = s.getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => res([]); });
-}
-
-const PREF_KEY = 'pe.bookPrefs.v1';
-export interface BookPrefs { placeFix: Record<string, { lng: number; lat: number; place: string }>; ratingFix: Record<string, number> }
-const DEFAULT: BookPrefs = { placeFix: {}, ratingFix: {} };
-export function getBookPrefs(): BookPrefs {
-  try { if (typeof localStorage !== 'undefined') { const r = localStorage.getItem(PREF_KEY); if (r) return { ...DEFAULT, ...JSON.parse(r) }; } } catch { /* */ }
-  return { placeFix: {}, ratingFix: {} };
-}
-function save(p: BookPrefs) { try { if (typeof localStorage !== 'undefined') localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch { /* */ } }
-export function recordPlaceFix(key: string, fix: { lng: number; lat: number; place: string }) { const p = getBookPrefs(); p.placeFix[key] = fix; save(p); }
-export function recordRatingFix(key: string, stars: number) { const p = getBookPrefs(); p.ratingFix[key] = Math.max(0, Math.min(5, stars)); save(p); }
+export type BookPrefs = Corrections;
+const prefs = correctionsStore('pe.bookPrefs.v1');
+export const getBookPrefs = (): BookPrefs => prefs.get();
+export const recordPlaceFix = (key: string, fix: { lng: number; lat: number; place: string }): void => prefs.recordPlaceFix(key, fix);
+export const recordRatingFix = (key: string, stars: number): void => prefs.recordRatingFix(key, stars);

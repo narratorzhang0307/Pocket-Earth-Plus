@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-// 可复用 Skill（app 层）· 识图→结构化（vision extract）
+// 可复用 Skill（app 层）· 识图→结构化（vision extract）= visionRead + textExtract
 // ────────────────────────────────────────────────────────────────────────────
 // 一句话：给一张图 + 一份「目标字段 schema」，端侧把图读懂、整理成匹配 schema 的结构化 JSON。
 //
@@ -8,26 +8,22 @@
 //     本 skill 的【① 视觉读图】这一步**只调端侧视觉模型（Qwen-VL，经 MNN / 浏览器 WebGPU）**，
 //     原图一个字节都不出端、不上云。没有端侧 VL，就只能把原图传云——那会泄露隐私。所以这是「云替代不了」的。
 //   · 离线 / 低延迟：图就在手机上，端侧直接读，不依赖网络往返、不耗流量传大图。
-//   · 仅在【② 结构化】这一步，把端侧读出并【正则脱敏】后的纯文本，按需交给端侧文本模型或云 Qwen 整理成 JSON
-//     （原图永不参与第②步）。这就是比赛要的「核心交互逻辑本地运行 + 云端协同」的标准形态。
 //
-// 泛化（解决「电影 schema≠书 schema」）：schema 不是写死的，而是【调用方传入的参数】（fields）。
-//   电影传 {片名,导演,主演,年份}、书传 {书名,作者,译者}、自建 agent 直接传 manifest.tagFields。
-//   同一个 skill、不同 schema → 自然适配任意领域。新增 agent 白得「拍图入库」能力、零改本 skill。
-//
-// 组合（书 §3.12：skill 可组合 skill，无层级）：本 skill = 底层原语 [visionRead]（① 端侧读图→脱敏文本）
-//   + [enrichEntity]（② 结构化）。调用方（各 curator 的 sense / 造物主引擎）复用本 skill。
+// 组合（书 §3.12：skill 可组合 skill，无层级）：本 skill = [visionRead]（① 图→脱敏文本，端侧）
+//   + [textExtract]（② 文字→字段，端侧优先/回退云）。两半截各自独立、对称：
+//     visionRead    : 图  → 文字
+//     textExtract   : 文字 → 字段
+//     visionExtract : 图  → 字段
 //   想要纯文本再自行做嵌套结构化的（如旅行的 segments/stays/spots）→ 直接用 [visionRead]，不必经本 skill。
+//   想直接把一段文本结构化（不经图）→ 直接用 [textExtract]。
 //
-// 解耦/可打包：核心（提示词构造 + 两段编排 + 按 schema 取字段）自包含；「原图只进端侧」的隐私边界
-//   收在 [visionRead] 一处；结构化对外只依赖 `enrichJSON`/端侧 `edgeSafe.chat`。
+// 泛化（解决「电影 schema≠书 schema」）：schema 是【调用方传入的参数】（fields），不写死。
+//   FieldSpec 的契约定义在 [textExtract]；这里再导出以兼容现有引用。
 // ════════════════════════════════════════════════════════════════════════════
-import { edgeSafe } from '../../../../frost-agent/edge/contract';
-import { enrichJSON, extractJSON } from './enrichEntity';
 import { visionRead } from './visionRead';
+import { textExtract, type FieldSpec } from './textExtract';
 
-/** 一个目标字段：key=JSON 键，label=给模型看的中文名，hint=可选补充说明。 */
-export interface FieldSpec { key: string; label: string; hint?: string }
+export type { FieldSpec };
 
 export interface VisionExtractInput {
   imageDataUrl: string;     // 原图（dataURL / objectURL）——只进端侧视觉，绝不出端
@@ -55,49 +51,19 @@ function visionPrompt(domain: string, fields: FieldSpec[]): string {
   ].join('\n');
 }
 
-// ② 结构化提示词：把端侧读出的（脱敏）文本整理成固定键的 JSON。
-function structurePrompt(domain: string, fields: FieldSpec[], raw: string): string {
-  return [
-    `下面是从一张「${domain}」图片里读出的文本。请整理成一个 JSON 对象，键固定用：${fields.map((f) => `"${f.key}"`).join('、')}。`,
-    `每个键对应的中文含义：${fields.map((f) => `${f.key}=${f.label}`).join('；')}。`,
-    `图上没有的字段给空字符串。只输出 JSON，不要解释、不要代码块。`,
-    `文本：\n${raw}`,
-  ].join('\n');
-}
-
 /**
- * 识图→结构化。原图只进端侧视觉（不出端）；脱敏文本再做结构化（端侧优先，回退云 Qwen）。
+ * 识图→结构化。原图只进端侧视觉 [visionRead]（不出端）；脱敏文本再交 [textExtract] 做结构化。
  * 端侧 VL 未就绪 → 诚实返回 visionVia:'none'（绝不把原图送云，宁可降级让用户手填）。
  */
 export async function visionExtract(input: VisionExtractInput): Promise<VisionExtractResult> {
   const none: VisionExtractResult = { fields: {}, raw: '', ok: false, visionVia: 'none', structuredVia: 'none', onDevice: false };
   if (!input.imageDataUrl || !input.fields.length) return none;
 
-  // ① 端侧视觉：复用底层原语 [visionRead]（原图只进端侧→脱敏，隐私收口）。读不出/未就绪 → none（不把原图送云）。
+  // ① 端侧视觉：[visionRead]（原图只进端侧→脱敏，隐私收口）。读不出/未就绪 → none（不把原图送云）。
   const raw = await visionRead(input.imageDataUrl, visionPrompt(input.domain, input.fields), { max: 1200, redact: input.redact });
   if (!raw) return none;
 
-  // ② 结构化：只把【脱敏文本】喂模型。端侧文本模型优先；不行再云 Qwen（原图全程不参与第②步）。
-  const sp = structurePrompt(input.domain, input.fields, raw);
-  let obj: Record<string, string> | null = null;
-  let structuredVia: 'edge' | 'cloud' | 'none' = 'none';
-  try {
-    if (await edgeSafe.available()) {
-      const t = await edgeSafe.chat(sp, { json: true });
-      obj = extractJSON<Record<string, string>>(t);
-      if (obj) structuredVia = 'edge';
-    }
-  } catch { /* 落到云 */ }
-  if (!obj) { obj = await enrichJSON<Record<string, string>>({ prompt: sp }); if (obj) structuredVia = 'cloud'; }
-
-  // 单字段兜底：结构化两头都没出、而 schema 只有一个字段时——端侧读出的（脱敏）文本本身就是答案，
-  // 取首行冒号后的值，避免「白读一次端侧却丢结果」（如电影/书认片）。全程没上云 → 仍算端侧完成。
-  if (!obj && input.fields.length === 1) {
-    const v = raw.split('\n')[0].replace(/^[^：:]*[：:]\s*/, '').trim();
-    if (v) { obj = { [input.fields[0].key]: v }; structuredVia = 'none'; }
-  }
-
-  const fields: Record<string, string> = {};
-  if (obj) for (const f of input.fields) { const v = obj[f.key]; if (typeof v === 'string' && v.trim()) fields[f.key] = v.trim(); }
-  return { fields, raw, ok: Object.keys(fields).length > 0, visionVia: 'edge', structuredVia, onDevice: structuredVia !== 'cloud' };
+  // ② 结构化：脱敏文本交 [textExtract]（端侧文本模型优先，回退云；原图全程不参与第②步）。
+  const r = await textExtract({ text: raw, domain: input.domain, fields: input.fields });
+  return { fields: r.fields, raw, ok: r.ok, visionVia: 'edge', structuredVia: r.via, onDevice: r.via !== 'cloud' };
 }

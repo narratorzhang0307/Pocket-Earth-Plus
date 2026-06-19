@@ -1,7 +1,8 @@
 // 记忆层：端侧持久化（原图/canvas/embedding 绝不入库，只存派生小结论）。
-// ① IndexedDB 照片索引：dHash 主键，增量幂等——重扫先查命中即复用、跳过 CLIP；写 userOverride。
-// ② localStorage 偏好：端侧个性化阈值 + 纠错统计（不进 frost-agent/harness/profile.ts，那只供云脑）。
+// ① IndexedDB 照片索引：dHash 主键，增量幂等——重扫先查命中即复用、跳过 CLIP；写 userOverride。IDB 收口到 [keyedStore]。
+// ② localStorage 偏好：端侧个性化阈值 + 纠错统计（photo 专属：overrides/lessons，非 placeFix/ratingFix，故不用 correctionsStore）。
 import type { PhotoType, Verdict } from './types';
+import { keyedStore } from '../skills/keyedStore';
 
 export interface StoredPhoto {
   id: string;                 // dHash
@@ -16,37 +17,11 @@ export interface StoredPhoto {
   ts: number;
 }
 
-const DB = 'pe-photos', STORE = 'index', VER = 1;
-let dbp: Promise<IDBDatabase | null> | null = null;
-function open(): Promise<IDBDatabase | null> {
-  if (dbp) return dbp;
-  dbp = new Promise((res) => {
-    try {
-      if (typeof indexedDB === 'undefined') return res(null);
-      const req = indexedDB.open(DB, VER);
-      req.onupgradeneeded = () => { const d = req.result; if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: 'id' }); };
-      req.onsuccess = () => res(req.result);
-      req.onerror = () => res(null);
-    } catch { res(null); }
-  });
-  return dbp;
-}
-function tx(mode: IDBTransactionMode): Promise<IDBObjectStore | null> {
-  return open().then((d) => { try { return d ? d.transaction(STORE, mode).objectStore(STORE) : null; } catch { return null; } });
-}
+const store = keyedStore<StoredPhoto>('pe-photos', 'id');
+export const getKnown = (id: string): Promise<StoredPhoto | null> => store.get(id);
+export const putPhoto = (p: StoredPhoto): Promise<void> => store.put(p);
+export const allPhotos = (): Promise<StoredPhoto[]> => store.all();
 
-export async function getKnown(id: string): Promise<StoredPhoto | null> {
-  const s = await tx('readonly'); if (!s) return null;
-  return new Promise((res) => { const r = s.get(id); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); });
-}
-export async function putPhoto(p: StoredPhoto): Promise<void> {
-  const s = await tx('readwrite'); if (!s) return;
-  try { s.put(p); } catch { /* 隐私模式忽略 */ }
-}
-export async function allPhotos(): Promise<StoredPhoto[]> {
-  const s = await tx('readonly'); if (!s) return [];
-  return new Promise((res) => { const r = s.getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => res([]); });
-}
 export async function recordPhotoOverride(id: string, override: StoredPhoto['userOverride']): Promise<void> {
   const cur = await getKnown(id);
   await putPhoto({
@@ -57,11 +32,9 @@ export async function recordPhotoOverride(id: string, override: StoredPhoto['use
   });
 }
 export async function clearGeo(): Promise<void> {
-  // 先读后写：事务在 await 期间会自动提交失活，故 allPhotos() 必须在开 readwrite 事务之前完成，
-  // 同一事务内不能夹 await（否则 put 抛 TransactionInactiveError 被吞，清不掉坐标，隐私功能形同虚设）。
+  // 逐条 put（每次独立事务）→ 天然避开"同一事务内夹 await 会失活"的坑（隐私功能：抹掉所有已存坐标）。
   const all = await allPhotos();
-  const s = await tx('readwrite'); if (!s) return;
-  all.forEach((p) => { if (p.hasGPS) { p.hasGPS = false; p.lat = undefined; p.lng = undefined; try { s.put(p); } catch { /* */ } } });
+  for (const p of all) if (p.hasGPS) { p.hasGPS = false; p.lat = undefined; p.lng = undefined; await putPhoto(p); }
 }
 
 // ── 端侧偏好/纠错（localStorage）——反思层写入、推理层读取，越用越准 ──
