@@ -67,7 +67,7 @@ async function handleFrostLlm(req, res) {
   const raw = await readBody(req)
   try {
     if (!LLM) return sendJSON(res, { text: '', error: 'no_key' })
-    const { prompt, system, json } = JSON.parse(raw || '{}')
+    const { prompt, system, json, search } = JSON.parse(raw || '{}')
     const messages = []
     if (system) messages.push({ role: 'system', content: system })
     messages.push({ role: 'user', content: prompt })
@@ -79,6 +79,8 @@ async function handleFrostLlm(req, res) {
         messages,
         temperature: json ? 0 : 0.7, // 结构化/路由类求确定性；对话类保留创造性
         ...(json ? { response_format: { type: 'json_object' } } : {}),
+        // 联网搜索：仅 Qwen(DashScope) 支持 enable_search，供「建图」研究流水线取真实数据。
+        ...(search && LLM.name === 'qwen' ? { enable_search: true } : {}),
       }),
     })
     const data = await r.json()
