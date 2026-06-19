@@ -36,10 +36,7 @@ const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
       { name: 'movies-curator', role: '把电影钉到取景地 / 故事地', status: '契约就位' },
       { name: 'photos-curator', role: '端侧整理相册，高价值照片钉地球', status: '契约就位' },
       { name: 'travel-curator', role: '按喜好端侧规划行程，完成即钉星球', status: '契约就位' },
-      { name: 'planet-builder', role: '说一个主题，抓 Unsplash 照片造一颗主题星球', status: '可运行' },
       { name: 'mood-curator', role: '记录全球赛博漫游的心情，钉到地图', status: '可运行' },
-      { name: 'podcast-curator', role: '城市播客：每座城一段深度文化叙事', status: '可运行' },
-      { name: 'skill-forge', role: '一句话描述 → 云脑拟稿 → 安全审查 → 装成快捷技能', status: '可运行' },
     ],
   },
   {
@@ -61,10 +58,10 @@ const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
 
 type Running = 'frost' | 'music' | 'podcast' | 'movies' | 'books' | 'photos' | 'travel' | 'planet' | 'council' | 'mood' | 'plaza' | 'forge' | 'agentforge' | null;
 const RUN_BY_NAME: Record<string, Running> = {
-  'music-curator': 'music', 'podcast-curator': 'podcast', 'movies-curator': 'movies',
+  'music-curator': 'music', 'movies-curator': 'movies',
   'books-curator': 'books', 'photos-curator': 'photos', 'travel-curator': 'travel',
-  'planet-builder': 'planet', 'council-room': 'council', 'mood-curator': 'mood',
-  'public-plaza': 'plaza', 'skill-forge': 'forge',
+  'council-room': 'council', 'mood-curator': 'mood',
+  'public-plaza': 'plaza',
 };
 
 export default function MusicAgentsTab() {
