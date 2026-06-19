@@ -31,11 +31,11 @@ function frostLlm(env: Record<string, string>): Plugin {
           }
           try {
             if (!KEY) return send({ text: '', error: 'no_key' })
-            const { prompt, system, json } = JSON.parse(body || '{}')
+            const { prompt, system, json, search } = JSON.parse(body || '{}')
             const messages: { role: string; content: string }[] = []
             if (system) messages.push({ role: 'system', content: system })
             messages.push({ role: 'user', content: prompt })
-            const pr = buildProviderRequest(provider, { messages, json, model: MODEL }, KEY)
+            const pr = buildProviderRequest(provider, { messages, json, model: MODEL, search: !!search }, KEY)
             const r = await fetch(pr.url, { method: 'POST', headers: pr.headers, body: JSON.stringify(pr.body) })
             const data = await r.json()
             send({ text: data?.choices?.[0]?.message?.content || '' })

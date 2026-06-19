@@ -21,6 +21,8 @@ export const dashscopeAdapter: ProviderAdapter = {
         messages: req.messages,
         temperature: req.temperature ?? (utility ? 0 : 0.7),
         ...(req.json ? { response_format: { type: 'json_object' } } : {}),
+        // 联网搜索：DashScope 扩展参数，让 Qwen 上网取真实数据（用于「建图」研究流水线）。
+        ...(req.search ? { enable_search: true } : {}),
       },
     };
   },

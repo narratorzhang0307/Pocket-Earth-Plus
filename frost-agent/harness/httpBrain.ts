@@ -3,12 +3,12 @@
 import { FrostBrain } from './types';
 
 export const httpBrain: FrostBrain = {
-  async complete(prompt: string, opts?: { json?: boolean }): Promise<string> {
+  async complete(prompt: string, opts?: { json?: boolean; search?: boolean }): Promise<string> {
     try {
       const r = await fetch('/api/frost-llm', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ prompt, json: !!opts?.json }),
+        body: JSON.stringify({ prompt, json: !!opts?.json, search: !!opts?.search }),
       });
       if (!r.ok) return '';
       const data = await r.json();

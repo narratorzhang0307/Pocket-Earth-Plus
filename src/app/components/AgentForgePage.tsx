@@ -3,11 +3,12 @@
 // 自建 agent 出现在下方、可运行 → 跑一条输入 → 出草稿 → 钉到地球（kind:'custom'）。
 // 全程不生成/执行代码、不碰内核。详见 src/app/lib/agent/。
 import { useState, useEffect } from 'react';
-import { ChevronLeft, Hammer, Check, X, Trash2, Play, Cpu, Cloud, MapPin, Archive } from 'lucide-react';
+import { ChevronLeft, Hammer, Check, X, Trash2, Play, Cpu, Cloud, MapPin, Archive, Map, Loader2 } from 'lucide-react';
 import {
   proposeManifest, reviewManifest, installAgent, getCustomAgents, subscribeCustomAgents, removeCustomAgent,
   runCustomAgent, confirmPin, GEO_LABEL,
-  type AgentManifest, type ManifestReview, type CustomDraft,
+  populateMap, confirmMapRecords,
+  type AgentManifest, type ManifestReview, type CustomDraft, type MapDraft, type MapRecord,
 } from '../lib/agent';
 
 const ACCENT = '#ff8a3d';
@@ -162,10 +163,19 @@ export default function AgentForgePage({ onBack }: { onBack: () => void }) {
 
 // —— 运行子视图：跑一个自建 agent，出草稿，钉地球 ——
 function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack: () => void; onEdge: boolean }) {
+  const [mode, setMode] = useState<'one' | 'map'>('one');
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<CustomDraft | null>(null);
   const [pinMsg, setPinMsg] = useState('');
+
+  // 建图挡：一句主题 → 多步自主流水线 → 草稿批 → 勾选钉地球
+  const [goal, setGoal] = useState('');
+  const [mapBusy, setMapBusy] = useState(false);
+  const [phase, setPhase] = useState('');
+  const [mapDraft, setMapDraft] = useState<MapDraft | null>(null);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [mapMsg, setMapMsg] = useState('');
 
   const go = async () => {
     const t = input.trim();
@@ -183,6 +193,23 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
     setPinMsg(r.pinned ? (r.reason === 'exists' ? '已经钉过了' : '已钉到地球「自建」层 ✓') : '还没定位到地点，无法钉');
   };
 
+  const buildMap = async () => {
+    const g = goal.trim();
+    if (!g || mapBusy) return;
+    setMapBusy(true); setMapDraft(null); setMapMsg(''); setPhase('启动…');
+    const d = await populateMap(manifest, g, setPhase);
+    setMapBusy(false); setMapDraft(d);
+    // 默认勾选所有「能落点」的
+    setPicked(new Set(d.records.map((r, i) => (r.geo ? i : -1)).filter((i) => i >= 0)));
+  };
+  const togglePick = (i: number) => setPicked((p) => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
+  const pinPicked = () => {
+    if (!mapDraft) return;
+    const recs = mapDraft.records.filter((_, i) => picked.has(i));
+    const n = confirmMapRecords(manifest, recs);
+    setMapMsg(`已钉 ${n} 个到地球「自建」层 ✓`);
+  };
+
   return (
     <div className="h-full flex flex-col bg-[#EAEAEA] font-sans overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2.5 border-b-2 border-black bg-white shrink-0">
@@ -197,6 +224,16 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+        {/* 模式切换：逐条整理 / 建图（多步自主流水线） */}
+        <div className="flex gap-1.5">
+          {([['one', '逐条整理'], ['map', '🗺 建图']] as const).map(([m, label]) => (
+            <button key={m} onClick={() => setMode(m)}
+              className={`flex-1 border-2 border-black py-1.5 font-pixel text-[9px] tracking-wider shadow-[1px_1px_0_#000] active:translate-y-px ${mode === m ? 'text-white' : 'bg-white text-black/60'}`}
+              style={mode === m ? { background: manifest.color } : undefined}>{label}</button>
+          ))}
+        </div>
+
+        {mode === 'one' && (<>
         <div className="border-2 border-black bg-white p-2.5 shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
           <textarea value={input} onChange={(e) => setInput(e.target.value)} rows={2}
             placeholder={`给「${manifest.name}」一条「${manifest.domain}」，例：蓝瓶咖啡 三里屯店`}
@@ -237,6 +274,54 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
           </div>
         )}
         {pinMsg && <div className="border-2 border-black bg-[#f6fff9] text-[12px] p-2.5 font-bold" style={{ color: '#0a8' }}>{pinMsg}</div>}
+        </>)}
+
+        {mode === 'map' && (<>
+        {/* 建图挡：一句主题 → 规划→联网搜索→反思 多步流水线 → 草稿批 → 勾选钉地球 */}
+        <div className="border-2 border-black bg-white p-2.5 shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
+          <textarea value={goal} onChange={(e) => setGoal(e.target.value)} rows={2}
+            placeholder={`说一个主题，自动建一张「${manifest.domain}」地图，例：杭州观鸟地图`}
+            className="w-full border-2 border-black px-2.5 py-2 text-[12px] bg-[#EAEAEA] focus:outline-none focus:bg-white resize-none" />
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-[8.5px] text-black/45 flex-1 leading-snug">云 Qwen 联网搜索：规划 → 搜真实条目 → 反思补全 → 摊草稿批，你勾选才钉（几十秒）</span>
+            <button onClick={buildMap} disabled={mapBusy || !goal.trim()}
+              className="flex items-center gap-1 border-2 border-black px-3 py-1.5 text-[11px] font-bold shadow-[1px_1px_0_#000] active:translate-y-px text-white disabled:opacity-40" style={{ background: manifest.color }}>
+              {mapBusy ? <><Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={3} />建图中…</> : <><Map className="w-3.5 h-3.5" strokeWidth={2.5} />开始建图</>}
+            </button>
+          </div>
+          {mapBusy && <div className="mt-2 text-[9.5px] text-black/55 leading-snug border-t-2 border-dashed border-black/15 pt-1.5">{phase}</div>}
+        </div>
+
+        {mapDraft && (
+          <div className="border-2 border-black bg-white p-3 shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
+            <div className="flex items-center justify-between mb-1">
+              <div className="font-pixel text-[8px] tracking-widest" style={{ color: manifest.color }}>◍ 草案批 · {mapDraft.records.length} 个</div>
+              <span className="text-[8.5px] text-black/45">{mapDraft.rounds} 轮 · {mapDraft.queriesRun.length} 次搜索 · 已选 {picked.size}</span>
+            </div>
+            <div className="text-[11px] text-black/60 mb-2">「{mapDraft.goal}」· 勾选要钉的（默认全选可落点项）</div>
+            <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+              {mapDraft.records.map((r: MapRecord, i: number) => (
+                <button key={i} onClick={() => r.geo && togglePick(i)} disabled={!r.geo}
+                  className={`w-full text-left flex items-start gap-2 border-2 border-black p-1.5 ${picked.has(i) ? 'bg-[#f6fff9]' : 'bg-white'} ${!r.geo ? 'opacity-45' : 'active:translate-y-px'}`}>
+                  <span className="shrink-0 w-4 h-4 border-2 border-black flex items-center justify-center mt-0.5" style={{ background: picked.has(i) ? manifest.color : '#fff' }}>
+                    {picked.has(i) && <Check className="w-3 h-3 text-white" strokeWidth={4} />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="text-[12px] font-bold">{r.label}</span>
+                    {r.note && <span className="block text-[10px] text-black/55 leading-tight">{r.note}</span>}
+                    <span className="block text-[9px] text-black/45 mt-0.5">{r.geo ? `📍 ${r.geo.place}` : '⚠ 未定位'}{r.source ? ` · 源:${r.source}` : ''}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+            <button onClick={pinPicked} disabled={picked.size === 0}
+              className="w-full mt-2.5 flex items-center justify-center gap-1 border-2 border-black py-1.5 font-pixel text-[9px] uppercase tracking-wider text-white shadow-[1px_1px_0_#000] active:translate-y-px disabled:opacity-30" style={{ background: manifest.color }}>
+              <MapPin className="w-3.5 h-3.5" strokeWidth={2.5} />钉选中的 {picked.size} 个到地球
+            </button>
+          </div>
+        )}
+        {mapMsg && <div className="border-2 border-black bg-[#f6fff9] text-[12px] p-2.5 font-bold" style={{ color: '#0a8' }}>{mapMsg}</div>}
+        </>)}
       </div>
     </div>
   );

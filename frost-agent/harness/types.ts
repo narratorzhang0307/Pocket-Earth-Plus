@@ -53,7 +53,8 @@ export interface AgentResult<T = unknown> {
   trace?: string[];       // Agent Trace（路由/思考步骤，UI 展示用）
 }
 
-/** 可插拔的 LLM「大脑」。需 LLM 的子 agent 通过它调用，前端不直接持密钥。 */
+/** 可插拔的 LLM「大脑」。需 LLM 的子 agent 通过它调用，前端不直接持密钥。
+ *  search:true → 让云脑（Qwen·DashScope）开联网搜索（enable_search），取真实数据；服务端不支持时退化为模型知识。 */
 export interface FrostBrain {
-  complete(prompt: string, opts?: { json?: boolean }): Promise<string>;
+  complete(prompt: string, opts?: { json?: boolean; search?: boolean }): Promise<string>;
 }

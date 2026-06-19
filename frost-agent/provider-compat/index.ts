@@ -10,6 +10,7 @@ export interface NormalizedRequest {
   json?: boolean;
   temperature?: number;
   model?: string;   // 可选：覆盖 adapter 默认模型（中间件读 env 传入，如 QWEN_MODEL）
+  search?: boolean; // 可选：开联网搜索（仅 dashscope/Qwen 支持 → enable_search）
 }
 
 /** 某 provider 的具体 HTTP 请求（中间件据此 fetch）。 */
