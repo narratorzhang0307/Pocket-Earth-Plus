@@ -1,6 +1,6 @@
 import { useReducer, useState, useEffect } from 'react';
 import { ChevronLeft, MapPin, X } from 'lucide-react';
-import { getMoodStickers, addMoodSticker, removeMoodSticker, subscribeMood, resolveMoodPlace, randomPlace, pickStickerColor, pickRot } from '../data/geoStickers';
+import { getMoodStickers, addMoodSticker, removeMoodSticker, subscribeMood, analyzeMood, randomPlace, detectToneLocal, MOOD_TONES, type MoodTone, pickRot } from '../data/geoStickers';
 
 // mood-curator 运行页 —— 心绪 · 漫游。
 // 记录你在全世界各地「赛博浏览」时的心情：写一句 → 端侧判地名 → 钉到地图对应经纬度（与地球同一份 store）。
@@ -17,25 +17,32 @@ export default function MoodRunPage({ onBack }: Props) {
 
   const stickers = getMoodStickers();
   const cities = new Set(stickers.map((s) => s.place)).size;
+  // 心情底色：当前最常出现的情绪基调（给 stat strip 一句「回望」）
+  const domTone = (() => {
+    const c: Record<string, number> = {};
+    for (const s of stickers) if (s.tone) c[s.tone] = (c[s.tone] || 0) + 1;
+    return (Object.entries(c).sort((a, b) => b[1] - a[1])[0]?.[0]) as MoodTone | undefined;
+  })();
 
-  // 钉下：端侧判地名 → 落那里；判不出就落「此处」(当前中心)，不再静默瞬移到随机城市
+  // 钉下：云脑一次判「地点 + 情绪」→ 情绪决定颜色、地名决定落点；判不出地名落「此处」(当前中心)
   const submit = async () => {
     const t = text.trim();
     if (!t || busy) return;
     setBusy(true);
-    const r = await resolveMoodPlace(t, [120.14, 30.24]);
+    const r = await analyzeMood(t, [120.14, 30.24]);
     const id = 'mood-' + Date.now();
-    addMoodSticker({ id, lat: r.lat, lng: r.lng, text: t, place: r.place, color: pickStickerColor(t), rot: pickRot(id) });
+    addMoodSticker({ id, lat: r.lat, lng: r.lng, text: t, place: r.place, color: MOOD_TONES[r.tone].color, rot: pickRot(id), tone: r.tone });
     setText(''); setBusy(false);
   };
 
-  // 随机漫游：用户主动选择把心情甩到地球某处，且贴纸标注「随机落点」非你所指
+  // 随机漫游：用户主动把心情甩到地球某处（情绪仍由本地词典即时判，给颜色）
   const submitRandom = () => {
     const t = text.trim();
     if (!t || busy) return;
     const rp = randomPlace();
+    const tone = detectToneLocal(t);
     const id = 'mood-' + Date.now();
-    addMoodSticker({ id, lat: rp.lat, lng: rp.lng, text: t, place: `${rp.place} · 随机落点`, color: pickStickerColor(t), rot: pickRot(id) });
+    addMoodSticker({ id, lat: rp.lat, lng: rp.lng, text: t, place: `${rp.place} · 随机落点`, color: MOOD_TONES[tone].color, rot: pickRot(id), tone });
     setText('');
   };
 
@@ -57,7 +64,7 @@ export default function MoodRunPage({ onBack }: Props) {
         <div className="font-pixel text-[8px] flex justify-between items-center tracking-wider">
           <span>心情 {stickers.length}</span><span className="opacity-40">|</span>
           <span>落点 {cities} 处</span><span className="opacity-40">|</span>
-          <span>端侧判地名 · 钉地图</span>
+          <span>{domTone ? `底色 · ${MOOD_TONES[domTone].label}` : '判情绪 · 判地名'}</span>
         </div>
       </div>
 
@@ -69,7 +76,7 @@ export default function MoodRunPage({ onBack }: Props) {
           className="w-full border-2 border-black px-2.5 py-2 text-[12px] bg-[#EAEAEA] focus:outline-none focus:bg-white resize-none"
         />
         <div className="flex items-center gap-2">
-          <span className="text-[9px] text-black/45 leading-snug flex-1">端侧判出地名就钉那里；判不出落「此处」，或点骰子随机漫游一处</span>
+          <span className="text-[9px] text-black/45 leading-snug flex-1">判出情绪给颜色、判出地名就钉那里；判不出落「此处」，或🎲随机漫游</span>
           <button onClick={submitRandom} disabled={busy || !text.trim()} title="随机漫游到一处"
             className="border-2 border-black px-2 py-1.5 text-[12px] bg-white shadow-[1px_1px_0_#000] active:translate-y-px disabled:opacity-40">🎲</button>
           <button onClick={submit} disabled={busy || !text.trim()}
@@ -92,7 +99,10 @@ export default function MoodRunPage({ onBack }: Props) {
           <div key={s.id} className="relative border-2 border-black shadow-[2px_3px_0_rgba(0,0,0,0.55)] px-3 py-2.5" style={{ background: s.color, transform: `rotate(${s.rot * 0.4}deg)` }}>
             <span className="absolute -top-2 left-4 w-3 h-3 rounded-full bg-[#ff00ff] border-2 border-black" />
             <div className="text-[12px] leading-snug text-black font-medium break-words pr-5">{s.text}</div>
-            <div className="font-pixel text-[7px] text-black/55 tracking-wider mt-1.5">◍ {s.place} · {s.createdAt.slice(0, 10)}</div>
+            <div className="font-pixel text-[7px] text-black/55 tracking-wider mt-1.5 flex items-center gap-1">
+              {s.tone && <span className="border border-black/40 px-1 py-0.5 text-black/70">{MOOD_TONES[s.tone].label}</span>}
+              <span>◍ {s.place} · {s.createdAt.slice(0, 10)}</span>
+            </div>
             <button onClick={() => removeMoodSticker(s.id)} className="absolute top-1.5 right-1.5 w-5 h-5 flex items-center justify-center text-black/40 hover:text-[#d23b3b] active:translate-y-px">
               <X className="w-3.5 h-3.5" strokeWidth={3} />
             </button>

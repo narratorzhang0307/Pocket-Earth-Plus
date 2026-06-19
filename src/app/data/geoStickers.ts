@@ -11,9 +11,10 @@ export interface MoodSticker {
   lng: number;
   text: string;       // 心情文字
   place: string;      // 识别出的地名（或「此处」）
-  color: string;      // 贴纸色
+  color: string;      // 贴纸色（现由情绪基调决定，见 MOOD_TONES）
   rot: number;        // 轻微旋转
   createdAt: string;
+  tone?: MoodTone;    // 情绪基调（暖/燃/静/念/郁/淡）——颜色与标签都由它来
   variant?: 'color' | 'card'; // color=彩色心情贴（默认）；card=白色 LOC_SYNC 卡片
   date?: string;      // card 变体头部日期（如 03.22）
 }
@@ -65,11 +66,38 @@ export function seedStickers(seeds: Array<Omit<MoodSticker, 'createdAt'>>) {
 }
 export function subscribeMood(fn: () => void): () => void { subs.add(fn); return () => { subs.delete(fn); }; }
 
-// 贴纸暖色调色板（按文字 hash 选，稳定）
-const STICKER_COLORS = ['#ffe08a', '#ffc4d6', '#c4e7ff', '#c9f0c4', '#e4d2ff', '#ffd2b0'];
 function hash(s: string): number { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
-export function pickStickerColor(text: string): string { return STICKER_COLORS[hash(text) % STICKER_COLORS.length]; }
 export function pickRot(seed: string): number { return ((hash(seed) % 9) - 4); }
+
+// —— 情绪基调：让心情贴的颜色「有含义」（不再按 hash 随机），地球一眼读得出情绪分布 ——
+export type MoodTone = 'warm' | 'fired' | 'calm' | 'nostalgia' | 'blue' | 'flat';
+export interface ToneSpec { label: string; color: string }
+// 六种基调 → 单字标签 + 贴纸色（暖喜/兴奋燃/平静/怀念/低落郁/平淡）
+export const MOOD_TONES: Record<MoodTone, ToneSpec> = {
+  warm:      { label: '暖', color: '#ffd23b' },
+  fired:     { label: '燃', color: '#ff8c5a' },
+  calm:      { label: '静', color: '#8fe0bf' },
+  nostalgia: { label: '念', color: '#d8c4ff' },
+  blue:      { label: '郁', color: '#a3c4ec' },
+  flat:      { label: '淡', color: '#e6ded0' },
+};
+export function isMoodTone(x: string): x is MoodTone { return Object.prototype.hasOwnProperty.call(MOOD_TONES, x); }
+export function toneColor(tone?: MoodTone): string { return tone && isMoodTone(tone) ? MOOD_TONES[tone].color : MOOD_TONES.flat.color; }
+
+// 本地情绪词典（即时、离线、确定性）：云脑不可用时的兜底。强情绪(燃/郁)排前面，先于暖/静命中。
+const TONE_LEX: [RegExp, MoodTone][] = [
+  [/兴奋|激动|期待|热血|燃|冲鸭|冲呀|嗨|心动|爽|带劲|振奋|上头/, 'fired'],
+  [/难过|伤心|失落|孤独|低落|郁闷|疲惫|好累|emo|想哭|空落|无力|焦虑|心烦|丧|压抑|崩溃|烦躁/, 'blue'],
+  [/想念|怀念|想起|回忆|思念|惦记|曾经|那年|故人|乡愁|从前|多年前|旧时|当年/, 'nostalgia'],
+  [/开心|快乐|高兴|喜欢|幸福|满足|治愈|美好|温暖|阳光|甜|好笑|惊喜|舒心/, 'warm'],
+  [/平静|安静|放松|松弛|宁静|安心|从容|淡然|发呆|惬意|静静|舒服|慢下来|平和/, 'calm'],
+];
+export function detectToneLocal(text: string): MoodTone {
+  for (const [re, t] of TONE_LEX) if (re.test(text)) return t;
+  return 'flat';
+}
+// 贴纸色：现按情绪基调选（不再 hash 随机）。同步、即时——地图「+」快速记一笔也复用它，零改动即得情绪色。
+export function pickStickerColor(text: string): string { return MOOD_TONES[detectToneLocal(text)].color; }
 
 // 地名 → 经纬度 [lng, lat]（城市级，中英文别名）。端侧/字典共用。
 const PLACE_COORDS: Record<string, [number, number]> = {
@@ -140,6 +168,51 @@ export async function resolveMoodPlace(text: string, fallback: [number, number])
     if (m) return m;
   } catch { /* 端侧不可用 → 兜底 */ }
   return { place: '此处', lng: fallback[0], lat: fallback[1] };
+}
+
+// 云脑一次判「地名 + 情绪基调」（结构化走云脑，端侧 json 不稳）。失败返回 null。
+async function cloudMood(text: string): Promise<{ place?: string; tone?: string } | null> {
+  try {
+    const r = await fetch('/api/frost-llm', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        system: '你从一句心情记录里判断两件事：①place=其中明确提到的城市或国家地名（没有就空字符串，别脑补）；'
+          + '②tone=情绪基调，只能取 warm/fired/calm/nostalgia/blue/flat 之一（暖喜/兴奋燃/平静/怀念/低落郁闷/平淡）。'
+          + '只输出 JSON：{"place":"...","tone":"..."}',
+        prompt: text, json: true,
+      }),
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const t = typeof d?.text === 'string' ? d.text : '';
+    const s = t.indexOf('{'), e = t.lastIndexOf('}');
+    if (s < 0 || e <= s) return null;
+    return JSON.parse(t.slice(s, e + 1));
+  } catch { return null; }
+}
+
+export interface MoodAnalysis { place: string; lng: number; lat: number; tone: MoodTone }
+// 「记一笔」做智能：一次性判出 地点 + 情绪。
+// 地点：本地字典 → 云脑兜底 → 端侧兜底 → 此处；情绪：本地词典即时打底 → 云脑覆盖（更准）。
+// 即使全程离线/无云，也能靠字典 + 词典给出合理结果（优雅降级）。
+export async function analyzeMood(text: string, fallback: [number, number]): Promise<MoodAnalysis> {
+  let loc = matchPlace(text);            // 字典直配（即时）
+  let tone: MoodTone = detectToneLocal(text); // 本地词典（即时打底）
+
+  const cloud = await cloudMood(text);   // 云脑判 地名 + 情绪
+  if (cloud) {
+    if (cloud.tone && isMoodTone(cloud.tone)) tone = cloud.tone;       // 云脑情绪更准 → 覆盖
+    if (!loc && cloud.place) { const m = matchPlace(cloud.place); if (m) loc = m; }
+  }
+  if (!loc) {                            // 云不可用且字典没配 → 端侧提地名
+    try {
+      const name = await edgeSafe.chat(text, { system: '从这句话里找出一个地名（城市或国家），只输出地名本身；没有就输出 NONE。' });
+      const m = matchPlace((name || '').trim());
+      if (m) loc = m;
+    } catch { /* 端侧不可用 */ }
+  }
+  if (!loc) loc = { place: '此处', lng: fallback[0], lat: fallback[1] };
+  return { ...loc, tone };
 }
 
 // 没判出地名时，随机落到一座城市（赛博漫游到随机一处）
