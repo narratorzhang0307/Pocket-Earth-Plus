@@ -8,7 +8,7 @@
  * 注意：清理缓存只删 `pocket-earth-*` 旧版本，绝不碰 WebLLM 端侧模型缓存（webllm/*，约 400MB）
  *       与 mapbox-tiles —— 否则每次部署都会清掉用户已下的 Qwen 端侧模型，逼其重下。
  */
-const VERSION = 'pe-v11';
+const VERSION = 'pe-v12';
 const CACHE = `pocket-earth-${VERSION}`;
 const SHELL = [
   '/',
