@@ -3,10 +3,10 @@
 // 自建 agent 出现在下方、可运行 → 跑一条输入 → 出草稿 → 钉到地球（kind:'custom'）。
 // 全程不生成/执行代码、不碰内核。详见 src/app/lib/agent/。
 import { useState, useEffect } from 'react';
-import { ChevronLeft, Hammer, Check, X, Trash2, Play, Cpu, Cloud, MapPin, Archive, Map, Loader2 } from 'lucide-react';
+import { ChevronLeft, Hammer, Check, X, Trash2, Play, Cpu, Cloud, MapPin, Archive, Map, Loader2, Camera } from 'lucide-react';
 import {
   proposeManifest, reviewManifest, installAgent, getCustomAgents, subscribeCustomAgents, removeCustomAgent,
-  runCustomAgent, confirmPin, GEO_LABEL,
+  runCustomAgent, runCustomAgentFromImage, confirmPin, GEO_LABEL,
   populateMap, confirmMapRecords,
   type AgentManifest, type ManifestReview, type CustomDraft, type MapDraft, type MapRecord,
 } from '../lib/agent';
@@ -187,6 +187,18 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
     setDraft(d);
   };
 
+  // 截图/拍照入库：原图只进端侧 VL（不出端），经 visionExtract skill 读成结构化草稿。
+  const onImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; e.target.value = '';
+    if (!f || busy) return;
+    setBusy(true); setDraft(null); setPinMsg('');
+    const url = await new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result || '')); r.onerror = () => res(''); r.readAsDataURL(f); });
+    const d = url ? await runCustomAgentFromImage(manifest, url) : null;
+    setBusy(false);
+    if (!d) { setPinMsg('端侧识图未就绪或没读出（原图不会上云）。可改用文字，或先在控制台启用端侧大脑。'); return; }
+    setDraft(d);
+  };
+
   const pin = () => {
     if (!draft) return;
     const r = confirmPin(manifest, draft);
@@ -239,7 +251,12 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
             placeholder={`给「${manifest.name}」一条「${manifest.domain}」，例：蓝瓶咖啡 三里屯店`}
             className="w-full border-2 border-black px-2.5 py-2 text-[12px] bg-[#EAEAEA] focus:outline-none focus:bg-white resize-none" />
           <div className="flex items-center gap-2 mt-2">
-            <span className="text-[8.5px] text-black/45 flex-1">{onEdge ? '端侧打标 + 定位' : '云脑打标 + 定位'} → 出草稿 → 你确认才钉</span>
+            <span className="text-[8.5px] text-black/45 flex-1">文字 或 截图/拍照（图只进端侧 VL · 不出端）→ 出草稿 → 你确认才钉</span>
+            {/* 截图/拍照入库：原图只进端侧视觉模型，绝不上云 */}
+            <label className={`flex items-center gap-1 border-2 border-black px-2.5 py-1.5 text-[10px] font-bold bg-white shadow-[1px_1px_0_#000] active:translate-y-px cursor-pointer ${busy ? 'opacity-40 pointer-events-none' : ''}`}>
+              <Camera className="w-3.5 h-3.5" strokeWidth={2.5} />图
+              <input type="file" accept="image/*" className="hidden" onChange={onImage} />
+            </label>
             <button onClick={go} disabled={busy || !input.trim()}
               className="border-2 border-black px-3 py-1.5 text-[11px] font-bold shadow-[1px_1px_0_#000] active:translate-y-px text-white disabled:opacity-40" style={{ background: manifest.color }}>
               {busy ? '整理中…' : '整理 ✦'}

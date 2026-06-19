@@ -4,6 +4,7 @@
 // 单级失败降级、不抛错（舱壁）。产出未钉，由 pin.ts 确认才落地。完全解耦：只依赖共享 geocodeCity + 模型。
 import { resolvePlace } from '../skills/resolvePlace';
 import { extractJSON } from '../skills/enrichEntity';
+import { visionExtract, type FieldSpec } from '../skills/visionExtract';
 import { getFrostBrain } from '../../../../frost-agent/harness/brain';
 import { edgeSafe } from '../../../../frost-agent/edge/contract';
 import { GEO_LABEL, type AgentManifest } from './manifest';
@@ -75,6 +76,39 @@ export async function runCustomAgent(manifest: AgentManifest, input: string, opt
     }
   } else {
     draft.reason += '；模型不可用→保留输入（可手动指定地点）';
+  }
+  draft.needPlace = !draft.geo;
+  return draft;
+}
+
+/**
+ * 从【一张图】跑自定义 agent：复用 visionExtract skill（原图只进端侧 VL、不出端）→ 按 manifest.tagFields
+ * 把图读成结构化草稿 → geocode → 草稿(suggest)。这让任意自建 agent 白得「拍图/截图入库」能力，零改本引擎。
+ */
+export async function runCustomAgentFromImage(manifest: AgentManifest, imageDataUrl: string): Promise<CustomDraft | null> {
+  if (!imageDataUrl) return null;
+  // schema = 标准的 名字 + 地点（用于落点）+ manifest 声明的各标签字段。
+  const fields: FieldSpec[] = [
+    { key: '_label', label: '名字/标题', hint: `这个${manifest.domain}叫什么` },
+    { key: '_place', label: '地点/城市', hint: '相关的城市或地点（用于钉地球）' },
+    ...manifest.tagFields.map((f) => ({ key: f, label: f })),
+  ];
+  const res = await visionExtract({ imageDataUrl, domain: manifest.domain, fields });
+  if (res.visionVia === 'none') return null;   // 端侧 VL 未就绪/没读出（原图不送云）→ 交回 UI 提示
+
+  const label = res.fields._label || '（未识别）';
+  const draft: CustomDraft = {
+    id: `${manifest.id}-img-${norm(label + (res.fields._place || ''))}`, agentId: manifest.id,
+    label, tags: {}, note: '',
+    geo: null, needPlace: true,
+    via: res.onDevice ? 'edge' : res.structuredVia === 'cloud' ? 'cloud' : 'rules',
+    confidence: res.ok ? 0.7 : 0.4,
+    reason: `截图识别（端侧 VL${res.onDevice ? '+端侧结构化' : res.structuredVia === 'cloud' ? '+云脑结构化' : ''}）`,
+  };
+  for (const f of manifest.tagFields) if (res.fields[f]) draft.tags[f] = res.fields[f];
+  if (manifest.tools.includes('geocode') && res.fields._place) {
+    const hit = await resolvePlace(res.fields._place);
+    if (hit) draft.geo = { place: hit.place, lat: hit.lat, lng: hit.lng, strategy: manifest.geoStrategy[0] || 'manual' };
   }
   draft.needPlace = !draft.geo;
   return draft;

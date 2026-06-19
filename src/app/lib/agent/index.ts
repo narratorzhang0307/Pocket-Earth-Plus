@@ -9,7 +9,7 @@ export { proposeManifest } from './forge';
 export {
   getCustomAgents, getCustomAgent, subscribeCustomAgents, installAgent, removeCustomAgent,
 } from './registry';
-export { runCustomAgent, type CustomDraft, type CustomGeo } from './engine';
+export { runCustomAgent, runCustomAgentFromImage, type CustomDraft, type CustomGeo } from './engine';
 export { confirmPin, alreadyPinned, unpin } from './pin';
 // 多步自主研究流水线（「建图」挡）：规划→搜索抽取→反思→批量落点草稿
 export {
