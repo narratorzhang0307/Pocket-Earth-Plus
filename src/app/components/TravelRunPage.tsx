@@ -59,11 +59,11 @@ export default function TravelRunPage({ onBack }: Props) {
   };
 
   // A 线手动钉一笔
-  const submitManual = () => {
-    const r = pinManualStop({ city: mCity, date: mDate, mode: mMode });
+  const submitManual = async () => {
+    const r = await pinManualStop({ city: mCity, date: mDate, mode: mMode });
     if (r.ok) { showToast(`已记下 · ${mCity.trim()} 钉到星球`); setMCity(''); setManualOpen(false); }
     else if (r.reason === 'needCity') showToast('先填一个城市名');
-    else showToast('这个城市名我还没收录，换个中/英文写法试试');
+    else showToast('这个城市名连 OSM 也查不到，换个中/英文写法试试');
   };
 
   // A 线截图提炼：原图只进端侧 vision、脱敏后才上云结构化
@@ -86,9 +86,9 @@ export default function TravelRunPage({ onBack }: Props) {
     } finally { setArchiveBusy(false); setArchivePhase(''); if (shotRef.current) shotRef.current.value = ''; }
   };
 
-  const confirmArchiveDraft = () => {
+  const confirmArchiveDraft = async () => {
     if (!archiveDraft) return;
-    const { added } = confirmArchive(archiveDraft);
+    const { added } = await confirmArchive(archiveDraft);
     showToast(added ? `已钉到星球 · ${archiveDraft.title} ${added} 个点` : '这些点都已在星球上');
     setArchiveDraft(null);
   };

@@ -234,6 +234,54 @@ async function handleUnsplash(req, res, url) {
   }
 }
 
+// ——————————————————— /api/travel-mcp（只读旅行数据：OSM 地理编码/POI + Open-Meteo 天气） ———————————————————
+// 红线：只挂【只读查询】工具（geocode / poi / weather），无 book/pay/任何下单端点。
+// 经本服务代理（守 OSM/Open-Meteo 使用政策的 User-Agent + 超时），前端绝不直连。任何失败让前端走本地兜底。
+const UA_TRAVEL = { 'User-Agent': 'PocketEarth/1.0 (personal travel curator)' }
+async function handleTravelMcp(req, res, url) {
+  const tool = url.searchParams.get('tool') || ''
+  try {
+    if (tool === 'geocode') {
+      const q = (url.searchParams.get('q') || '').trim()
+      if (!q) return sendJSON(res, { error: 'no_query' })
+      const api = new URL('https://nominatim.openstreetmap.org/search')
+      api.searchParams.set('q', q); api.searchParams.set('format', 'json'); api.searchParams.set('limit', '1'); api.searchParams.set('accept-language', 'zh')
+      const r = await fetch(api.toString(), { headers: UA_TRAVEL, signal: AbortSignal.timeout(6000) })
+      const d = await r.json()
+      const hit = Array.isArray(d) && d[0]
+      return sendJSON(res, hit ? { lng: Number(hit.lon), lat: Number(hit.lat), name: String(hit.display_name || q).split(',')[0] } : { error: 'not_found' })
+    }
+    if (tool === 'poi') {
+      const lat = Number(url.searchParams.get('lat')), lng = Number(url.searchParams.get('lng'))
+      const radius = Math.min(5000, Math.max(200, Number(url.searchParams.get('radius') || 1500)))
+      const kind = url.searchParams.get('kind') || 'tourism'
+      if (!isFinite(lat) || !isFinite(lng)) return sendJSON(res, { error: 'no_coord' })
+      const filter = kind === 'restaurant' ? 'node["amenity"="restaurant"]'
+        : kind === 'cafe' ? 'node["amenity"="cafe"]'
+        : 'node["tourism"~"attraction|museum|viewpoint|artwork|gallery"]'
+      const ql = `[out:json][timeout:8];(${filter}(around:${radius},${lat},${lng}););out body 20;`
+      const r = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', headers: { ...UA_TRAVEL, 'content-type': 'text/plain' }, body: ql, signal: AbortSignal.timeout(9000) })
+      const d = await r.json()
+      const pois = (d?.elements || []).filter((e) => e.tags && e.tags.name).slice(0, 12).map((e) => ({ name: e.tags.name, lat: e.lat, lng: e.lon, kind: e.tags.tourism || e.tags.amenity || '' }))
+      return sendJSON(res, { pois })
+    }
+    if (tool === 'weather') {
+      const lat = Number(url.searchParams.get('lat')), lng = Number(url.searchParams.get('lng'))
+      if (!isFinite(lat) || !isFinite(lng)) return sendJSON(res, { error: 'no_coord' })
+      const api = new URL('https://api.open-meteo.com/v1/forecast')
+      api.searchParams.set('latitude', String(lat)); api.searchParams.set('longitude', String(lng))
+      api.searchParams.set('current', 'temperature_2m,weather_code'); api.searchParams.set('timezone', 'auto')
+      const r = await fetch(api.toString(), { signal: AbortSignal.timeout(6000) })
+      const d = await r.json()
+      const c = d?.current || {}
+      return sendJSON(res, { temp: c.temperature_2m, code: c.weather_code })
+    }
+    return sendJSON(res, { error: 'unknown_tool' })
+  } catch (e) {
+    return sendJSON(res, { error: String(e) })
+  }
+}
+
 // ——————————————————— 静态托管（dist/ + SPA 回退） ———————————————————
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -298,7 +346,8 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/frost-llm') return await handleFrostLlm(req, res)
     if (p === '/api/edge') return await handleEdge(req, res)
     if (p === '/api/unsplash') return await handleUnsplash(req, res, url)
-    if (p === '/healthz') return sendJSON(res, { ok: true, edge: EDGE_WANT, llm: LLM ? LLM.name : 'off', model: LLM ? LLM.model : '' })
+    if (p === '/api/travel-mcp') return await handleTravelMcp(req, res, url)
+    if (p === '/healthz') return sendJSON(res, { ok: true, edge: EDGE_WANT, llm: LLM ? LLM.name : 'off', model: LLM ? LLM.model : '', travelMcp: 'osm+openmeteo' })
     return await serveStatic(req, res, p)
   } catch (e) {
     res.writeHead(500); res.end('server error')

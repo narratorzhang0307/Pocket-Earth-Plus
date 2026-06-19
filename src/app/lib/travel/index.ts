@@ -7,6 +7,9 @@ export { PREFERENCES, TRIP_MODES, slug, seasonOf } from './types';
 export { DESTINATIONS, destination } from './catalog';
 export { planTrip, rankPOIs, cloudRankPOIs } from './plan';
 export { runPlan, confirmTrip, pinManualStop, runArchive, confirmArchive } from './agent';
+export { buildTripLines, getTrip, removeTripMarks } from './trip';
+export type { TripView, TripStop } from './trip';
+export { geocodeViaOSM, poiViaOSM, weatherViaOSM } from './mcp';
 
 import type { PlanMode } from './types';
 // 给 UI：排序来源的中文说明 + 颜色（云脑=按你跨域口味挑、端侧=本地真后端挑、本地=偏好命中度兜底）

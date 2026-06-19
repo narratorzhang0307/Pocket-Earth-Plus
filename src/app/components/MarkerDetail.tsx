@@ -1,5 +1,7 @@
 import { X } from 'lucide-react';
 import { motion } from 'motion/react';
+import { removeTripMarks, type TripView } from '../lib/travel';
+import { removeUserMark } from '../data/userMarks';
 
 // 地球标记点击后的详情弹层：按类型渲染（照片灯箱 / 电影票根 / 藏书票 / 行程足迹 / 音乐城市）。
 // 详情数据由 MyMapTab 点击时从查找表(mapMarkers / userMarks)取出后传入。
@@ -17,7 +19,7 @@ export interface MarkerDetailData {
   // book
   author?: string; place?: string; note?: string; translator?: string;
   // travel
-  tag?: string;
+  tag?: string; tripId?: string; trip?: TripView;
   // council（议事裁决）
   verdict?: string; confidence?: number; ruleEstablished?: string;
   // custom（用户自建 agent 的落点 · 通用渲染）
@@ -133,8 +135,42 @@ export default function MarkerDetail({ data, onClose, onRemove }: { data: Marker
           </div>
         )}
 
-        {/* 行程足迹 */}
-        {data.kind === 'travel' && (
+        {/* 行程整程卡：同一趟旅程的多个停留点聚合（截图提炼 / 规划完成的整趟） */}
+        {data.kind === 'travel' && data.trip && (
+          <div>
+            <div className="px-2.5 py-1.5" style={{ background: '#ff3b6b' }}>
+              <span className="font-pixel text-[7px] tracking-widest text-black">JOURNEY · 整趟行程</span>
+            </div>
+            <div className="px-3 py-2.5">
+              <div className="text-[15px] font-bold leading-tight">{data.trip.title}</div>
+              <div className="text-[11px] text-black/55 mt-1">
+                {data.trip.dateStart ? `${data.trip.dateStart}${data.trip.dateEnd && data.trip.dateEnd !== data.trip.dateStart ? `~${data.trip.dateEnd}` : ''} · ` : ''}
+                途经 {data.trip.cities.join('、')}
+              </div>
+              <div className="mt-2 space-y-1 max-h-[180px] overflow-y-auto">
+                {data.trip.stops.map((s, i) => (
+                  <div key={s.id} className="flex items-center gap-1.5 text-[11px]">
+                    <span className="w-4 h-4 shrink-0 border border-black flex items-center justify-center font-pixel text-[7px]" style={{ background: '#ff3b6b' }}>{i + 1}</span>
+                    <span className="font-bold truncate">{s.label}</span>
+                    {s.city && s.city !== s.label && <span className="text-black/45 text-[10px] truncate">· {s.city}</span>}
+                    {s.date && <span className="text-black/35 text-[9px] ml-auto shrink-0">{s.date}</span>}
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between gap-1.5 mt-2.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2" style={{ background: '#ff3b6b' }} />
+                  <span className="font-pixel text-[7px] text-black/50 tracking-wider">{data.trip.stops.length} 个停留 · 已连成轨迹</span>
+                </div>
+                <button onClick={() => { removeTripMarks(data.trip!.tripId, removeUserMark); onClose(); }}
+                  className="font-pixel text-[7px] border border-black px-1.5 py-0.5 bg-white text-[#d23b3b] active:translate-y-px">移除整趟</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 行程足迹（单点：手动录入一笔 / 旧数据无 tripId） */}
+        {data.kind === 'travel' && !data.trip && (
           <div>
             <div className="px-2.5 py-1.5" style={{ background: '#ff3b6b' }}>
               <span className="font-pixel text-[7px] tracking-widest text-black">FOOTPRINT · 私人足迹</span>

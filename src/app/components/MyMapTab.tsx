@@ -4,6 +4,7 @@ import { ImageWithFallback } from './figma/ImageWithFallback';
 import EarthMap from './EarthMap';
 import { type MarkerKind, KIND_COLOR, toGeoJSON, MAP_MARKERS, photoById, movieById, bookById, ensureHeavyMarkers } from '../data/mapMarkers';
 import { getUserMarks, getUserMarksByKind, subscribeUserMarks, removeUserMark } from '../data/userMarks';
+import { buildTripLines, getTrip } from '../lib/travel';
 import { getPlanets, getVisiblePlanets, subscribePlanets, togglePlanet, removePlanet } from '../data/planets';
 import { trackDownload } from '../data/themePlanet';
 import { showcasePhotos } from '../data/photos';
@@ -65,7 +66,11 @@ function resolveDetail(id: string, kind: MarkerKind, label: string): MarkerDetai
     const meta = (um.meta || {}) as Record<string, unknown>;
     if (kind === 'movie') return { kind, title: um.label, original: String(meta.original || ''), director: String(meta.director || ''), country: String(meta.country || ''), year: meta.year as number, rating: meta.rating as number, date: String(meta.date || ''), synopsis: String(meta.synopsis || meta.plot || ''), genre: String(meta.genre || ''), movement: String(meta.movement || ''), cast: Array.isArray(meta.cast) ? (meta.cast as string[]) : [], place: String(meta.place || ''), geoKind: String(meta.geoKind || '') };
     if (kind === 'book') return { kind, title: um.label, author: String(meta.author || ''), place: String(meta.place || ''), year: meta.year as number, note: String(meta.note || ''), synopsis: String(meta.synopsis || meta.plot || ''), genre: String(meta.genre || ''), movement: String(meta.movement || ''), translator: String(meta.translator || ''), country: String(meta.country || ''), geoKind: String(meta.geoKind || '') };
-    if (kind === 'travel') return { kind, markId: um.id, title: um.label, city: String(meta.city || ''), tag: String(meta.tag || ''), note: String(meta.note || ''), date: String(meta.date || '') };
+    if (kind === 'travel') {
+      const tripId = String(meta.tripId || '');
+      const trip = tripId ? getTrip(tripId) : null;
+      return { kind, markId: um.id, title: um.label, city: String(meta.city || ''), tag: String(meta.tag || ''), note: String(meta.note || ''), date: String(meta.date || ''), tripId: tripId || undefined, trip: trip && trip.stops.length > 1 ? trip : undefined };
+    }
     if (kind === 'photo') return { kind, full: String(meta.full || ''), thumb: String(meta.thumb || ''), city: String(meta.city || um.label || '') };
     if (kind === 'council') return { kind, title: um.label, verdict: String(meta.verdict || ''), confidence: meta.confidence as number, ruleEstablished: String(meta.ruleEstablished || ''), place: String(meta.place || ''), date: String(meta.date || '') };
     // custom：用户自建 agent 的落点。通用渲染——meta 里带 agent 身份 + 标签，地球不认识具体哪个 agent。
@@ -160,6 +165,8 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
     if (ms) ms.setData(buildMarksData() as never);
     const ps = map.getSource('planets') as mapboxgl.GeoJSONSource | undefined;
     if (ps) ps.setData(planetsToGeoJSON() as never);
+    const ls = map.getSource('tripLines') as mapboxgl.GeoJSONSource | undefined;
+    if (ls) ls.setData(buildTripLines() as never);
   };
 
   // 通用 DOM 拖动：便贴与照片拍立得共用。记录被拖 id、「光标↔锚点」初始偏移、update/commit 回调。
@@ -259,6 +266,20 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
         ctx.fillStyle = color; ctx.fillRect(bw, bw, sw - bw * 2, sw - bw * 2);
         map.addImage(id, ctx.getImageData(0, 0, sw, sw), { pixelRatio: px });
       });
+      // 行程连线层（在标记层之下）：同 tripId 的落点按 seq 连成虚线轨迹
+      map.addSource('tripLines', { type: 'geojson', data: buildTripLines() as never });
+      map.addLayer({
+        id: 'trip-line-layer',
+        type: 'line',
+        source: 'tripLines',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#ff3b6b',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 2, 1, 8, 2.5, 13, 4],
+          'line-opacity': 0.7,
+          'line-dasharray': [2, 1.5],
+        },
+      } as never);
       map.addSource('marks', { type: 'geojson', data: buildMarksData() as never });
       map.addLayer({
         id: 'mark-layer',
@@ -315,6 +336,8 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
     const refresh = () => {
       const src = map.getSource('marks') as mapboxgl.GeoJSONSource | undefined;
       if (src) src.setData(buildMarksData() as never);
+      const ls = map.getSource('tripLines') as mapboxgl.GeoJSONSource | undefined;
+      if (ls) ls.setData(buildTripLines() as never);
     };
     return subscribeUserMarks(refresh);
   }, [map]);
