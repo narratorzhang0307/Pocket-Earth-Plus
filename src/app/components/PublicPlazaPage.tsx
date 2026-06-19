@@ -51,6 +51,17 @@ export default function PublicPlazaPage({ onBack }: Props) {
     return () => { alive = false; };
   }, []);
 
+  // 广场聚集场景的「轻浮动」关键帧（注一次）。用纯 CSS 而非 motion：FrostBuddy 内部 200ms tick
+  // 会频繁重渲染，把 motion 的入场 opacity 动画反复打断、停不到 1；CSS 动画不受 React 重渲染影响。
+  useEffect(() => {
+    const id = 'pe-plaza-bob-style';
+    if (document.getElementById(id)) return;
+    const el = document.createElement('style');
+    el.id = id;
+    el.textContent = '@keyframes pe-plaza-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}';
+    document.head.appendChild(el);
+  }, []);
+
   // 用本机画像的 top 标签现场生成「广场上遇见的相似的人」——共同点是真的来自你的口味
   const { neighbors, myTags } = useMemo(() => {
     const p = getProfile();
@@ -191,8 +202,29 @@ export default function PublicPlazaPage({ onBack }: Props) {
           </div>
         )}
 
-        {phase === 'day' && neighbors.map((n, i) => (
-          <motion.div key={n.tag} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+        {phase === 'day' && (<>
+          {/* 广场聚集场景：在场的 FROST 们错落聚着、轻轻浮动；点某只 → 滚到下方 ta 的卡 */}
+          {neighbors.length > 0 && (
+            <div className="border-2 border-black bg-white shadow-[2px_2px_0_rgba(0,0,0,0.85)] p-2 pb-2.5">
+              <div className="font-pixel text-[7px] tracking-widest text-black/40 mb-1 px-0.5">广场 · 此刻 {neighbors.length} 人在场</div>
+              <div className="flex flex-wrap items-end justify-center gap-x-1 gap-y-1.5 pt-0.5">
+                {neighbors.map((n, i) => (
+                  <button key={`scene-${n.tag}`}
+                    onClick={() => { const el = document.getElementById(`plaza-card-${i}`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
+                    className="flex flex-col items-center active:opacity-60" style={{ width: 56 }}>
+                    {/* 纯 CSS 轻浮动（错峰），不受 FrostBuddy tick 重渲染影响 */}
+                    <div className="overflow-hidden flex items-center justify-center"
+                      style={{ width: 50, height: 42, animation: `pe-plaza-bob ${(2.4 + (i % 4) * 0.45).toFixed(2)}s ease-in-out ${(i * 0.25).toFixed(2)}s infinite` }}>
+                      <FrostBuddy state="idle" theme={n.theme} color={n.color} glow={false} size={6} />
+                    </div>
+                    <span className="text-[8px] truncate w-full text-center leading-tight" style={{ color: n.color }}>{n.alias}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {neighbors.map((n, i) => (
+          <motion.div key={n.tag} id={`plaza-card-${i}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
             className="border-2 border-black bg-white p-3 shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
             <div className="flex items-center gap-2.5">
               {/* 别人的 FROST 特使：穿着你俩共同兴趣的装、各自配色 */}
@@ -211,7 +243,8 @@ export default function PublicPlazaPage({ onBack }: Props) {
               共同点 · {FIELD_LABEL[n.field] || n.field} {n.tag}
             </div>
           </motion.div>
-        ))}
+          ))}
+        </>)}
 
         {phase === 'night' && (
           <>
