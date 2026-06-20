@@ -9,6 +9,7 @@
 import { getProfileSummary, getCachedTasteLine, summarizeTaste } from '../../../frost-agent/harness/profile';
 import { getFrostBrain } from '../../../frost-agent/harness/brain';
 import { getTasteSummary } from './taste';
+import { getMoodTrace } from './mood/retrospect';
 
 // 「记忆即空气」注入规则（抄 OpenHanako）：用记忆但不出戏、不谄媚、冲突以当前对话为准。
 export const MEMORY_AIR_RULES =
@@ -39,10 +40,12 @@ export function assembleMemory(_opts?: { domain?: string }): string {
   ensureNarrative();                    // 后台保鲜叙事层（不阻塞，本次用已缓存的）
   const parts: string[] = [];
   const line = getCachedTasteLine();    // L1 叙事：一句话口味气质（已缓存，不触发云脑）
-  const loved = getTasteSummary();      // 按评分的偏爱口味视图（taste.ts）
-  const profile = getProfileSummary();  // L1 标签画像
+  const loved = getTasteSummary();      // L2 按评分的偏爱口味视图（taste.ts）
+  const moodTrace = getMoodTrace();     // L3 情绪足迹（独立 mood 通道，读 geoStickers，不走 ProfileDomain）
+  const profile = getProfileSummary();  // L4 标签画像
   if (line) parts.push(`# 你的口味气质（一句话）\n${line}`);
   if (loved) parts.push(loved);
+  if (moodTrace) parts.push(moodTrace);
   if (profile) parts.push(profile);
   if (!parts.length) return '';
   return `${MEMORY_AIR_RULES}\n\n${parts.join('\n\n')}`;
