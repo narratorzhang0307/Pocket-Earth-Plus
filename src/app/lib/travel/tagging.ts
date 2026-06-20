@@ -1,18 +1,7 @@
 // 协作层（A 线）：脱敏文本（多张截图）→ 云脑 DeepSeek json → TripArchive 草稿。
 // 强约束 JSON +「绝不编造」+ 忽略 *** 脱敏占位。结构在代码层组装（白名单字段），不靠 prompt 当保证。
 import { slug, type RawShot, type TripArchive, type Segment, type Stay, type Spot, type TripMode } from './types';
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('timeout')), ms); p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); }); });
-}
-function extractJSON(text: string): unknown | null {
-  if (!text) return null;
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const body = fence ? fence[1] : text;
-  const s = body.indexOf('{'); const e = body.lastIndexOf('}');
-  if (s < 0 || e <= s) return null;
-  try { return JSON.parse(body.slice(s, e + 1)); } catch { return null; }
-}
+import { enrichJSON } from '../skills/enrichEntity';
 
 const str = (x: unknown) => (typeof x === 'string' ? x.trim() : '');
 const pick = (x: unknown, k: string): unknown => (x && typeof x === 'object' ? (x as Record<string, unknown>)[k] : undefined);
@@ -31,12 +20,8 @@ export async function structureTrip(shots: RawShot[]): Promise<TripArchive | nul
     + '城市一律用中文。日期统一 YYYY-MM-DD。读不出的字段省略或留空，绝不编造车次/酒店/景点/城市。文本里的 *** 是已脱敏的隐私信息，忽略、不要试图还原。';
   const prompt = `${corpus}\n\n请输出这次旅程的 TripArchive JSON。`;
   try {
-    const r = await withTimeout(fetch('/api/frost-llm', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, system, json: true }),
-    }), 25000);
-    const data = await r.json();
-    const o = extractJSON(String(data?.text || ''));
+    // 云脑要结构化 JSON 走 enrichEntity skill（超时 + withRetry 瞬时退避重试 + 稳健解析）；嵌套结构按白名单在下面组装。
+    const o = await enrichJSON<Record<string, unknown>>({ prompt, system });
     if (!o) return null;
 
     const segments: Segment[] = arr(pick(o, 'segments')).map((x) => ({

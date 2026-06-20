@@ -2,6 +2,8 @@
 // ②地理子 agent（故事地→作者地→国家，逐级 geocode，经 resolvePlace：本地表→Mapbox 全球）。镜像 lib/movie/tagging.ts。
 import { resolvePlace } from '../skills/resolvePlace';
 import { bookCountry } from '../../data/books';
+import { enrichJSON } from '../skills/enrichEntity';
+import { formatInstructions, type Shape } from '../skills/structured';
 import type { GeoTarget } from './types';
 
 export interface EnrichRaw {
@@ -17,45 +19,39 @@ export interface EnrichRaw {
 }
 const EMPTY: EnrichRaw = { author: '', translator: '', genre: '', movement: '', plot: '', country: '', year: null, storyPlace: '', authorPlace: '' };
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('timeout')), ms); p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); }); });
-}
-function extractJSON(text: string): unknown | null {
-  if (!text) return null;
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const body = fence ? fence[1] : text;
-  const s = body.indexOf('{'); const e = body.lastIndexOf('}');
-  if (s < 0 || e <= s) return null;
-  try { return JSON.parse(body.slice(s, e + 1)); } catch { return null; }
-}
+// 补全字段 schema（单一事实源）：formatInstructions 据此生成提示词字段清单（与 lib/movie/tagging 同款）。
+const ENRICH_SHAPE: Shape = {
+  author: { type: 'string', desc: '作者' },
+  translator: { type: 'string', desc: '译者，无或原文写作就留空' },
+  genre: { type: 'string', desc: '类型，如 小说/非虚构/诗歌/历史/科幻，单个' },
+  movement: { type: 'string', desc: '流派或文学运动，如 魔幻现实主义/意识流/垮掉的一代，没有就留空' },
+  plot: { type: 'string', desc: '一句话主题或剧情，不超过 40 字' },
+  country: { type: 'string', desc: '作者国籍，中文' },
+  year: { type: 'number', desc: '成书年份，数字或留空' },
+  storyPlace: { type: 'string', desc: '故事主要发生城市，中文，不确定就留空' },
+  authorPlace: { type: 'string', desc: '作者出身或写作城市，中文，不确定就留空' },
+};
+
 const str = (x: unknown) => (typeof x === 'string' ? x.trim() : '');
 
+// 补全子 agent：调云脑要结构化 JSON 走 enrichEntity skill（共享 plumbing：超时 + withRetry 瞬时退避重试 + 稳健解析）。
+// 失败 → 返回 EMPTY（舱壁：单级失败不抛错，交回 resolve 走下一级兜底）。字段映射是图书领域专属，留在此。
 export async function enrichTags(title: string, hint?: { author?: string; country?: string; year?: number | null }): Promise<{ raw: EnrichRaw; ok: boolean }> {
-  const system = '你是图书馆资料员。根据书名给出结构化标签，只输出一个 JSON 对象，不要任何解释或代码块标记。'
-    + '字段：author(作者,字符串)、translator(译者,字符串,无或原文写作就空)、genre(类型,如 小说/非虚构/诗歌/历史/科幻，单个)、'
-    + 'movement(流派或文学运动,如 魔幻现实主义/意识流/垮掉的一代，没有就空字符串)、plot(一句话主题或剧情,不超过40字)、'
-    + 'country(作者国籍,中文)、year(成书年份,数字或null)、'
-    + 'storyPlace(故事主要发生城市,中文,不确定就空字符串)、authorPlace(作者出身或写作城市,中文,不确定就空字符串)。'
-    + '重要：不确定的字段一律留空字符串或 null，绝对不要编造。';
+  // 字段清单由 schema 经 formatInstructions 确定性派生（借鉴 langchain output-parsers，免手写两遍）；领域戒律另附。
+  const system = '你是图书馆资料员。根据书名给出结构化标签。' + formatInstructions(ENRICH_SHAPE)
+    + ' 重要：不确定的字段一律留空字符串或 null，绝对不要编造作者或地点。';
   const hintStr = hint ? `已知线索（可纠正/补充）：作者=${hint.author || '?'}，国籍=${hint.country || '?'}，年份=${hint.year || '?'}。` : '';
   const prompt = `书名：《${title}》。${hintStr}请输出 JSON。`;
-  try {
-    const r = await withTimeout(fetch('/api/frost-llm', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, system, json: true }),
-    }), 20000);
-    const data = await r.json();
-    const obj = extractJSON(String(data?.text || '')) as Record<string, unknown> | null;
-    if (!obj) return { raw: EMPTY, ok: false };
-    const yearN = typeof obj.year === 'number' ? obj.year : (typeof obj.year === 'string' && /^\d{4}$/.test(obj.year) ? +obj.year : null);
-    return {
-      raw: {
-        author: str(obj.author), translator: str(obj.translator), genre: str(obj.genre), movement: str(obj.movement),
-        plot: str(obj.plot).slice(0, 60), country: str(obj.country), year: yearN,
-        storyPlace: str(obj.storyPlace), authorPlace: str(obj.authorPlace),
-      }, ok: true,
-    };
-  } catch { return { raw: EMPTY, ok: false }; }
+  const obj = await enrichJSON<Record<string, unknown>>({ prompt, system });
+  if (!obj) return { raw: EMPTY, ok: false };
+  const yearN = typeof obj.year === 'number' ? obj.year : (typeof obj.year === 'string' && /^\d{4}$/.test(obj.year) ? +obj.year : null);
+  return {
+    raw: {
+      author: str(obj.author), translator: str(obj.translator), genre: str(obj.genre), movement: str(obj.movement),
+      plot: str(obj.plot).slice(0, 60), country: str(obj.country), year: yearN,
+      storyPlace: str(obj.storyPlace), authorPlace: str(obj.authorPlace),
+    }, ok: true,
+  };
 }
 
 // 地理子 agent：故事地 > 作者地 > 国家（经 [resolvePlace]：本地表命中即返回、未命中走 Mapbox 拿全球）

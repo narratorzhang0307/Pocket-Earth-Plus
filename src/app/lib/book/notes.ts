@@ -2,6 +2,7 @@
 // 都整理成结构化读书笔记（主题 / 金句摘抄 / 感想 / 人物 / 关联 / 小结）。
 // 云脑 JSON 为主，舱壁兜底：云脑不可用也至少把原文留住、按行粗分。端侧持久化（localStorage 发布订阅）。
 import { edgeSafe } from '../../../../frost-agent/edge/contract';
+import { enrichJSON } from '../skills/enrichEntity';
 
 export interface StructuredNote {
   id: string;
@@ -21,17 +22,6 @@ export interface StructuredNote {
 export type NotePhase = '读取输入' | '笔记认字' | '结构化整理' | '完成';
 export type OnNotePhase = (p: NotePhase) => void;
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('timeout')), ms); p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); }); });
-}
-function extractJSON(text: string): Record<string, unknown> | null {
-  if (!text) return null;
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const body = fence ? fence[1] : text;
-  const s = body.indexOf('{'); const e = body.lastIndexOf('}');
-  if (s < 0 || e <= s) return null;
-  try { return JSON.parse(body.slice(s, e + 1)) as Record<string, unknown>; } catch { return null; }
-}
 const str = (x: unknown) => (typeof x === 'string' ? x.trim() : '');
 const arr = (x: unknown) => Array.isArray(x) ? x.map(str).filter(Boolean).slice(0, 12) : (typeof x === 'string' && x ? x.split(/[\n;；]/).map((s) => s.trim()).filter(Boolean).slice(0, 12) : []);
 
@@ -75,11 +65,8 @@ export async function structureNotes(input: NoteInput, onPhase?: OnNotePhase): P
     + 'insights(读者自己的感想/评论,字符串数组)、characters(出现的人物,字符串数组)、links(关联的其他书/概念/作者,字符串数组)、'
     + 'summary(一段小结,不超过60字)。要求：忠实原文、不要编造原文没有的内容；区分「摘抄」(原文)与「感想」(读者观点)。';
   const prompt = (input.bookTitle ? `这是关于《${input.bookTitle}》的笔记。\n` : '') + '原始笔记：\n' + raw.slice(0, 4000) + '\n请输出 JSON。';
-  try {
-    const r = await withTimeout(fetch('/api/frost-llm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, system, json: true }) }), 25000);
-    const data = await r.json();
-    obj = extractJSON(String(data?.text || ''));
-  } catch { /* 舱壁：走本地兜底 */ }
+  // 云脑要结构化 JSON 走 enrichEntity skill（超时 + withRetry 瞬时退避重试 + 稳健解析）；失败 → null，下面走 localFallback 舱壁不丢原文。
+  obj = await enrichJSON<Record<string, unknown>>({ prompt, system });
 
   const fb = obj ? null : localFallback(raw);
   const note: StructuredNote = {
