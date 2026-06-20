@@ -5,6 +5,8 @@ import { getUserMarksByKind, subscribeUserMarks } from '../data/userMarks';
 import { runMovieAgent, confirmPin, recordRatingFix, recordPlaceFix, GEO_LABEL, GEO_COLOR, type MovieDraft, type MoviePhase } from '../lib/movie';
 import { AnimatePresence } from 'motion/react';
 import MarkerDetail, { type MarkerDetailData } from './MarkerDetail';
+import RunTrace from './RunTrace';
+import { frostBus, newRunId } from '../lib/observe/bus';
 
 // movies-curator 运行页 —— 观影 agent。
 // 1) 把豆瓣观影记录做成「电影票根」流；2) 用户记一笔/截图 → 端侧识别 → 实时钉到中间的地球（与 tab1 联动）。
@@ -36,6 +38,7 @@ export default function MoviesRunPage({ onBack, embedded }: Props) {
   const [input, setInput] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [phase, setPhase] = useState<MoviePhase | ''>('');
+  const [runId, setRunId] = useState<string | null>(null);
   const [draft, setDraft] = useState<MovieDraft | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -68,13 +71,24 @@ export default function MoviesRunPage({ onBack, embedded }: Props) {
   // 跑电影 agent：一句话 / 截图 → 解析→本地库→云脑补全子agent→地理子agent→校验 → 出草稿卡
   const analyze = async (inp: Parameters<typeof runMovieAgent>[0]) => {
     if (analyzing) return;
+    // 发一次 FrostBus 运行 → RunTrace 把各阶段渲成实时编排树（可观测）
+    const rid = newRunId(); setRunId(rid);
+    const t0 = performance.now();
+    const label = inp.kind === 'image' ? '截图认片' : inp.kind === 'manual' ? '手动记录' : `「${(inp.text || '').slice(0, 14)}」`;
+    frostBus.emit({ runId: rid, type: 'curator', name: `记一部电影 · ${label}`, phase: 'start', ts: Date.now() });
     setAnalyzing(true); setDraft(null); setPhase('解析输入');
     try {
-      const d = await runMovieAgent(inp, (p) => setPhase(p));
+      const d = await runMovieAgent(inp, (p, detail) => {
+        setPhase(p);
+        frostBus.emit({ runId: newRunId(), parentId: rid, type: 'skill', name: p, phase: 'start', ts: Date.now(), note: detail });
+      });
+      frostBus.emit({ runId: rid, type: 'curator', name: 'done', phase: d ? 'end' : 'error', ts: Date.now(), durMs: performance.now() - t0, ok: !!d });
       if (!d) { showToast('没认出片名，换种说法或手动记一下'); }
       else setDraft(d);
-    } catch { showToast('解析出错了，稍后再试'); }
-    finally { setAnalyzing(false); setPhase(''); }
+    } catch {
+      frostBus.emit({ runId: rid, type: 'curator', name: 'done', phase: 'error', ts: Date.now(), durMs: performance.now() - t0, ok: false });
+      showToast('解析出错了，稍后再试');
+    } finally { setAnalyzing(false); setPhase(''); }
   };
 
   const onSubmitText = () => { const t = input.trim(); if (t) analyze({ kind: 'text', text: t }); };
@@ -150,10 +164,8 @@ export default function MoviesRunPage({ onBack, embedded }: Props) {
             {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={3} /> : '标记'}
           </button>
         </div>
-        {analyzing && (
-          <div className="text-[10px] text-black/55 leading-snug flex items-center gap-1.5">
-            <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2.5} /> 子 agent 工作中 · {phase || '解析'}…（本地库 → 云脑补全 → 定位取景地）
-          </div>
+        {runId && (
+          <div className="mt-1"><RunTrace runId={runId} /></div>
         )}
         {!analyzing && !draft && (
           <div className="font-pixel text-[7px] text-black/35 leading-relaxed tracking-wide">

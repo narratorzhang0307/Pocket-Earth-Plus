@@ -27,7 +27,7 @@ export async function runMovieAgent(input: MovieInput, onPhase?: OnMoviePhase): 
   };
 
   // ② 本地片库（确定锚点：导演/国家/年份/豆瓣分/简介）
-  ph('查本地片库');
+  ph('查本地片库', 'matchCatalog');
   const hit = matchInCatalog(title);
   if (hit) {
     const r = hit.record;
@@ -49,7 +49,7 @@ export async function runMovieAgent(input: MovieInput, onPhase?: OnMoviePhase): 
   const lackTags = !draft.tags.cast.length || !draft.tags.movement || !draft.tags.genre || draft.needPlace;
   let filmingPlace = '', storyPlace = '';
   if (!alreadyEnriched && lackTags) {
-    ph('云脑补全标签');
+    ph('云脑补全标签', '调 Qwen-Plus');
     const { raw, ok } = await enrichTags(draft.title, { director: draft.tags.director, country: draft.country, year: draft.year });
     if (ok) {
       draft.tags.director = draft.tags.director || raw.director;
@@ -69,7 +69,7 @@ export async function runMovieAgent(input: MovieInput, onPhase?: OnMoviePhase): 
   }
 
   // ⑤ 地理子 agent：取景地 > 故事地 > 国家
-  ph('定位取景地/故事地');
+  ph('定位取景地/故事地', 'resolvePlace 本地→Mapbox');
   if (!draft.geo) draft.geo = await geoResolve({ filmingPlace, storyPlace, country: draft.country });
   draft.needPlace = !draft.geo;
 
