@@ -55,7 +55,7 @@ export async function addPhotoPins(items: PhotoPin[]): Promise<void> {
   const cities: string[] = [];
   for (const it of items) {
     const id = PREFIX + it.id;
-    if (existing.has(id)) continue;
+    if (existing.has(id) || getUserMarksByKind('photo').some((m) => m.id === id)) continue;   // 实时复查：并发调用各基于旧快照会重复钉（addUserMark 不查重），实时查 + 调用点重入守卫双保险
     const thumb = it.thumb ? await makeThumb(it.thumb) : '';
     const meta: PhotoMarkMeta = { thumb, full: thumb, city: it.city || '', source: it.source, fromPhotoAgent: true };
     addUserMark({ id, kind: 'photo', lat: it.lat, lng: it.lng, label: it.city || it.name || '我的照片', meta: meta as unknown as Record<string, unknown> });

@@ -7,7 +7,12 @@ const subs = new Set<() => void>();
 let cases: CaseRecord[] = load();
 
 function load(): CaseRecord[] {
-  try { if (typeof localStorage !== 'undefined') { const r = localStorage.getItem(KEY); if (r) return JSON.parse(r); } } catch { /* */ }
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const r = localStorage.getItem(KEY);
+      if (r) { const v = JSON.parse(r); if (Array.isArray(v)) return v.filter((x) => x && typeof x === 'object' && x.verdict && typeof x.verdict === 'object' && typeof x.verdict.id === 'string') as CaseRecord[]; }   // 损坏/非数组/缺 verdict → 回落 []，免 findSimilarCases.map / saveCase.filter 在庭审中途抛崩（同 skillForge/geoStickers 损坏存档护栏）
+    }
+  } catch { /* */ }
   return [];
 }
 function persist() { try { if (typeof localStorage !== 'undefined') localStorage.setItem(KEY, JSON.stringify(cases.slice(0, 100))); } catch { /* */ } }

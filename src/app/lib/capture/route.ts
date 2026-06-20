@@ -94,7 +94,7 @@ export async function runCapture(text: string, imageDataUrl?: string, onPhase?: 
   return {
     domain: 'mood', ok: true, title: `${MOOD_TONES[r.tone].label} · ${t.slice(0, 12)}`, where: r.place, note: '记为一条心情贴',
     confirm: async () => {
-      const id = 'mood-' + Date.now();
+      const id = 'mood-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);   // 加随机尾，免同毫秒撞 id → React key 重复 / removeMoodSticker 误删两条
       addMoodSticker({ id, lat: r.lat, lng: r.lng, text: t, place: r.place, color: MOOD_TONES[r.tone].color, rot: pickRot(id), tone: r.tone });
       return { pinned: true };
     },

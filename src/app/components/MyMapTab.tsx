@@ -487,7 +487,7 @@ export default function MyMapTab(_props: MyMapTabProps) {
     setMoodBusy(true);
     const center: [number, number] = map ? [map.getCenter().lng, map.getCenter().lat] : WEST_LAKE_CENTER;
     const { place, lng, lat } = await resolveMoodPlace(t, center);
-    const id = 'mood-' + Date.now();
+    const id = 'mood-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);   // 加随机尾，免同毫秒撞 id（两条写入路径共用 store）→ React key 重复 / removeMoodSticker 误删两条
     const d = new Date();
     const date = `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
     addMoodSticker({

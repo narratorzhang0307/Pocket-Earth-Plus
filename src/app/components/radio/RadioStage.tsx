@@ -411,7 +411,7 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startTrackId, start
                 <div className="w-full shrink-0 mt-3 flex flex-col gap-2.5">
                   <div className="flex items-center gap-2 font-pixel text-[7px] text-white/40 px-4">
                     <span className="tabular-nums w-8 text-right">{formatTime(playSec)}</span>
-                    <div className="flex-1 h-[3px] bg-white/10 overflow-hidden cursor-pointer group" onClick={onSeek}>
+                    <div role="slider" tabIndex={0} aria-label="播放进度" aria-valuemin={0} aria-valuemax={Math.round(durSec)} aria-valuenow={Math.round(playSec)} className="flex-1 h-[3px] bg-white/10 overflow-hidden cursor-pointer group" onClick={onSeek}>
                       <div className="h-full bg-[#00ff88]" style={{ width: `${durSec > 0 ? (playSec / durSec) * 100 : 0}%` }} />
                     </div>
                     <span className="tabular-nums w-8">{formatTime(durSec)}</span>

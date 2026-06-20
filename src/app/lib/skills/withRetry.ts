@@ -44,5 +44,6 @@ export class HttpError extends Error {
 /** 瞬时故障判定：5xx/429 + 网络错/超时 → 重试；4xx 参数错 → 不重试。 */
 export function isTransient(e: unknown): boolean {
   if (e instanceof HttpError) return e.status === 429 || e.status >= 500;
-  return true;   // 网络错 / timeout / AbortError 等非 HTTP 异常 → 视为瞬时
+  if (e && typeof e === 'object' && (e as { name?: string }).name === 'AbortError') return false;   // 用户主动取消(AbortController.abort)→重试白搭且违背意图，不重试；超时是 TimeoutError、仍按瞬时重试
+  return true;   // 网络错 / timeout 等其它非 HTTP 异常 → 视为瞬时
 }

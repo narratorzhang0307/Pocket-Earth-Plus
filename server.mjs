@@ -248,7 +248,7 @@ async function handleUnsplash(req, res, url) {
     if (!UNSPLASH_KEY) return sendJSON(res, { photos: [], error: 'no_key' })
     const track = url.searchParams.get('track')
     if (track) {
-      try { const t = new URL(track); t.searchParams.set('client_id', UNSPLASH_KEY); await fetch(t.toString()) } catch { /* 合规埋点静默 */ }
+      try { const t = new URL(track); if (t.protocol === 'https:' && t.hostname === 'api.unsplash.com') { t.searchParams.set('client_id', UNSPLASH_KEY); await fetch(t.toString()) } } catch { /* 合规埋点静默 */ }   // 安全：只允许向 api.unsplash.com(https) 回执下载——否则任意 track URL 会被 SSRF + 把 UNSPLASH_KEY 拼进出站请求泄漏给攻击者站点
       return sendJSON(res, { ok: true })
     }
     const query = (url.searchParams.get('query') || '').trim()

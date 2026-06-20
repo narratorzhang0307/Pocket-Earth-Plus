@@ -60,7 +60,7 @@ export async function confirmArchive(arc: TripArchive): Promise<{ added: number;
     const geo = await resolveCityGeo(c); if (!geo) return;
     pinnedCities.add(c);   // 城市已覆盖（无论是否新钉）→ 防 cities 兜底重复钉、保证再次调用幂等
     const id = `utr-${slug(arc.id)}-${slug(role)}-${slug(label || c)}`;
-    if (existing.has(id)) return;
+    if (existing.has(id) || getUserMarksByKind('travel').some((m) => m.id === id)) return;   // 实时复查：并发确认各基于旧快照会重复钉（addUserMark 不查重，同 photo geoPin）
     const [lng, lat] = spreadCoord(id, geo.lng, geo.lat, 0.04);
     addUserMark({ id, kind: 'travel', lng, lat, label: label || c, meta: { tripId: arc.id, seq: seq++, role, city: c, date, status: 'done', ...extra } });
     existing.add(id); added++;

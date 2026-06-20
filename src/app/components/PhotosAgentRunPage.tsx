@@ -266,7 +266,14 @@ function RealView() {
     return results.filter((r) => !isUtil(r.photoType) && !r.needPlace && r.verdict === filter);
   }, [results, filter]);
 
-  const pinAll = () => { addPhotoPins(toPins(results.filter((r) => r.pinnable))); setPinned(true); };
+  const pinning = useRef(false);
+  const pinAll = async () => {
+    if (pinning.current || pinned) return;   // 同步重入守卫：移动端快速双击在 React 提交 disabled 前会触发两次 → 同步 ref 挡住第二次，免重复钉
+    pinning.current = true;
+    setPinned(true);
+    try { await addPhotoPins(toPins(results.filter((r) => r.pinnable))); }
+    finally { pinning.current = false; }
+  };
 
   // 纠错：拉回实拍 / 标为资料 / 留 / 清理 —— 写偏好(越用越准)+ 记住(下次同图沿用)
   const correct = (r: PhotoResult, to: 'place' | 'utility' | 'keep' | 'clean') => {

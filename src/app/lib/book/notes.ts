@@ -3,6 +3,7 @@
 // 云脑 JSON 为主，舱壁兜底：云脑不可用也至少把原文留住、按行粗分。端侧持久化（localStorage 发布订阅）。
 import { edgeSafe } from '../../../../frost-agent/edge/contract';
 import { enrichJSON } from '../skills/enrichEntity';
+import { redactText } from '../skills/visionRead';
 
 export interface StructuredNote {
   id: string;
@@ -31,7 +32,7 @@ function noteId(): string { _seq += 1; return 'note-' + Date.now() + '-' + _seq 
 
 // 书页/手写截图 → 文本（端侧 OCR，原图不出端）
 async function ocrNote(imageDataUrl: string): Promise<string> {
-  try { return ((await edgeSafe.vision(imageDataUrl, '提取这张图里的所有文字（书页或手写笔记），原样输出文本，不要解释。')) || '').trim(); }
+  try { return redactText((await edgeSafe.vision(imageDataUrl, '提取这张图里的所有文字（书页或手写笔记），原样输出文本，不要解释。')) || '').trim(); }   // 过脱敏收口：OCR 原文可能含身份证/手机号/卡号，redact 后才能上云(enrichJSON)+持久化，补回 visionRead「唯一收口」不变式
   catch { return ''; }
 }
 

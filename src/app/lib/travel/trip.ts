@@ -42,7 +42,8 @@ export function getTrip(tripId: string): TripView | null {
     .sort((a, b) => a.seq - b.seq || a.date.localeCompare(b.date));
   if (!stops.length) return null;
   const cities = [...new Set(stops.map((s) => s.city).filter(Boolean))];
-  const dates = stops.map((s) => s.date).filter(Boolean).sort();
+  const padDate = (d: string) => d.replace(/\b(\d)\b/g, '0$1');   // 补零再比，容错云脑返回的 '2026-6-9' 非零填充日期（裸字典序会把它排错→整程卡日期范围反/错）
+  const dates = stops.map((s) => s.date).filter(Boolean).sort((a, b) => padDate(a).localeCompare(padDate(b)));
   const title = cities.length > 1 ? `${cities[0]}—${cities[cities.length - 1]} 之旅` : `${cities[0] || '我的'}之旅`;
   return { tripId, title, cities, dateStart: dates[0] || '', dateEnd: dates[dates.length - 1] || '', stops };
 }

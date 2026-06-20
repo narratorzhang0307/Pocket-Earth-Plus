@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { removeTripMarks, type TripView } from '../lib/travel';
@@ -38,6 +39,11 @@ const stars = (r?: number | null) => {
 };
 
 export default function MarkerDetail({ data, onClose, onRemove }: { data: MarkerDetailData; onClose: () => void; onRemove?: (id: string) => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);   // ESC 关闭：地图标记详情是全 app 最高频模态，键盘用户也能退出
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -49,7 +55,7 @@ export default function MarkerDetail({ data, onClose, onRemove }: { data: Marker
         className="w-[300px] max-w-full bg-white border-[3px] border-black shadow-[6px_6px_0_#000] relative"
         onClick={(e) => e.stopPropagation()}
       >
-        <button onClick={onClose} className="absolute -top-3 -right-3 w-7 h-7 bg-black border-2 border-[#7CFF6B] flex items-center justify-center z-10">
+        <button onClick={onClose} aria-label="关闭" className="absolute -top-3 -right-3 w-7 h-7 bg-black border-2 border-[#7CFF6B] flex items-center justify-center z-10">
           <X className="w-3.5 h-3.5 text-[#7CFF6B]" strokeWidth={3} />
         </button>
 
