@@ -5,6 +5,7 @@
 import { resolvePlace } from '../skills/resolvePlace';
 import { movieCountry } from '../../data/movies';
 import { enrichJSON } from '../skills/enrichEntity';
+import { formatInstructions, type Shape } from '../skills/structured';
 import type { GeoTarget } from './types';
 
 // 云脑补全子 agent 的原始产出（全部可缺，缺则空）
@@ -21,17 +22,27 @@ export interface EnrichRaw {
 }
 const EMPTY: EnrichRaw = { director: '', cast: [], genre: '', movement: '', plot: '', country: '', year: null, filmingPlace: '', storyPlace: '' };
 
+// 补全字段 schema（单一事实源）：formatInstructions 据此生成提示词字段清单。
+const ENRICH_SHAPE: Shape = {
+  director: { type: 'string', desc: '导演' },
+  cast: { type: 'string[]', desc: '主演，最多 4 个' },
+  genre: { type: 'string', desc: '主类型，如 剧情/科幻/爱情，单个' },
+  movement: { type: 'string', desc: '流派或电影运动，如 法国新浪潮/作者电影/黑色电影，没有就空' },
+  plot: { type: 'string', desc: '一句话剧情，不超过 40 字' },
+  country: { type: 'string', desc: '主要出品国家/地区，中文' },
+  year: { type: 'number', desc: '上映年份，数字或留空' },
+  filmingPlace: { type: 'string', desc: '主要取景城市，中文，不确定就留空' },
+  storyPlace: { type: 'string', desc: '故事发生城市，中文，不确定就留空' },
+};
+
 const str = (x: unknown) => (typeof x === 'string' ? x.trim() : '');
 const strArr = (x: unknown) => Array.isArray(x) ? x.map(str).filter(Boolean).slice(0, 5) : (typeof x === 'string' && x ? x.split(/[、,，/]/).map((s) => s.trim()).filter(Boolean).slice(0, 5) : []);
 
 // 补全子 agent：调用云脑，强约束 JSON。失败 → 返回 EMPTY（舱壁：单级失败不抛错，交回 resolve 走下一级兜底）。
 export async function enrichTags(title: string, hint?: { director?: string; country?: string; year?: number | null }): Promise<{ raw: EnrichRaw; ok: boolean }> {
-  const system = '你是电影资料员。根据片名给出结构化标签，只输出一个 JSON 对象，不要任何解释或代码块标记。'
-    + '字段：director(导演,字符串)、cast(主演,字符串数组最多4个)、genre(主类型,如 剧情/科幻/爱情，单个)、'
-    + 'movement(流派或电影运动,如 法国新浪潮/作者电影/黑色电影，没有就空字符串)、plot(一句话剧情，不超过40字)、'
-    + 'country(主要出品国家/地区,中文)、year(上映年份,数字或null)、'
-    + 'filmingPlace(主要取景城市,中文,不确定就空字符串)、storyPlace(故事发生城市,中文,不确定就空字符串)。'
-    + '重要：不确定的字段一律留空字符串或空数组，绝对不要编造演员或地点。';
+  // 字段清单由 schema 经 formatInstructions 确定性派生（借鉴 langchain output-parsers，免手写两遍）；领域戒律另附。
+  const system = '你是电影资料员。根据片名给出结构化标签。' + formatInstructions(ENRICH_SHAPE)
+    + ' 重要：不确定的字段一律留空字符串或空数组，绝对不要编造演员或地点。';
   const hintStr = hint ? `已知线索（可纠正/补充）：导演=${hint.director || '?'}，国家=${hint.country || '?'}，年份=${hint.year || '?'}。` : '';
   const prompt = `片名：《${title}》。${hintStr}请输出 JSON。`;
   // 调云脑要结构化 JSON 走 enrichEntity skill（共享 plumbing：超时+稳健解析）；字段映射是电影领域专属，留在此。

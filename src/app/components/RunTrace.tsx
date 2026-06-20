@@ -5,6 +5,20 @@ import { useEffect, useState } from 'react';
 import { Loader2, Check, AlertTriangle } from 'lucide-react';
 import { frostBus, type FrostEvent } from '../lib/observe/bus';
 
+// 从 note 派生「云/端侧/本地」色徽章——让树一眼看出每步在哪儿算（数据离没离设备）。显式 tags 优先。
+const BADGE: Record<string, string> = {
+  云: 'bg-amber-500/20 text-amber-300',
+  端侧: 'bg-sky-500/20 text-sky-300',
+  本地: 'bg-emerald-500/15 text-emerald-300/90',
+};
+function deriveBadge(note?: string): string | null {
+  if (!note) return null;
+  if (/Qwen|云|cloud/i.test(note)) return '云';
+  if (/端侧|VL|CLIP|edge|WebLLM/i.test(note)) return '端侧';
+  if (/resolvePlace|matchCatalog|本地|Mapbox|parse|catalog/i.test(note)) return '本地';
+  return null;
+}
+
 function useRunEvents(runId: string | null): FrostEvent[] {
   const [events, setEvents] = useState<FrostEvent[]>([]);
   useEffect(() => {
@@ -53,8 +67,8 @@ export default function RunTrace({ runId }: { runId: string | null }) {
                 : <Check className="w-2.5 h-2.5 text-emerald-400/70" strokeWidth={3} />}
               <span className={running ? 'text-zinc-100' : 'text-zinc-400'}>{s.name}</span>
               {s.note && <span className="text-zinc-500 truncate">· {s.note}</span>}
-              {s.tags?.map((t) => (
-                <span key={t} className="rounded bg-white/10 px-1 py-px text-[9px] leading-none text-zinc-300">{t}</span>
+              {(s.tags && s.tags.length ? s.tags : ([deriveBadge(s.note)].filter(Boolean) as string[])).map((t) => (
+                <span key={t} className={`rounded px-1 py-px text-[9px] leading-none ${BADGE[t] || 'bg-white/10 text-zinc-300'}`}>{t}</span>
               ))}
               <span className="ml-auto tabular-nums text-zinc-600">{dur}ms</span>
             </div>

@@ -34,7 +34,7 @@ export const frostBus = {
   on(h: Handler): () => void { handlers.add(h); return () => { handlers.delete(h); }; },
   /** 发事件。先入 buffer 再通知；handler 抛错只吞掉——观测层绝不打断主流程（舱壁）。 */
   emit(e: FrostEvent): void {
-    buffer.push(e); if (buffer.length > 300) buffer.shift();
+    buffer.push(e); if (buffer.length > 1000) buffer.shift();   // 容量够全局轨迹抽屉展开历史运行(~40 次×每次几条)
     handlers.forEach((h) => { try { h(e); } catch { /* 观测层抛错不影响业务 */ } });
   },
   /** 取 buffer 里属于某次运行的历史事件（订阅者挂载时先 seed，补上订阅前发生的 start/首阶段）。 */
