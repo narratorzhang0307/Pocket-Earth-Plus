@@ -41,7 +41,7 @@ export type OnArchivePhase = (phase: string, detail?: string) => void;   // deta
 // 行程月份 → 季节（回流 seasons 字段用）。
 export function seasonOf(date?: string): string | null {
   if (!date) return null;
-  const m = Number(String(date).slice(5, 7));
+  const m = Number(String(date).split(/[-/]/)[1]);   // 按分隔符取月份，容忍 '2026-6-15' / '2026/6/15' 非零填充
   if (!m || m < 1 || m > 12) return null;
   return m <= 2 || m === 12 ? '冬' : m <= 5 ? '春' : m <= 8 ? '夏' : '秋';
 }

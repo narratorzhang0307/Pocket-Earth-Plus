@@ -25,7 +25,7 @@ export function recordHealth(step: string, ok: boolean, error?: string): void {
 export function getHealth(): Record<string, StepHealth>;
 export function getHealth(step: string): StepHealth | undefined;
 export function getHealth(step?: string): Record<string, StepHealth> | StepHealth | undefined {
-  return step ? steps[step] : steps;
+  return step !== undefined ? steps[step] : steps;   // 显式判 undefined：'' 等任何 string 都视为查单步，避免 falsy 误返回整表
 }
 
 export function subscribeHealth(fn: () => void): () => void {

@@ -161,12 +161,18 @@ export function frostEdge(env: Record<string, string>): Plugin {
     configureServer(server) {
       server.middlewares.use('/api/edge', (req, res) => {
         if (req.method !== 'POST') { res.statusCode = 405; res.end(); return }
-        let body = ''
-        req.on('data', (c) => (body += c))
+        const chunks: Buffer[] = []
+        let settled = false
+        const fail = (code: number) => { if (settled) return; settled = true; try { res.statusCode = code; res.end(JSON.stringify({ backend: 'stub' })) } catch { /* ignore */ } }
+        req.on('error', () => fail(400))
+        req.on('aborted', () => { settled = true })   // 客户端断开：标记已结，别再回写
+        req.on('data', (c: Buffer) => { chunks.push(Buffer.from(c)) })   // 收 Buffer、end 时整体解码——防多字节 UTF-8 在 chunk 边界被切碎（中文损坏）
         req.on('end', async () => {
+          if (settled) return
+          settled = true
           res.statusCode = 200
           res.setHeader('content-type', 'application/json')
-          try { res.end(JSON.stringify(await handle(body))) } catch (e) { res.end(JSON.stringify({ backend: 'stub', error: String(e) })) }
+          try { res.end(JSON.stringify(await handle(Buffer.concat(chunks).toString('utf8')))) } catch (e) { try { res.end(JSON.stringify({ backend: 'stub', error: String(e) })) } catch { /* ignore */ } }
         })
       })
     },

@@ -20,7 +20,7 @@ function load(): State {
   try {
     if (typeof localStorage !== 'undefined') {
       const r = localStorage.getItem(KEY);
-      if (r) { const s = JSON.parse(r); return { current: s.current || null, dismissed: s.dismissed || [], cursor: s.cursor || 0 }; }
+      if (r) { const s = JSON.parse(r); return { current: s.current || null, dismissed: Array.isArray(s.dismissed) ? s.dismissed : [], cursor: Math.max(0, Math.floor(Number(s.cursor) || 0)) }; }   // cursor 规整为非负整数：防手改成负/NaN/浮点 → pool[负/NaN]=undefined 渲染空建议
     }
   } catch { /* 隐私模式：内存仍可用 */ }
   return { current: null, dismissed: [], cursor: 0 };

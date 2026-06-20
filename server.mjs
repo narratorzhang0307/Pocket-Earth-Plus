@@ -52,9 +52,9 @@ function sendJSON(res, obj, code = 200) {
 }
 function readBody(req) {
   return new Promise((resolve) => {
-    let b = ''
-    req.on('data', (c) => (b += c))
-    req.on('end', () => resolve(b))
+    const chunks = []
+    req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)))
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))   // 整体解码，防多字节 UTF-8 在 chunk 边界被切碎（中文损坏）
   })
 }
 

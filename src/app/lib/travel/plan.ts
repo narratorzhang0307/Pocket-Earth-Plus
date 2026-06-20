@@ -31,10 +31,12 @@ export async function cloudRankPOIs(dest: Destination, prefs: Pref[], memoryBloc
     + '只输出一个 JSON：{"scores":[按候选编号顺序的分数数组]}，数组长度必须严格等于候选数，不要任何解释或代码块标记。';
   const prompt = `${memoryBlock || '（暂无长期画像，仅按本次偏好）'}\n\n本次旅行偏好：${prefs.join('、') || '随便逛逛'}\n目的地：${dest.name}\n候选地点：\n${cand.join('\n')}\n请输出 scores JSON。`;
   try {
+    const ac = new AbortController();
     const r = await withTimeout(fetch('/api/frost-llm', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, system, json: true }),
-    }), 20000);
+      signal: ac.signal,
+    }), 20000).catch((e) => { ac.abort(); throw e; });   // 超时/失败时主动断掉在途 fetch，不留挂起请求
     const data = await r.json();
     const obj = extractJSON(String(data?.text || '')) as { scores?: unknown } | null;
     const arr = obj?.scores;

@@ -32,4 +32,5 @@
 ## 轮次日志
 | 轮 | 日期 | 维度 | 改了什么 | commit |
 |---|---|---|---|---|
-| R0 | 2026-06-21 | 基线 | 落盘本会话改动（jot-agent 改名 / FROST 任庭长 / 西湖照走 OSS / 诗句便签 / ?embed + 独立录制台 / SW v14）+ 建优化流程 | (待填) |
+| R0 | 2026-06-21 | 基线 | 落盘本会话改动（jot-agent 改名 / FROST 任庭长 / 西湖照走 OSS / 诗句便签 / ?embed + 独立录制台 / SW v14）+ 建优化流程 | ed32eaf |
+| R1 | 2026-06-21 | correctness/robustness · lib+harness | workflow 24 找→13 确认全修：①movie cast 空值护栏 ②travel plan / enrich fetch 超时主动 abort（去重复 withTimeout 死码）③seasonOf 容错非零填充月份 ④照片 EXIF 复用免每张重复解析 ⑤无日期照片去重收窄（GPS 异地豁免 + 严阈 4）⑥mood 概览城市数过滤脏地名 + 恰好 2 地点也带第二处（MoodReview 复用同口径）⑦skillForge / heartbeat 存档损坏护栏 ⑧health 空串重载 ⑨多字节 UTF-8 chunk 边界中文损坏（viteEdge + server.mjs readBody）。build 净 + 11 文件 tsc 零新错 | (本轮) |

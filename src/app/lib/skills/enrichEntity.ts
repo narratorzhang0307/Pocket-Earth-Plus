@@ -20,13 +20,6 @@ export function extractJSON<T = unknown>(text: string): T | null {
   return tryParse(obj) ?? tryParse(arr) ?? tryParse(body.trim());
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((res, rej) => {
-    const t = setTimeout(() => rej(new Error('timeout')), ms);
-    p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); });
-  });
-}
-
 export interface EnrichInput { prompt: string; system?: string; timeoutMs?: number }
 
 /**
@@ -36,10 +29,11 @@ export interface EnrichInput { prompt: string; system?: string; timeoutMs?: numb
 export async function enrichJSON<T = Record<string, unknown>>(input: EnrichInput): Promise<T | null> {
   try {
     const data = await withRetry(async () => {
-      const r = await withTimeout(fetch('/api/frost-llm', {
+      const r = await fetch('/api/frost-llm', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: input.prompt, system: input.system, json: true }),
-      }), input.timeoutMs ?? 20000);
+        signal: AbortSignal.timeout(input.timeoutMs ?? 20000),   // 超时即真中断在途 fetch（对齐 travel/mcp.ts；TimeoutError 仍被 isTransient 判瞬时→照常重试）
+      });
       if (!r.ok) throw new HttpError(r.status);   // 让 5xx/429 进重试（4xx 由 isTransient 判否、不重试）
       return r.json();
     }, { attempts: 3, retryOn: isTransient });

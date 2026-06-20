@@ -68,7 +68,7 @@ export interface MoodSummary { count: number; cities: number; days: number; domT
 /** 回望概览：总条数 / 落点城市数 / 不同日历天数 / 主导情绪（全 0 时 undefined）。 */
 export function moodSummary(stickers?: MoodSticker[]): MoodSummary {
   const m = moodOf(stickers);
-  const cities = new Set(m.map((s) => s.place)).size;
+  const cities = new Set(m.filter((s) => s.place && s.place !== '此处' && !s.place.includes('随机落点')).map((s) => s.place)).size;   // 与 getMoodTrace 同口径：排除「此处/随机落点」脏地名，免落点城市数虚高
   const days = new Set(m.map((s) => dayKey(s.createdAt))).size;   // 不同本地日历天数，比首尾差更诚实
   let domTone: MoodTone | undefined; let max = 0;
   for (const b of toneDistribution(stickers)) if (b.count > max) { max = b.count; domTone = b.tone; }
@@ -95,7 +95,7 @@ export function getMoodTrace(opts?: { minSamples?: number; topPlaces?: number },
   // 全是「此处 / 随机落点」脏地名时 places 为空：不造「散落各处」假地点污染记忆，只保留有效的情绪基调。
   let line = places.length ? `近期心情多落在${places[0]}·底色偏${toneLabel}` : `近期心情底色偏${toneLabel}`;
   const others = places.slice(1, topN);
-  if (places.length >= 3 && others.length) line += `，也在${others.join('、')}留过心情`;
+  if (places.length >= 2 && others.length) line += `，也在${others.join('、')}留过心情`;   // >=2 即可：恰好 2 个有效地点时也带上第二处，否则静默丢失
   return `# 你的情绪足迹\n${line}`;
   // TODO（远景）：贴量上千时给 getMoodTrace/分布加 fingerprint 缓存；现单次 O(n) 足够。
 }

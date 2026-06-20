@@ -14,10 +14,10 @@ export async function runScreen(files: File[], opts: ScreenOpts, onProgress?: Pr
 
   // ① 读 EXIF 日期做时间段过滤（cheap；贵的 decode/CLIP 压到后面、最少）
   onProgress?.(0, files.length, '读取拍摄日期');
-  const inrange: File[] = [];
+  const inrange: { file: File; exif: Awaited<ReturnType<typeof readExif>> | null }[] = [];
   for (let i = 0; i < files.length; i++) {
-    try { const ex = await readExif(files[i]); if (inRange(ex.capDate, opts.fromYM, opts.toYM)) inrange.push(files[i]); }
-    catch { if (opts.fromYM == null && opts.toYM == null) inrange.push(files[i]); }   // 读不出日期且没设范围 → 收进来
+    try { const ex = await readExif(files[i]); if (inRange(ex.capDate, opts.fromYM, opts.toYM)) inrange.push({ file: files[i], exif: ex }); }
+    catch { if (opts.fromYM == null && opts.toYM == null) inrange.push({ file: files[i], exif: null }); }   // 读不出日期且没设范围 → 收进来（preExif=null，pass③ 内部回落自读）
     onProgress?.(i + 1, files.length, '读取拍摄日期');
   }
 
@@ -29,9 +29,9 @@ export async function runScreen(files: File[], opts: ScreenOpts, onProgress?: Pr
   const results: PhotoResult[] = [];
   for (let i = 0; i < inrange.length; i++) {
     onProgress?.(i + 1, inrange.length, '端侧逐张分析');
-    const file = inrange[i];
+    const { file, exif: preExif } = inrange[i];
     let ex: Awaited<ReturnType<typeof extractFeatures>> = null;
-    try { ex = await extractFeatures(file, maxSize); } catch { ex = null; }   // 舱壁：坏图/HEIC 解码失败 → 跳过
+    try { ex = await extractFeatures(file, maxSize, preExif ?? undefined); } catch { ex = null; }   // 舱壁：坏图/HEIC 解码失败 → 跳过；复用 ① 的 EXIF
     if (!ex) continue;
     const { features, canvas } = ex;
     const known = await getKnown(features.dHash);

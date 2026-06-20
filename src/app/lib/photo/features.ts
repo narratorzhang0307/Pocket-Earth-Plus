@@ -108,8 +108,8 @@ function utilityVote(data: Uint8ClampedArray, w: number, h: number, m: { contras
 }
 
 // ── 感知层主入口：解一张图 → PhotoFeatures（小结论）+ canvas（caller 用完即弃，修 OOM）──
-export async function extractFeatures(file: File, maxSize: number): Promise<{ features: PhotoFeatures; canvas: HTMLCanvasElement } | null> {
-  const exif = await readExif(file);
+export async function extractFeatures(file: File, maxSize: number, preExif?: Awaited<ReturnType<typeof readExif>>): Promise<{ features: PhotoFeatures; canvas: HTMLCanvasElement } | null> {
+  const exif = preExif ?? await readExif(file);   // 复用 ① 已解析的 EXIF，免每张重复解析（screen.ts pass① 已读过）
   const dec = await decode(file, maxSize);
   if (!dec) return null;
   const ctx = dec.canvas.getContext('2d', { willReadFrequently: true })!;

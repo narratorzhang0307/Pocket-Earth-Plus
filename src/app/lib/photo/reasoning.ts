@@ -82,7 +82,16 @@ export function dedupAndCluster(results: PhotoResult[]): PhotoResult[] {
   for (const r of sorted) {
     if (r.photoType === 'screenshot' || r.photoType === 'document' || r.photoType === 'junk') { kept.push(r); continue; }
     const bk = bucketKey(r.date);
-    const near = kept.find((k) => bucketKey(k.date) === bk && k.features && r.features && hamming(k.features.dHash, r.features.dHash) <= DUP);
+    const near = kept.find((k) => {
+      if (bucketKey(k.date) !== bk || !k.features || !r.features) return false;
+      const hd = hamming(k.features.dHash, r.features.dHash);
+      if (bk === 'nodate_') {
+        // 无日期桶缺时间锚点：两张都有 GPS 且明显异地(>300m)→必非重复；其余抬严阈值到 4，挡住「结构偶然相近」的跨真实时间误判
+        if (k.hasGPS && r.hasGPS && k.lat != null && k.lng != null && r.lat != null && r.lng != null && dist(k.lat, k.lng, r.lat, r.lng) > 300) return false;
+        return hd <= 4;
+      }
+      return hd <= DUP;   // 有日期桶：行为完全不变
+    });
     if (near) { r.dupOf = near.id; r.verdict = 'clean'; r.pinnable = false; if (!r.tags.includes('重复')) r.tags.push('重复'); }
     else kept.push(r);
   }

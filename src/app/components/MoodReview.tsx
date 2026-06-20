@@ -17,8 +17,8 @@ export default function MoodReview() {
   // 只看「真心情贴」：排除 MyMapTab 种入同一 store 的白色 LOC_SYNC 定位卡（无 tone、variant:'card'），
   // 让空态守卫 / 列表 / 概览计数都与 summary（moodOf 过滤）口径一致——否则新访客一进来会把定位卡当心情贴。
   const stickers = getMoodStickers().filter((s) => s.tone && MOOD_TONES[s.tone]);
-  const cities = new Set(stickers.map((s) => s.place)).size;
   const summary = moodSummary(stickers);   // 仅统计有情绪基调的真心情贴
+  const cities = summary.cities;           // 与 summary 同口径（已过滤「此处/随机落点」脏地名），免两处计数漂移
   // 仅当存在「带情绪的真心情贴」才进回望（view 残留 'retrospect' 也回落列表，避免没 Tab 可切回的死角）
   const showRetrospect = view === 'retrospect' && summary.count > 0;
   const dist = showRetrospect ? toneDistribution(stickers) : [];

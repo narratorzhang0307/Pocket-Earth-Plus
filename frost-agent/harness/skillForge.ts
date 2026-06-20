@@ -68,7 +68,12 @@ const KEY = 'pe.skills.v1';
 let skills: LearnedSkill[] = load();
 const subs = new Set<() => void>();
 function load(): LearnedSkill[] {
-  try { if (typeof localStorage !== 'undefined') { const r = localStorage.getItem(KEY); if (r) return JSON.parse(r); } } catch { /* ignore */ }
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const r = localStorage.getItem(KEY);
+      if (r) { const v = JSON.parse(r); if (Array.isArray(v)) return v.filter((x) => x && typeof x === 'object') as LearnedSkill[]; }   // 损坏成对象/标量时落到 return []，免 some/filter/扩展崩
+    }
+  } catch { /* ignore */ }
   return [];
 }
 function persist() { try { if (typeof localStorage !== 'undefined') localStorage.setItem(KEY, JSON.stringify(skills)); } catch { /* ignore */ } }

@@ -44,6 +44,7 @@ export async function runMovieAgent(input: MovieInput, onPhase?: OnMoviePhase): 
   // ③ 本地索引：之前补全/钉过 → 复用，省云脑、保持一致
   const known = await getKnownMovie(draft.id);
   const alreadyEnriched = mergeKnown(draft, known);
+  if (!Array.isArray(draft.tags.cast)) draft.tags.cast = [];   // mergeKnown 整体替换 tags；pe-movies 旧/坏记录可能缺 cast → 恢复数组不变式，免下面 .length 抛错（舱壁）
 
   // ④ 云脑补全子 agent：标签不全且没补过时才调（按难度分模型——便宜的本地先行，贵的云脑兜底）
   const lackTags = !draft.tags.cast.length || !draft.tags.movement || !draft.tags.genre || draft.needPlace;
