@@ -1,15 +1,18 @@
 import { useState, useRef } from 'react';
 import { ChevronLeft, ImagePlus, Check, RotateCcw, X } from 'lucide-react';
 import { runCapture, DOMAIN_LABEL, DOMAIN_COLOR, type CaptureResult } from '../lib/capture/route';
+import MoodReview from './MoodReview';
 
 // 统一万能记一笔 —— 一个框（+可选截图）记一切：frost 判这是书/影/乐/地点/心情 → 钉到对应图层。
 // 沿用各域现成管线（见 lib/capture/route）；suggest-then-confirm，用户确认才落地球。
+// 「记一笔 / 心情」双页：记一笔=统一录入；心情=回看累积的情绪足迹（原 mood-curator 的回望并到这里）。
 
 interface Props { onBack: () => void }
 const ACCENT = '#00ff88';
 const star = (n: number) => '★★★★★'.slice(0, Math.max(0, Math.min(5, Math.round(n))));
 
 export default function UniversalCaptureRunPage({ onBack }: Props) {
+  const [tab, setTab] = useState<'jot' | 'mood'>('jot');   // 记一笔 / 心情回望
   const [text, setText] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -51,17 +54,28 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
           <ChevronLeft className="w-4 h-4" strokeWidth={3} />
         </button>
         <div className="flex-1 min-w-0">
-          <div className="font-pixel text-[11px] tracking-wider truncate">JOT · 随手记一笔</div>
+          <div className="font-pixel text-[11px] tracking-wider truncate">JOT</div>
           <div className="text-[9px] text-black/45 truncate">一句话 / 截图 → frost 判域 → 钉到对应图层</div>
         </div>
       </div>
 
-      {/* 说明条 */}
+      {/* 记一笔 / 心情 切换（心情=把原 mood-curator 的回望并进来） */}
+      <div className="flex border-b-2 border-black bg-[#EAEAEA] shrink-0">
+        {([['jot', '记一笔 ◍'], ['mood', '心情 ◍']] as const).map(([v, label]) => (
+          <button key={v} onClick={() => { setTab(v); setToast(''); }}
+            className={`flex-1 font-pixel text-[9px] py-2 tracking-wider ${tab === v ? 'bg-black text-[#00ff88]' : 'text-black/55'}`}>{label}</button>
+        ))}
+      </div>
+
+      {/* 说明条（仅记一笔页） */}
+      {tab === 'jot' && (
       <div className="px-4 py-2 border-b-2 border-black bg-black shrink-0" style={{ color: ACCENT }}>
         <div className="font-pixel text-[8px] tracking-wider text-center">书 · 影 · 行程 · 心情 / 地点 —— 不用先选 agent</div>
       </div>
+      )}
 
-      {/* 输入 */}
+      {/* 输入（仅记一笔页） */}
+      {tab === 'jot' && (
       <div className="px-3 py-2.5 border-b-2 border-black bg-white shrink-0 space-y-2">
         <textarea
           value={text} onChange={(e) => setText(e.target.value)} rows={2}
@@ -86,9 +100,11 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
           </button>
         </div>
       </div>
+      )}
 
-      {/* 结果 / 预览 */}
+      {/* 结果 / 预览（记一笔）｜ 心情回望 */}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+        {tab === 'mood' ? <MoodReview /> : (<>
         {!result && !busy && (
           <div className="border-2 border-black bg-white p-4 shadow-[2px_2px_0_rgba(0,0,0,0.85)] text-center">
             <div className="text-[12px] font-bold mb-1">一个框，记一切</div>
@@ -136,6 +152,7 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
             </div>
           </div>
         )}
+        </>)}
       </div>
 
       {/* toast */}

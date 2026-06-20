@@ -1,7 +1,7 @@
 // 心情回望 · 纯逻辑层（读 geoStickers，零副作用、单次 O(n)）。
 // 把「记一笔·心情贴」从一次性贴纸做成会累积、会回望、并联动长期记忆的东西。
 // 解耦：只 import geoStickers、绝不碰 MyMapTab / ProfileDomain（心情是独立通道，不走 recordSignals）。
-// UI（MoodRunPage 回望视图）与记忆注入（memoryRouter.assembleMemory）都调这里的纯函数。
+// UI（MoodReview 回望视图，挂在 JOT「心情」页）与记忆注入（memoryRouter.assembleMemory）都调这里的纯函数。
 import { getMoodStickers, MOOD_TONES, type MoodSticker, type MoodTone } from '../../data/geoStickers';
 
 // 私有：取「有 tone 的真心情贴」（跳过白色 LOC_SYNC 种子卡 variant:'card'），按 createdAt 倒序。

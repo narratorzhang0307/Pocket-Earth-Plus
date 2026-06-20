@@ -32,8 +32,8 @@ const QUICK: { label: string; target: string }[] = [
   { label: '整理相册', target: 'photos-curator' },
   { label: '翻翻我的书', target: 'books-curator' },
   { label: '聊聊电影', target: 'movies-curator' },
-  { label: '造颗星球', target: 'planet-builder' },
-  { label: '记条心情', target: 'mood-curator' },
+  { label: '记一笔', target: 'jot' },
+  { label: '造个 agent', target: 'agent-forge' },
 ];
 
 // 对话后若意图对得上某 curator，给一个「展开」入口

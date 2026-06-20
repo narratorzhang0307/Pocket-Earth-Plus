@@ -21,9 +21,7 @@ export const ALLOWED_TARGETS: Record<string, string> = {
   'books-curator': '读书',
   'photos-curator': '整理照片',
   'travel-curator': '规划行程',
-  'planet-builder': '造主题星球',
-  'mood-curator': '记心情',
-  'podcast-curator': '城市播客',
+  'jot': '随手记一笔 / 记心情',
   'council-room': '多 agent 圆桌',
   'public-plaza': '代理社交广场',
 };
