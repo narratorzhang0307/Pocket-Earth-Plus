@@ -10,6 +10,8 @@ import {
   populateMap, confirmMapRecords,
   type AgentManifest, type ManifestReview, type CustomDraft, type MapDraft, type MapRecord,
 } from '../lib/agent';
+import RunTrace from './RunTrace';
+import { startCuratorRun } from '../lib/observe/bus';
 
 const ACCENT = '#ff8a3d';
 
@@ -172,7 +174,7 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
   // 建图挡：一句主题 → 多步自主流水线 → 草稿批 → 勾选钉地球
   const [goal, setGoal] = useState('');
   const [mapBusy, setMapBusy] = useState(false);
-  const [phase, setPhase] = useState('');
+  const [mapRunId, setMapRunId] = useState<string | null>(null);   // FrostBus 运行 id → RunTrace 编排树
   const [mapDraft, setMapDraft] = useState<MapDraft | null>(null);
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [mapMsg, setMapMsg] = useState('');
@@ -208,8 +210,11 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
   const buildMap = async () => {
     const g = goal.trim();
     if (!g || mapBusy) return;
-    setMapBusy(true); setMapDraft(null); setMapMsg(''); setPhase('启动…');
-    const d = await populateMap(manifest, g, setPhase);
+    setMapBusy(true); setMapDraft(null); setMapMsg('');
+    // 一次 FrostBus 运行 → RunTrace 把 规划→搜索→反思→地理编码 渲成实时编排树（与各 curator 同款可观测）
+    const run = startCuratorRun(`建图 · ${manifest.domain} · ${g.slice(0, 16)}`); setMapRunId(run.runId);
+    const d = await populateMap(manifest, g, (p, note) => run.phase(p, note));
+    run.end(d.records.length > 0);
     setMapBusy(false); setMapDraft(d);
     // 默认勾选所有「能落点」的
     setPicked(new Set(d.records.map((r, i) => (r.geo ? i : -1)).filter((i) => i >= 0)));
@@ -306,7 +311,7 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
               {mapBusy ? <><Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={3} />建图中…</> : <><Map className="w-3.5 h-3.5" strokeWidth={2.5} />开始建图</>}
             </button>
           </div>
-          {mapBusy && <div className="mt-2 text-[9.5px] text-black/55 leading-snug border-t-2 border-dashed border-black/15 pt-1.5">{phase}</div>}
+          {mapRunId && <div className="mt-2"><RunTrace runId={mapRunId} /></div>}
         </div>
 
         {mapDraft && (

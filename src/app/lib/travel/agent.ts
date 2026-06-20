@@ -12,12 +12,12 @@ export async function runPlan(input: PlanInput, onPhase?: OnTravelPhase): Promis
   const dest = destination(input.destName) || DESTINATIONS[0];
 
   // ① 读跨域长期画像（电影/读书/音乐+travel）——只会被「云脑」那一级注入，端侧不碰（隐私边界）
-  ph('读取你的长期口味');
+  ph('读取你的长期口味', '本地画像');
   const memoryBlock = assembleMemory({ domain: 'travel' });
 
-  // ② 三级排序：云脑按画像挑 → 端侧真后端按偏好挑 → 本地命中度兜底
-  ph('按你的口味挑地点');
+  // ② 三级排序：云脑按画像挑 → 端侧真后端按偏好挑 → 本地命中度兜底（算完才知用了哪级 → 带 mode badge 一次性发）
   const { scores, mode } = await rankPOIs(dest, input.prefs, memoryBlock);
+  ph('按你的口味挑地点', mode);
 
   // ③ 分天
   const days = planTrip(dest, input.prefs, input.days, scores || undefined);
@@ -32,7 +32,7 @@ export async function runArchive(imageDataUrls: string[], onPhase?: OnArchivePha
   ph('端侧读票据');
   const shots = await ocrShots(imageDataUrls, (d, n) => ph(`端侧读票据 ${d}/${n}`));
   if (!shots.length) return { archive: null, shots: 0, reason: 'noEdge' };
-  ph('整理成行程');
+  ph('整理成行程', '云脑结构化');
   const archive = await structureTrip(shots);
   ph('完成');
   return { archive, shots: shots.length, reason: archive ? undefined : 'noStructure' };

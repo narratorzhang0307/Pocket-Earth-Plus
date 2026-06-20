@@ -50,7 +50,7 @@ export default function TravelRunPage({ onBack }: Props) {
   const makePlan = async () => {
     const run = startCuratorRun(`规划行程 · ${destName} ${days}天`); setPlanRunId(run.runId);
     setPlanning(true); setPhase('');
-    const tp = await runPlan({ destName, prefs: [...prefs], days }, (p) => { setPhase(p); run.phase(p); });
+    const tp = await runPlan({ destName, prefs: [...prefs], days }, (p, detail) => { setPhase(p); run.phase(p, detail); });
     run.end(!!tp);
     setPlan(tp);
     if (tp.mode === '本地') showToast('云脑/端侧未就绪 · 本地按喜好排序');
@@ -87,7 +87,7 @@ export default function TravelRunPage({ onBack }: Props) {
       const urls = await Promise.all([...files].slice(0, 8).map((f) => new Promise<string>((res) => {
         const r = new FileReader(); r.onload = () => res(String(r.result || '')); r.onerror = () => res(''); r.readAsDataURL(f);
       })));
-      const { archive, reason } = await runArchive(urls.filter(Boolean), (p) => { setArchivePhase(p); run.phase(p); });
+      const { archive, reason } = await runArchive(urls.filter(Boolean), (p, detail) => { setArchivePhase(p); run.phase(p, detail); });
       run.end(!!archive);
       if (archive) setArchiveDraft(archive);
       else if (reason === 'noEdge') showToast('端侧模型未就绪：去控制台加载端侧 Qwen3，或用下面手动录入');

@@ -26,7 +26,7 @@ export interface MapDraft {
   rounds: number;
   via: 'cloud';
 }
-export type OnResearchPhase = (msg: string) => void;
+export type OnResearchPhase = (msg: string, note?: string) => void;   // note → RunTrace 云/端侧/本地 badge
 
 // JSON 解析走 enrichEntity skill 的 extractJSON（统一一处稳健解析）
 const norm = (s: string) => (s || '').trim().toLowerCase().replace(/\s+/g, '');
@@ -94,7 +94,7 @@ export async function populateMap(
   const byKey = new Map<string, MapRecord>();  // 去重后的记录
   const queriesRun: string[] = [];
 
-  ph('① 规划：拆解主题…');
+  ph('① 规划：拆解主题…', 'Qwen 云脑');
   const plan = await planMap(manifest, goal);   // 只调一次规划器
   let queue = plan.queries;
   const target = plan.target;
@@ -107,7 +107,7 @@ export async function populateMap(
       const sig = norm(q);
       if (executed.has(sig)) continue;          // 跳过重复动作
       executed.add(sig); queriesRun.push(q);
-      ph(`② 第${round}轮 · 搜索抽取：「${q}」（${queriesRun.length}/${maxQueries}）`);
+      ph(`② 第${round}轮 · 搜索抽取：「${q}」（${queriesRun.length}/${maxQueries}）`, 'Qwen 联网搜索');
       let recs: MapRecord[] = [];
       try { recs = await runQuery(manifest, q); } catch { recs = []; }   // 舱壁：单查询失败不崩
       for (const rec of recs) {
@@ -117,16 +117,16 @@ export async function populateMap(
       saveProgress(goal, { goal, records: [...byKey.values()], queriesRun, rounds: round });
     }
     // 反思：够了吗？
-    if (byKey.size >= target) { ph('③ 反思：已达目标数量，收敛'); break; }
-    ph('③ 反思：检查覆盖、补查询…');
+    if (byKey.size >= target) { ph('③ 反思：已达目标数量，收敛', 'Qwen 云脑'); break; }
+    ph('③ 反思：检查覆盖、补查询…', 'Qwen 云脑');
     const { done, more } = await reflectGaps(manifest, goal, [...byKey.values()].map((r) => r.label));
-    if (done || !more.length) { ph('③ 反思：覆盖足够，收敛'); break; }
+    if (done || !more.length) { ph('③ 反思：覆盖足够，收敛', 'Qwen 云脑'); break; }
     queue = more.filter((q) => !executed.has(norm(q)));
     if (!queue.length) break;
   }
 
   // 地理编码（真实 geocoding：本地表→Mapbox→缓存，破"只认~100城"）
-  ph('④ 地理编码：把条目落到坐标…');
+  ph('④ 地理编码：把条目落到坐标…', 'resolvePlace 本地→Mapbox');
   for (const rec of byKey.values()) {
     const hit = rec.city ? await resolvePlace(rec.city) : null;
     if (hit) rec.geo = { place: hit.place, lat: hit.lat, lng: hit.lng };

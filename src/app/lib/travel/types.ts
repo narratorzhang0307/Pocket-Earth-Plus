@@ -13,7 +13,7 @@ export type PlanMode = '云脑' | '端侧' | '本地';
 export interface PlanInput { destName: string; prefs: Pref[]; days: number }
 export interface TripPlan { dest: Destination; days: DayPlan[]; mode: PlanMode }
 
-export type OnTravelPhase = (phase: string) => void;
+export type OnTravelPhase = (phase: string, detail?: string) => void;   // detail → RunTrace 云/端侧/本地 badge
 
 // A 线（手动存档版 P0，无 OCR）：用户手填一个停留点 → 钉地球。
 export type TripMode = 'train' | 'flight' | 'bus' | 'car' | 'walk';
@@ -36,7 +36,7 @@ export interface TripArchive {
   id: string; title: string; dateStart?: string; dateEnd?: string;
   cities: string[]; segments: Segment[]; stays: Stay[]; spots: Spot[]; confidence: number;
 }
-export type OnArchivePhase = (phase: string) => void;
+export type OnArchivePhase = (phase: string, detail?: string) => void;   // detail → RunTrace badge
 
 // 行程月份 → 季节（回流 seasons 字段用）。
 export function seasonOf(date?: string): string | null {
