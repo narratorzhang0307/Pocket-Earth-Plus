@@ -4,6 +4,7 @@ import { edgeSafe } from '../../../frost-agent/edge/contract';
 import { assembleMemory } from '../lib/memoryRouter';
 import { HUMAN_VOICE, cleanVoice } from '../../../frost-agent/harness/persona';
 import { streamText } from '../../../frost-agent/sync/stream';
+import { streamComplete } from '../lib/streamComplete';
 import AgentLuIcon from './AgentLuIcon';
 import UserZhaIcon from './UserZhaIcon';
 
@@ -103,35 +104,46 @@ export default function AgentChat({ config }: { config: AgentChatConfig }) {
 
       let reply = '';
       let failed = false;
+      let streamedLive = false;   // 真 SSE 已在气泡里逐 token 填完 → 不再走打字机
+      let bubblePushed = false;   // 气泡是否已放（brain 路径会放空气泡；buildNewRecs 专路不放）
+      const setLast = (patch: Partial<{ text: string; error: boolean }>) =>
+        setTurns((t) => { const n = [...t]; const li = n.length - 1; if (n[li]?.role === 'agent') n[li] = { ...n[li], ...patch }; return n; });
       // 「推荐没看过的」专路：源头先把已看的候选过滤掉，从根上避免推已看（不靠事后红标注补救）。
       if (config.checkSeen && wantsNew(text)) {
         try { reply = (await buildNewRecs(text, history)) || ''; } catch { reply = ''; }
       }
-      // 普通对话（含「推经典」场景、讨论、找片）：自然语言作答；事后由 checkSeen 标注可能误推的已看。
+      // 普通对话（含「推经典」场景、讨论、找片）：真 SSE 逐 token 流式作答（替代「整段生成 + 打字机模拟」）。
       if (!reply) {
         const memory = assembleMemory();   // 长期记忆经记忆中枢统一装配后注入云脑 system
         const system = `${config.persona}\n\n${memory ? memory + '\n\n' : ''}【用户数据】\n${config.context()}\n\n${HUMAN_VOICE}\n\n要求：结合用户的口味画像作答，像懂行的朋友，具体有判断，不超过 180 字。【若用户要你推荐】只推荐 ta 大概率「没看过 / 没读过 / 没听过」的冷门、小众或近作，主动避开人尽皆知的主流经典（ta 几乎都接触过了），每条点明为何对 ta 的味；绝不推荐 ta 很可能已经接触过的东西。`;
         const prompt = `${history ? history + '\n' : ''}用户：${text}`;
+        if (!mountedRef.current) return;
+        setTurns((t) => [...t, { role: 'agent', text: '', intent: intent || undefined }]); bubblePushed = true;   // 空气泡，下面逐 token 填
         try {
-          const r = await fetch('/api/frost-llm', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt, system }) });
-          if (r.ok) { const d = await r.json(); reply = cleanVoice(typeof d?.text === 'string' ? d.text : ''); }
-          else failed = true;                  // 4xx/5xx：服务异常（fetch 不抛错）
-        } catch { failed = true; }             // 网络层失败
-        if (!reply) { reply = failed ? '没连上大脑（网络或服务异常）。点「重试」再发一次，或先翻左边「数据层」。' : '我这边没生成出内容，换个说法再试试。'; }
+          const full = await streamComplete(prompt, { system, onToken: (_tok, soFar) => { if (mountedRef.current) setLast({ text: soFar }); } });
+          reply = cleanVoice(full) || '我这边没生成出内容，换个说法再试试。';
+          if (mountedRef.current) setLast({ text: reply });   // 流完 → 用清洗后的最终文本替换
+          streamedLive = true;
+        } catch {
+          // 流式失败 → 回落非流式 fetch（保持原兜底语义），气泡已存在、交给下面打字机填
+          try {
+            const r = await fetch('/api/frost-llm', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt, system }) });
+            if (r.ok) { const d = await r.json(); reply = cleanVoice(typeof d?.text === 'string' ? d.text : ''); } else failed = true;
+          } catch { failed = true; }
+          if (!reply) reply = failed ? '没连上大脑（网络或服务异常）。点「重试」再发一次，或先翻左边「数据层」。' : '我这边没生成出内容，换个说法再试试。';
+        }
       }
       if (!mountedRef.current) return;        // 期间卸载 → 不再 setState
-      // 流式渲染（P2-J）：先放空气泡，再按打字机逐字填充
-      setTurns((t) => [...t, { role: 'agent', text: '', intent: intent || undefined, error: failed }]);
+      if (streamedLive) return;               // 真流式已填完，结束
+      // buildNewRecs 专路 / 流式回落：仍用打字机逐字填（专路无气泡则补放、回落气泡已在）
+      if (!bubblePushed) {
+        setTurns((t) => [...t, { role: 'agent', text: '', intent: intent || undefined, error: failed }]);
+      } else { setLast({ error: failed }); }
       let acc = '';
       await streamText(reply, (e) => {
         if (!mountedRef.current) return;     // 卸载后停止填充，避免对已卸载组件 setState
-        if (e.phase === 'delta' && e.delta) {
-          acc += e.delta;
-          const cur = acc;
-          setTurns((t) => { const n = [...t]; const li = n.length - 1; if (n[li]?.role === 'agent') n[li] = { ...n[li], text: cur }; return n; });
-        } else if (e.phase === 'end') {
-          setTurns((t) => { const n = [...t]; const li = n.length - 1; if (n[li]?.role === 'agent') n[li] = { ...n[li], text: reply }; return n; });
-        }
+        if (e.phase === 'delta' && e.delta) { acc += e.delta; const cur = acc; setLast({ text: cur }); }
+        else if (e.phase === 'end') { setLast({ text: reply }); }
       }).done;
     } finally {
       if (mountedRef.current) setBusy(false);   // try/finally：任何抛错也不把对话框永久锁死

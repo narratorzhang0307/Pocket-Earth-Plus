@@ -90,6 +90,48 @@ async function handleFrostLlm(req, res) {
   }
 }
 
+// ——————————————————— /api/frost-llm-stream（云脑 · 真 SSE token 流，additive 不改上面的非流式路由）———————————————————
+// DashScope/Qwen OpenAI 兼容流式：上游 stream:true 吐 SSE，逐 token 透传给前端 data:{token}；收尾 data:{done:true}。
+async function handleFrostLlmStream(req, res) {
+  if (req.method !== 'POST') { res.statusCode = 405; res.end(); return }
+  const raw = await readBody(req)
+  res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive', 'x-accel-buffering': 'no' })
+  const sse = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`)
+  try {
+    if (!LLM) { sse({ done: true, error: 'no_key' }); res.end(); return }
+    const { prompt, system } = JSON.parse(raw || '{}')
+    const messages = []
+    if (system) messages.push({ role: 'system', content: system })
+    messages.push({ role: 'user', content: prompt })
+    const r = await fetch(LLM.url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${LLM.key}` },
+      body: JSON.stringify({ model: LLM.model, messages, temperature: 0.7, stream: true }),
+    })
+    if (!r.ok || !r.body) { sse({ done: true, error: 'http_' + r.status }); res.end(); return }
+    const reader = r.body.getReader()
+    const dec = new TextDecoder()
+    let buf = ''
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() || ''   // 末行可能不完整，留到下一块
+      for (const line of lines) {
+        const t = line.trim()
+        if (!t.startsWith('data:')) continue
+        const payload = t.slice(5).trim()
+        if (payload === '[DONE]') { sse({ done: true }); res.end(); return }
+        try { const tok = JSON.parse(payload)?.choices?.[0]?.delta?.content; if (tok) sse({ token: tok }) } catch { /* 跳过非 JSON 行 */ }
+      }
+    }
+    sse({ done: true }); res.end()
+  } catch (e) {
+    try { sse({ done: true, error: String(e) }); res.end() } catch { /* 连接已断 */ }
+  }
+}
+
 // ——————————————————— /api/edge（端侧推理 + 三级降级） ———————————————————
 const edgeCache = { ollama: null, ollamaAt: 0, mnn: null, mnnAt: 0 }
 async function probeOllama() {
@@ -346,6 +388,7 @@ const server = http.createServer(async (req, res) => {
   const p = url.pathname
   try {
     if (p === '/api/frost-llm') return await handleFrostLlm(req, res)
+    if (p === '/api/frost-llm-stream') return await handleFrostLlmStream(req, res)
     if (p === '/api/edge') return await handleEdge(req, res)
     if (p === '/api/unsplash') return await handleUnsplash(req, res, url)
     if (p === '/api/travel-mcp') return await handleTravelMcp(req, res, url)
