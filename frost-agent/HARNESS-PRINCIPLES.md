@@ -64,7 +64,7 @@
 
 **原则**：子 agent 之间无法直接通信——每个只能拿到主 agent 显式传递的内容，看不到主对话历史，也感知不到其他子 agent。这是「报文传输」不是「共享内存」。所以每阶段输出必须高度结构化，主 agent 才能准确提取并转发。
 
-**在 frost-agent v2.0 里怎么落地**：第 5 条的流水线之所以能跑，靠的就是这条机制。`research` 的知识条目不会自动流到 `publish`——必须由 Router/主 agent 把 `research` 的 `Output` 提取出来、嵌入 `publish` 的任务描述。这对 frost-agent 的「trace 一等输出」是加分项：搬运动作本身就是可见的委派轨迹。设计要求：所有子 agent 的 `Output` 必须是机器可解析的结构（JSON/固定字段），禁止回传自由散文,否则主 agent 无法可靠转发,流水线断裂。
+**在 frost-agent v2.0 里怎么落地**：第 5 条的流水线之所以能跑，靠的就是这条机制。`research` 的知识条目不会自动流到 `publish`——必须由 Router/主 agent 把 `research` 的 `Output` 提取出来、嵌入 `publish` 的任务描述。这对 frost-agent 的「trace 作为核心产出」是加分项：搬运动作本身就是可见的委派轨迹。设计要求：所有子 agent 的 `Output` 必须是机器可解析的结构（JSON/固定字段），禁止回传自由散文,否则主 agent 无法可靠转发,流水线断裂。
 
 ---
 

@@ -48,7 +48,7 @@ v2.0 把第 4 章的工程原则系统落到 frost-agent。完整 13 条见 [HAR
 | Boundary | `harness/validator.ts` | 子 agent 只「建议」动作，过校验才落地 |
 | Sub-agents | `agents/*` | 每个 = `contract.md`（职责契约）+ 实现；含 runtime agent 与离线 pipeline |
 
-需要保留的设计资产：契约式子 agent（Who/What/Where/Output）、「只建议、后校验」边界、全链路降级、混合路由、trace 一等输出。
+需要保留的设计资产：契约式子 agent（Who/What/Where/Output）、「只建议、后校验」边界、全链路降级、混合路由、trace 作为核心产出。
 
 ## 4. 现状约束：三处把框架绑定在单一领域上的硬编码
 
