@@ -16,6 +16,7 @@ import FrostBuddyPage from './FrostBuddyPage';
 import FrostBuddy from './FrostBuddy';
 import OnDeviceBrainPanel from './OnDeviceBrainPanel';
 import AgentForgePage from './AgentForgePage';
+import UniversalCaptureRunPage from './UniversalCaptureRunPage';
 import { getCustomAgents, subscribeCustomAgents, type AgentManifest } from '../lib/agent';
 import { getLearnedSkills, subscribeSkills, type LearnedSkill } from '../../../frost-agent/harness/skillForge';
 import { startHeartbeat } from '../../../frost-agent/harness/heartbeat';
@@ -56,7 +57,7 @@ const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
 ];
 
 
-type Running = 'frost' | 'music' | 'podcast' | 'movies' | 'books' | 'photos' | 'travel' | 'planet' | 'council' | 'mood' | 'plaza' | 'forge' | 'agentforge' | null;
+type Running = 'frost' | 'music' | 'podcast' | 'movies' | 'books' | 'photos' | 'travel' | 'planet' | 'council' | 'mood' | 'plaza' | 'forge' | 'agentforge' | 'jot' | null;
 const RUN_BY_NAME: Record<string, Running> = {
   'music-curator': 'music', 'movies-curator': 'movies',
   'books-curator': 'books', 'photos-curator': 'photos', 'travel-curator': 'travel',
@@ -90,6 +91,7 @@ export default function MusicAgentsTab() {
   if (running === 'plaza') return <PublicPlazaPage onBack={() => setRunning(null)} />;
   if (running === 'forge') return <SkillForgePage onBack={() => setRunning(null)} onRun={runSkill} />;
   if (running === 'agentforge') return <AgentForgePage onBack={() => setRunning(null)} />;
+  if (running === 'jot') return <UniversalCaptureRunPage onBack={() => setRunning(null)} />;
 
   return (
     <div className="h-full flex flex-col bg-[#EAEAEA] font-sans">
@@ -128,6 +130,22 @@ export default function MusicAgentsTab() {
           <div className="min-w-0 flex-1">
             <div className="font-pixel text-[11px] tracking-wider text-black">FROST</div>
             <div className="text-[10.5px] text-black/60 leading-snug mt-0.5">我是弗洛斯特。在上界司命所创造的一切事物中，弗洛斯特是最完美的，最有威力的，也是最难以理解的。</div>
+          </div>
+          <span className="shrink-0 font-pixel text-[6px] uppercase tracking-wider border border-black bg-black text-[#7CFF6B] px-1.5 py-1">▶ RUN</span>
+        </button>
+
+        {/* 随手记一笔：一个框记一切（一等入口）—— frost 判域 → 钉到对应图层 */}
+        <button
+          onClick={() => setRunning('jot')}
+          className="w-full text-left flex items-center gap-2.5 border-2 border-black p-2.5 shadow-[3px_3px_0_rgba(0,0,0,0.85)] active:translate-y-px"
+          style={{ background: '#e6fff2' }}
+        >
+          <div className="w-3 h-3 shrink-0 bg-black flex items-center justify-center border border-black" style={{ boxShadow: '1px 1px 0px #00ff88' }}>
+            <div className="w-1.5 h-1.5" style={{ background: '#00ff88' }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="font-pixel text-[11px] tracking-wider text-black">JOT · 随手记一笔</div>
+            <div className="text-[10px] text-black/60 leading-snug mt-0.5">一句话或截图，frost 判这是书 / 影 / 行程 / 心情 → 钉到对应图层，不用先选 agent</div>
           </div>
           <span className="shrink-0 font-pixel text-[6px] uppercase tracking-wider border border-black bg-black text-[#7CFF6B] px-1.5 py-1">▶ RUN</span>
         </button>

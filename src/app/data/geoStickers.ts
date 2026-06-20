@@ -96,7 +96,7 @@ export function detectToneLocal(text: string): MoodTone {
   for (const [re, t] of TONE_LEX) if (re.test(text)) return t;
   return 'flat';
 }
-// 贴纸色：现按情绪基调选（不再 hash 随机）。同步、即时——地图「+」快速记一笔也复用它，零改动即得情绪色。
+// 贴纸色：现按情绪基调选（不再 hash 随机）。同步、即时——地图「+」快速记一笔也沿用它，零改动即得情绪色。
 export function pickStickerColor(text: string): string { return MOOD_TONES[detectToneLocal(text)].color; }
 
 // 地名 → 经纬度 [lng, lat]（城市级，中英文别名）。端侧/字典共用。

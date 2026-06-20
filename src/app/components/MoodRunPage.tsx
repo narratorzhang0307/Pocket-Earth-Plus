@@ -52,7 +52,7 @@ export default function MoodRunPage({ onBack }: Props) {
     setText('');
   };
 
-  // 单张心情贴（列表与时间线复用同一份 JSX，避免漂移）
+  // 单张心情贴（列表与时间线共用同一份 JSX，避免漂移）
   const renderSticker = (s: MoodSticker) => (
     <div key={s.id} className="relative border-2 border-black shadow-[2px_3px_0_rgba(0,0,0,0.55)] px-3 py-2.5" style={{ background: s.color, transform: `rotate(${s.rot * 0.4}deg)` }}>
       <span className="absolute -top-2 left-4 w-3 h-3 rounded-full bg-[#ff00ff] border-2 border-black" />
