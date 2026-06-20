@@ -22,6 +22,7 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
   const [result, setResult] = useState<CaptureResult | null>(null);
   const [runId, setRunId] = useState<string | null>(null);   // FrostBus 运行 id → RunTrace 实时编排树
   const [pinned, setPinned] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [toast, setToast] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -44,10 +45,17 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
   };
 
   const confirm = async () => {
-    if (!result || pinned) return;
-    const r = await result.confirm();
-    if (r.pinned) { setPinned(true); setToast(`已钉到地球 · ${result.where}`); }
-    else setToast(result.where.includes('待补') ? '还没定位到地点，去对应 agent 补一下' : '没能钉上，换种说法再试');
+    if (!result || pinned || confirming) return;   // confirming 守卫：挡住未结算前的二次点击（防 mood 重复落点）
+    setConfirming(true);
+    try {
+      const r = await result.confirm();
+      if (r.pinned) { setPinned(true); setToast(`已钉到地球 · ${result.where}`); }
+      else setToast(result.where.includes('待补') ? '还没定位到地点，去对应 agent 补一下' : '没能钉上，换种说法再试');
+    } catch {
+      setToast('没能钉上，换种说法再试');   // confirm() reject（如断网 geocode）也给反馈，不再静默失败
+    } finally {
+      setConfirming(false);
+    }
     window.setTimeout(() => setToast(''), 2400);
   };
 

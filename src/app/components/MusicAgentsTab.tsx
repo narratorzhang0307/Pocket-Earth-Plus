@@ -2,14 +2,12 @@
 // 内容静态提炼自 frost-agent/ARCHITECTURE.md 与各 contract.md
 import { useState, useEffect } from 'react';
 import MusicAgentPage from './MusicAgentPage';
-import PodcastAgentPage from './PodcastAgentPage';
 import MoviesAgentPage from './MoviesAgentPage';
 import BooksAgentPage from './BooksAgentPage';
 import PhotosAgentRunPage from './PhotosAgentRunPage';
 import TravelRunPage from './TravelRunPage';
 import CouncilPage from './CouncilPage';
 import PublicPlazaPage from './PublicPlazaPage';
-import SkillForgePage from './SkillForgePage';
 import FrostBuddyPage from './FrostBuddyPage';
 import FrostBuddy from './FrostBuddy';
 import OnDeviceBrainPanel from './OnDeviceBrainPanel';
@@ -34,7 +32,7 @@ const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
       { name: 'books-agent', role: '把书钉到故事地 / 作者地 + 读完日期', status: '契约就位' },
       { name: 'movies-agent', role: '把电影钉到取景地 / 故事地', status: '契约就位' },
       { name: 'photos-agent', role: '端侧整理相册，高价值照片钉地球', status: '契约就位' },
-      { name: 'travel-agent', role: '按喜好端侧规划行程，完成即钉星球', status: '契约就位' },
+      { name: 'travel-agent', role: '按喜好端侧规划行程，完成即钉地球', status: '契约就位' },
       { name: 'jot-agent', role: '一句话/截图 → frost 判书·影·行程·心情 → 钉到对应图层；记心情还能回望', status: '可运行' },
     ],
   },
@@ -55,7 +53,7 @@ const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
 ];
 
 
-type Running = 'frost' | 'music' | 'podcast' | 'movies' | 'books' | 'photos' | 'travel' | 'council' | 'plaza' | 'forge' | 'agentforge' | 'jot' | null;
+type Running = 'frost' | 'music' | 'movies' | 'books' | 'photos' | 'travel' | 'council' | 'plaza' | 'agentforge' | 'jot' | null;
 const RUN_BY_NAME: Record<string, Running> = {
   'music-agent': 'music', 'movies-agent': 'movies',
   'books-agent': 'books', 'photos-agent': 'photos', 'travel-agent': 'travel',
@@ -81,14 +79,12 @@ export default function MusicAgentsTab() {
 
   if (running === 'frost') return <FrostBuddyPage onBack={() => setRunning(null)} onRun={runSkill} />;
   if (running === 'music') return <MusicAgentPage onBack={() => setRunning(null)} />;
-  if (running === 'podcast') return <PodcastAgentPage onBack={() => setRunning(null)} />;
   if (running === 'movies') return <MoviesAgentPage onBack={() => setRunning(null)} />;
   if (running === 'books') return <BooksAgentPage onBack={() => setRunning(null)} />;
   if (running === 'photos') return <PhotosAgentRunPage onBack={() => setRunning(null)} />;
   if (running === 'travel') return <TravelRunPage onBack={() => setRunning(null)} />;
   if (running === 'council') return <CouncilPage onBack={() => setRunning(null)} />;
   if (running === 'plaza') return <PublicPlazaPage onBack={() => setRunning(null)} />;
-  if (running === 'forge') return <SkillForgePage onBack={() => setRunning(null)} onRun={runSkill} />;
   if (running === 'agentforge') return <AgentForgePage onBack={() => setRunning(null)} />;
   if (running === 'jot') return <UniversalCaptureRunPage onBack={() => setRunning(null)} />;
 
@@ -110,7 +106,7 @@ export default function MusicAgentsTab() {
       {/* 状态条 */}
       <div className="px-4 py-2.5 border-b-2 border-black bg-black text-[#00ff88] shrink-0">
         <div className="font-pixel text-[9px] flex justify-center items-center tracking-widest">
-          <span>AGENTS: {Object.keys(RUN_BY_NAME).length}</span>
+          <span>AGENTS: {GROUPS.find((g) => g.title === 'AGENTS')?.items.length ?? 0}</span>
         </div>
       </div>
 

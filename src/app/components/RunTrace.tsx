@@ -34,8 +34,10 @@ function useRunEvents(runId: string | null): FrostEvent[] {
 export default function RunTrace({ runId }: { runId: string | null }) {
   const events = useRunEvents(runId);
   const [, tick] = useState(0);
-  // 让「进行中」步骤的耗时实时走动
-  useEffect(() => { const id = setInterval(() => tick((n) => n + 1), 200); return () => clearInterval(id); }, []);
+  // done 一旦出现即永久为真（events 只增）→ 运行结束后停表，避免已完成运行仍以 5fps 空转重渲染
+  const isDone = !!(runId && events.some((e) => e.runId === runId && e.phase !== 'start'));
+  // 让「进行中」步骤的耗时实时走动（仅运行中）
+  useEffect(() => { if (isDone) return; const id = setInterval(() => tick((n) => n + 1), 200); return () => clearInterval(id); }, [isDone]);
 
   if (!runId || !events.length) return null;
   const root = events.find((e) => e.runId === runId && e.phase === 'start');

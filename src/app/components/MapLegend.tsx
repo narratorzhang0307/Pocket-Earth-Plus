@@ -3,7 +3,7 @@ import type { Planet } from '../data/planets';
 import { X } from 'lucide-react';
 
 // 地球左下角图例 + 图层开关：标明每种颜色代表什么，点一下开/闭该类点。
-// 上段=基础五类（从 MARKER_KINDS 自动列出），下段=用户建立的「星球」（圆点，可开关 / 删除）。
+// 上段=基础各类（从 MARKER_KINDS 自动列出），下段=用户建立的「星球」（圆点，可开关 / 删除）。
 
 // 图例文字字体：微软雅黑（Windows）→ 其它平台对应黑体兜底
 const YAHEI = "'Microsoft YaHei','微软雅黑','PingFang SC','Heiti SC',sans-serif";

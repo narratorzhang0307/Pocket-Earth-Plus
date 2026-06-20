@@ -185,7 +185,7 @@ export default function MarkerDetail({ data, onClose, onRemove }: { data: Marker
               <div className="flex items-center justify-between gap-1.5 mt-2.5">
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2" style={{ background: '#ff3b6b' }} />
-                  <span className="font-pixel text-[7px] text-black/50 tracking-wider">{data.date ? `走过 · ${data.date}` : '已钉星球'}</span>
+                  <span className="font-pixel text-[7px] text-black/50 tracking-wider">{data.date ? `走过 · ${data.date}` : '已钉地球'}</span>
                 </div>
                 {data.markId && onRemove && (
                   <button onClick={() => { onRemove(data.markId!); onClose(); }}

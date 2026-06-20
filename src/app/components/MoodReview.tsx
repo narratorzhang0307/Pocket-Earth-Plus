@@ -45,7 +45,7 @@ export default function MoodReview() {
       <div className="border-2 border-black bg-white p-4 shadow-[2px_2px_0_rgba(0,0,0,0.85)] text-center">
         <MapPin className="w-6 h-6 mx-auto mb-2" strokeWidth={2} style={{ color: '#caa400' }} />
         <div className="text-[12px] font-bold mb-1">还没有心情贴</div>
-        <div className="text-[11px] text-black/55 leading-snug">去「记一笔」写一句此刻的心情，它会钉到地图、也会在这里累积成情绪足迹。</div>
+        <div className="text-[11px] text-black/55 leading-snug">去「记一笔」写一句此刻的心情，它会钉到地球、也会在这里累积成情绪足迹。</div>
       </div>
     );
   }

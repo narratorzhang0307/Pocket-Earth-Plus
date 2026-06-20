@@ -24,7 +24,7 @@ export interface MapMarker {
   author?: string; authorLink?: string; photoLink?: string;  // Unsplash 署名（世界照片）
 }
 
-// 图例 / 开关用的类型配置：标签 + 颜色（绿=音乐，青=照片，琥珀=电影，紫=书，玫红=行程）
+// 图例 / 开关用的类型配置：标签 + 颜色（绿=音乐，青=照片，琥珀=电影，紫=书，玫红=行程，金=议事，橙=自建）
 export const MARKER_KINDS: { kind: MarkerKind; label: string; color: string }[] = [
   { kind: 'music', label: '音乐', color: '#00ff88' },
   { kind: 'photo', label: '照片', color: '#00e5ff' },

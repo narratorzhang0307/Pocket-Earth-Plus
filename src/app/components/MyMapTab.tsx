@@ -132,7 +132,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
 
   const [map, setMap] = useState<mapboxgl.Map | null>(null);
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
-  // 地图标记图层：哪些类型可见（音乐 / 照片），由左下角图例开关控制
+  // 地图标记图层：哪些类型可见（初始全部 7 类，由左下角图例开关切换）
   const [visibleKinds, setVisibleKinds] = useState<Set<MarkerKind>>(() => new Set<MarkerKind>(['music', 'photo', 'movie', 'book', 'travel', 'council', 'custom']));
   // 电影/书标记懒加载完成后翻转，触发统计与图层重算
   const [markersReady, setMarkersReady] = useState(false);
@@ -748,7 +748,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
           )}
         </div>
 
-        {/* 左下角图例 + 图层开关（基础五类方块 + 用户星球圆点，可开闭）*/}
+        {/* 左下角图例 + 图层开关（基础各类方块 + 用户星球圆点，可开闭）*/}
         <MapLegend
           visibleKinds={visibleKinds}
           onToggle={toggleKind}
