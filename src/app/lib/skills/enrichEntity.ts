@@ -7,13 +7,16 @@
 //   （电影 导演/演员/流派 vs 书 作者/译者 字段不同，强行塞进一个"通用 schema"会是泄漏抽象，故不做）。
 // 任何要"让云脑按结构吐数据"的 agent/场景都可复用。app 层 skill（打 /api/frost-llm，与 curator 同层）。
 
-/** 从 LLM 文本里容错抽出第一个 JSON 对象/数组（容忍代码块包裹与前后废话）。失败返回 null。 */
+/** 从 LLM 文本里容错抽出 JSON（容忍代码块包裹与前后废话）。对象优先→数组→整段，取第一个能解析的。失败返回 null。 */
 export function extractJSON<T = unknown>(text: string): T | null {
   if (!text) return null;
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const body = fence ? fence[1] : text;
-  const m = body.match(/[{[][\s\S]*[}\]]/);
-  try { return JSON.parse(m ? m[0] : body) as T; } catch { return null; }
+  const tryParse = (s: string | null): T | null => { if (!s) return null; try { return JSON.parse(s) as T; } catch { return null; } };
+  // 对象优先（多数调用方要对象）：first{…last}——避免 prose 里的杂散 [ 把贪婪匹配撑大致解析失败；无对象再退数组；再退整段。
+  const obj = body.indexOf('{') !== -1 ? body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1) : null;
+  const arr = body.indexOf('[') !== -1 ? body.slice(body.indexOf('['), body.lastIndexOf(']') + 1) : null;
+  return tryParse(obj) ?? tryParse(arr) ?? tryParse(body.trim());
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {

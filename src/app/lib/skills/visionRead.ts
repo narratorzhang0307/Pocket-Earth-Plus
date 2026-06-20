@@ -14,10 +14,11 @@
 import { edgeSafe } from '../../../../frost-agent/edge/contract';
 
 // 确定性脱敏（不靠模型自觉）：长卡号 → 证件(18,含X) → 手机(11)。顺序避免互吃字。
+// 证件(18位,含尾X)在前 + 前后数字边界(?<!\d)…(?!\d)：否则 16-19 的卡号正则会先吃掉 18 位身份证、误标成卡号且漏掉尾 X。
 const REDACT: [RegExp, string][] = [
-  [/\d{16,19}/g, '***卡号***'],
-  [/\d{17}[\dXx]/g, '***证件***'],
-  [/1[3-9]\d{9}/g, '***手机***'],
+  [/(?<!\d)\d{17}[\dXx](?!\d)/g, '***证件***'],
+  [/(?<!\d)\d{16,19}(?!\d)/g, '***卡号***'],
+  [/(?<!\d)1[3-9]\d{9}(?!\d)/g, '***手机***'],
 ];
 export function redactText(s: string): string { let t = s || ''; for (const [re, rep] of REDACT) t = t.replace(re, rep); return t; }
 

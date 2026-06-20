@@ -62,6 +62,7 @@ export async function textExtract(input: TextExtractInput): Promise<TextExtractR
     }
   } catch { /* 落到云 */ }
   if (!obj) { obj = await enrichJSON<Record<string, string>>({ prompt: sp }); if (obj) via = 'cloud'; }
+  if (obj && Array.isArray(obj)) { obj = null; via = 'none'; }   // 模型误吐 JSON 数组 → 当未结构化，落单字段兜底，不静默返回空
 
   // 单字段兜底：没出 JSON 但只有一个字段 → 文本本身就是答案，取首行冒号后的值。
   if (!obj && input.fields.length === 1) {

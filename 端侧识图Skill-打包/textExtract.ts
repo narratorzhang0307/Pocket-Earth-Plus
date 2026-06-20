@@ -37,13 +37,15 @@ export interface TextExtractResult {
   via: 'edge' | 'cloud' | 'none';     // 结构化走端侧、走云，还是没走（单字段兜底=none）
 }
 
-// 容错抽 JSON（容忍 ```json 包裹、前后废话）。
+// 容错抽 JSON：对象优先→数组→整段，取第一个能解析的（避免 prose 杂散 [ 撑大贪婪匹配）。
 function extractJSON(text: string): Record<string, string> | null {
   if (!text) return null;
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const body = fence ? fence[1] : text;
-  const m = body.match(/\{[\s\S]*\}/);
-  try { return JSON.parse(m ? m[0] : body); } catch { return null; }
+  const tryParse = (s: string | null): Record<string, string> | null => { if (!s) return null; try { return JSON.parse(s); } catch { return null; } };
+  const obj = body.indexOf('{') !== -1 ? body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1) : null;
+  const arr = body.indexOf('[') !== -1 ? body.slice(body.indexOf('['), body.lastIndexOf(']') + 1) : null;
+  return tryParse(obj) ?? tryParse(arr) ?? tryParse(body.trim());
 }
 
 function structurePrompt(domain: string, fields: FieldSpec[], raw: string, instruction?: string): string {
@@ -72,6 +74,7 @@ export async function textExtract(input: TextExtractInput, deps: TextExtractDeps
     obj = extractJSON(t);
     if (obj) via = deps.structureOnDevice ? 'edge' : 'cloud';
   } catch { /* obj 仍为 null */ }
+  if (obj && Array.isArray(obj)) { obj = null; via = 'none'; }   // 模型误吐数组 → 当未结构化，落单字段兜底
 
   // 单字段兜底
   if (!obj && input.fields.length === 1) {

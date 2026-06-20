@@ -35,8 +35,8 @@ export async function resolvePlace(query: string, opts?: { near?: [number, numbe
   const ckey = clean(raw).toLowerCase();
   if (ckey in cache) return cache[ckey];
 
-  // 3. Mapbox
-  if (!MAPBOX_TOKEN) { cache[ckey] = null; saveCache(); return null; }
+  // 3. Mapbox（无 token：不缓存——token 可能稍后注入，缓存 null 会让恢复后也不再请求）
+  if (!MAPBOX_TOKEN) return null;
   try {
     const u = new URL('https://api.mapbox.com/search/geocode/v6/forward');
     u.searchParams.set('q', clean(raw));
@@ -57,8 +57,10 @@ export async function resolvePlace(query: string, opts?: { near?: [number, numbe
         cache[ckey] = hit; saveCache();
         return hit;
       }
+      // Mapbox 明确返回无匹配 → 确定性 miss，缓存避免重复请求。
+      cache[ckey] = null; saveCache();
     }
-  } catch { /* 网络失败 → 记 miss，调用方走兜底 */ }
-  cache[ckey] = null; saveCache();
+    // 非 2xx（429/500/503 等瞬时）→ 不缓存，留待恢复后重试
+  } catch { /* 网络失败 → 不缓存，下次重试 */ }
   return null;
 }

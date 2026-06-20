@@ -38,9 +38,9 @@ export async function classifyVision(canvas: HTMLCanvasElement): Promise<VisionR
   if (!isReal) {
     return { isReal: false, realProb, utilityKind: document > screenshot ? 'document' : 'screenshot' };
   }
-  // 实拍再判子类
+  // 实拍再判子类（STAGE2 瞬时失败也别丢已确认的 isReal——只是没有子类标签）
   const s2 = await classifyImage(dataUrl, STAGE2);
-  if (!s2) return null;
+  if (!s2) return { isReal: true, realProb };
   const top = s2.slice().sort((a, b) => b.score - a.score)[0];
   const subTag = top && top.score > 0.3 ? TAG[top.label] : undefined;
   const subKind: 'place' | 'life' = (top?.label === 'a scenery or landscape photo' || top?.label === 'a city street or building photo') ? 'place' : 'life';

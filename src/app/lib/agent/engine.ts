@@ -23,7 +23,8 @@ export interface CustomDraft {
   reason: string;
 }
 
-const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9一-龥-]/g, '').slice(0, 40) || 'item';
+// 保留所有 Unicode 字母/数字（不止汉字）——否则日文假名/韩文/西里尔被删光，不同输入会归一成同一 id 致草稿碰撞。
+const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^\p{L}\p{N}-]/gu, '').slice(0, 40) || 'item';
 
 function buildPrompt(manifest: AgentManifest, input: string): string {
   const strat = manifest.geoStrategy.map((g) => GEO_LABEL[g] || g).join(' > ');
