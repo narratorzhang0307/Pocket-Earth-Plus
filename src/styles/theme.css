@@ -207,3 +207,13 @@
     animation: bounce-slow 3s ease-in-out infinite;
   }
 }
+
+/* 表单元素字号修复（未分层 → 压过 preflight 与 utility）：
+   Tailwind v4 preflight 给 input/textarea/select 的 font-size 实测压过了分层的 text-[Npx] 工具类，
+   把输入框/文本域撑成 html 的 16px（远大于设计的 text-[11~12px]）。这里统一设成 12px——
+   本 app 输入框本就都用小字号，不再有"输入的字撑得很大"的问题。个别要更大的用内联 style 覆盖（内联 > 此规则）。 */
+input,
+textarea,
+select {
+  font-size: 12px;
+}
