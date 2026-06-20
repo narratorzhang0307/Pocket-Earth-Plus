@@ -34,7 +34,7 @@ function load(): Profile {
     const raw = localStorage.getItem(KEY);
     if (!raw) return empty();
     const p = JSON.parse(raw) as Profile;
-    if (!p || typeof p !== 'object' || !p.domains) return empty();
+    if (!p || typeof p !== 'object' || typeof p.domains !== 'object' || p.domains === null || Array.isArray(p.domains)) return empty();   // domains 必须是普通对象：损坏/旧版存成 7/"x"/数组时回落 empty()，免 recordSignals 在原始值上赋属性崩（与 heartbeat/skillForge 同款损坏存档护栏）
     return { domains: p.domains, seedVersion: p.seedVersion || 0, updatedAt: p.updatedAt || new Date().toISOString() };
   } catch { return empty(); }
 }
