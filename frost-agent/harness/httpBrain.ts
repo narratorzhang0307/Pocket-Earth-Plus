@@ -1,4 +1,4 @@
-// 真实大脑：把提示 POST 给 /api/frost-llm（Vite 中间件代理 DeepSeek）。
+// 真实大脑：把提示 POST 给 /api/frost-llm（Vite 中间件代理 通义 Qwen）。
 // 返回空串（无 key / 出错 / 非 dev）时，各子 agent 自动回退到规则 fallback。
 import { FrostBrain } from './types';
 

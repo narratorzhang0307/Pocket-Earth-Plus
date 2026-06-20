@@ -9,7 +9,7 @@ import AgentLuIcon from './AgentLuIcon';
 import UserZhaIcon from './UserZhaIcon';
 
 // music-curator 运行页 —— 电台 agent 的对话闭环（像素风）。
-// 用户说话 → runFrost 路由到子 agent（经 DeepSeek 大脑）→ 展示回复 + thinking trace + 歌单。
+// 用户说话 → runFrost 路由到子 agent（经 通义 Qwen 大脑）→ 展示回复 + thinking trace + 歌单。
 // 点歌单的播放在模块④接入真实音频；此处先把待播曲目交给 onPlay 回调。
 
 interface Turn {

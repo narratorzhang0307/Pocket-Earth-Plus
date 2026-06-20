@@ -9,7 +9,7 @@ import AgentLuIcon from './AgentLuIcon';
 import UserZhaIcon from './UserZhaIcon';
 
 // 通用「对话层」：各 agent（读书 / 观影 / 城市播客）共用的对话框。
-// 端侧先对用户这句话做意图分类（端侧「挑」），云大脑(/api/frost-llm → DeepSeek)结合用户数据作答（云「写」）。
+// 端侧先对用户这句话做意图分类（端侧「挑」），云大脑(/api/frost-llm → 通义 Qwen)结合用户数据作答（云「写」）。
 // 数据接地：每次发送把用户该领域的记录(context)注入 system，让回答基于「你的书/你的观影/你的城市」。
 
 export interface AgentChatConfig {

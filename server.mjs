@@ -1,6 +1,6 @@
 // Pocket Earth · 生产服务（线上 demo）
 // 单文件、零依赖（只用 Node 内置）：静态托管 dist/ + 把 dev 三中间件 1:1 搬到生产。
-//   /api/frost-llm  云脑（DeepSeek）代理，密钥服务端 .env 读，永不进前端 bundle
+//   /api/frost-llm  云脑（通义 Qwen）代理，密钥服务端 .env 读，永不进前端 bundle
 //   /api/edge       端侧推理（MNN sidecar / ollama / stub 三级降级），云上默认 stub
 //   /api/unsplash   星球 agent 抓图代理，access key 服务端读
 // 反代在前（nginx 443→本端口），本服务只监听内网端口。运行：node server.mjs（或 pm2）。
@@ -29,17 +29,14 @@ const DIST = path.join(__dirname, 'dist')
 })()
 
 const PORT = Number(process.env.API_PORT || process.env.PORT || 3008)
-// 云脑：优先通义 Qwen（DashScope · OpenAI 兼容），未配 DASHSCOPE_API_KEY 时回退 DeepSeek。
+// 云脑：通义 Qwen（DashScope · OpenAI 兼容）；无 key 时无云脑，各 agent 自动走规则兜底。
 const DASHSCOPE_KEY = process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY || ''
 const QWEN_MODEL = process.env.QWEN_MODEL || 'qwen-plus'
 const DASHSCOPE_BASE = process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-const DEEPSEEK_KEY = process.env.DEEPSEEK_API_KEY || ''
-// 现役云脑选型：有 Qwen key 用 Qwen，否则用 DeepSeek。
+// 现役云脑：通义 Qwen（DashScope）；无 key 则 LLM=null。
 const LLM = DASHSCOPE_KEY
   ? { name: 'qwen', key: DASHSCOPE_KEY, url: `${DASHSCOPE_BASE}/chat/completions`, model: QWEN_MODEL }
-  : DEEPSEEK_KEY
-    ? { name: 'deepseek', key: DEEPSEEK_KEY, url: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-chat' }
-    : null
+  : null
 const UNSPLASH_KEY = process.env.UNSPLASH_ACCESS_KEY || ''
 const OLLAMA = process.env.OLLAMA_URL || 'http://localhost:11434'
 const EDGE_MODEL = process.env.EDGE_MODEL || 'qwen3:0.6b'
@@ -61,7 +58,7 @@ function readBody(req) {
   })
 }
 
-// ——————————————————— /api/frost-llm（DeepSeek 云脑） ———————————————————
+// ——————————————————— /api/frost-llm（通义 Qwen 云脑） ———————————————————
 async function handleFrostLlm(req, res) {
   if (req.method !== 'POST') { res.statusCode = 405; res.end(); return }
   const raw = await readBody(req)

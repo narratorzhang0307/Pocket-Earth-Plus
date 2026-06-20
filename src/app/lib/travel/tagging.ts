@@ -1,4 +1,4 @@
-// 协作层（A 线）：脱敏文本（多张截图）→ 云脑 DeepSeek json → TripArchive 草稿。
+// 协作层（A 线）：脱敏文本（多张截图）→ 云脑 通义 Qwen json → TripArchive 草稿。
 // 强约束 JSON +「绝不编造」+ 忽略 *** 脱敏占位。结构在代码层组装（白名单字段），不靠 prompt 当保证。
 import { slug, type RawShot, type TripArchive, type Segment, type Stay, type Spot, type TripMode } from './types';
 import { enrichJSON } from '../skills/enrichEntity';

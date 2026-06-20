@@ -463,11 +463,11 @@
       <text class="tinyB" x="121" y="510">MNN → ollama → stub · edgeSafe</text>
       <rect class="boxB engineB" x="430" y="444" width="255" height="70"/>
       <text class="labelB" x="488" y="472">Cloud Brain</text>
-      <text class="subB" x="467" y="493">DeepSeek via /api/frost-llm</text>
+      <text class="subB" x="467" y="493">通义 Qwen via /api/frost-llm</text>
       <text class="tinyB" x="469" y="510">无 key / 出错 → 空串 fallback</text>
       <rect class="boxB futureB" x="755" y="444" width="250" height="70"/>
       <text class="labelB" x="808" y="472">Provider Compat</text>
-      <text class="subB" x="800" y="493">deepseek · qwen · mnn</text>
+      <text class="subB" x="800" y="493">qwen · qwen · mnn</text>
       <text class="tinyB" x="802" y="510">换模型 = 加 adapter</text>
       <rect class="boxB futureB" x="1080" y="444" width="240" height="70"/>
       <text class="labelB" x="1128" y="472">/api/unsplash</text>
@@ -557,7 +557,7 @@
             <tr><td>意图注册表</td><td class="code">harness/intentRegistry.ts</td><td><span class="status">已落地</span></td></tr>
             <tr><td>动作校验注册表</td><td class="code">harness/validator.ts</td><td><span class="status">已落地</span></td></tr>
             <tr><td>端侧 Selector</td><td class="code">edge/contract.ts · httpEdge.ts</td><td><span class="status edge">MNN / ollama / stub</span></td></tr>
-            <tr><td>云端 Brain</td><td class="code">brain.ts · httpBrain.ts · vite.config.ts</td><td><span class="status partial">DeepSeek 代理</span></td></tr>
+            <tr><td>云端 Brain</td><td class="code">brain.ts · httpBrain.ts · vite.config.ts</td><td><span class="status partial">通义 Qwen 代理</span></td></tr>
             <tr><td>长期画像</td><td class="code">harness/profile.ts</td><td><span class="status">已落地</span></td></tr>
             <tr><td>地图联动 store</td><td class="code">data/userMarks.ts · planets.ts · geoStickers.ts</td><td><span class="status">已落地</span></td></tr>
             <tr><td>Mapbox 地球</td><td class="code">components/MyMapTab.tsx · EarthMap.tsx</td><td><span class="status">已落地</span></td></tr>
@@ -579,7 +579,7 @@
         <h2>云端 Brain</h2>
         <p>负责“写”：歌单理由、城市文化回答、领域对话、圆桌发言、口味画像一句话摘要。密钥只在服务端，前端不持有。</p>
         <div class="pill-row">
-          <span class="pill">DeepSeek</span><span class="pill">provider-compat</span><span class="pill">fallback</span><span class="pill">cleanVoice</span>
+          <span class="pill">通义 Qwen</span><span class="pill">provider-compat</span><span class="pill">fallback</span><span class="pill">cleanVoice</span>
         </div>
       </div>
       <div class="panel">

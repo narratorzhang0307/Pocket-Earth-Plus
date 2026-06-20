@@ -44,7 +44,7 @@ flowchart TD
 
     ROUTER --> FAST["switch-handler<br/>播放 / 暂停 / 下一首 / 切城"]
     ROUTER --> EDGE_ROUTE["Edge Selector classify<br/>端侧预分类"]
-    ROUTER --> CLOUD_ROUTE["Cloud Brain llmRoute<br/>DeepSeek 判意图 + 抽实体"]
+    ROUTER --> CLOUD_ROUTE["Cloud Brain llmRoute<br/>通义 Qwen 判意图 + 抽实体"]
     ROUTER --> REGEX["Regex fallback<br/>无模型也能跑"]
 
     MEMORY["Memory<br/>最近 6 轮对话"] -.注入.-> CLOUD_ROUTE
@@ -52,7 +52,7 @@ flowchart TD
     HEALTH["Health + Trace<br/>降级可观测 / thinking trace"] -.记录.-> ROUTER
 
     EDGE["端侧 Selector<br/>MNN → ollama → stub<br/>classify / rank / embed / vision"] --> EDGE_ROUTE
-    BRAIN["云端 Brain<br/>/api/frost-llm → DeepSeek<br/>provider-compat"] --> CLOUD_ROUTE
+    BRAIN["云端 Brain<br/>/api/frost-llm → 通义 Qwen<br/>provider-compat"] --> CLOUD_ROUTE
 
     FAST --> REGISTRY["intentRegistry<br/>意图 → 处理器"]
     EDGE_ROUTE --> REGISTRY

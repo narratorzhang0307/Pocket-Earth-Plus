@@ -26,7 +26,7 @@ echo "==> 推送 dist + server.mjs 到 $REMOTE:$APP_DIR ..."
 rsync -az --delete -e "ssh -i $PEM -o StrictHostKeyChecking=no" \
   dist server.mjs "$REMOTE:$APP_DIR/"
 
-echo "==> 远程提示 .env（首次需手动创建，含 DEEPSEEK_API_KEY 等）"
+echo "==> 远程提示 .env（首次需手动创建，含 DASHSCOPE_API_KEY 等）"
 "${SSH[@]}" "$REMOTE" "[ -f $APP_DIR/.env ] && echo '已存在 .env' || echo '⚠️  $APP_DIR/.env 不存在，请先创建（见 deploy/online/README.md）'"
 
 echo "==> pm2 拉起/重启 ..."

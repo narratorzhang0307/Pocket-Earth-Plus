@@ -193,7 +193,7 @@ export default function CouncilPage({ onBack }: Props) {
           </div>
           <div className="text-[9px] text-black/45 leading-snug">
             {backend === 'cloud'
-              ? '☁ 云端：DeepSeek 大模型，辩论质量最好（需联网 + DEEPSEEK_API_KEY）。'
+              ? '☁ 云端：通义 Qwen 大模型，辩论质量最好（需联网 + DASHSCOPE_API_KEY）。'
               : '🖥 端侧：本地 Qwen（需装 ollama），离线可用、隐私不出端；未就绪时自动回落云端。'}
           </div>
 

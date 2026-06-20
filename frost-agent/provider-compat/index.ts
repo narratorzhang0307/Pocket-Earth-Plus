@@ -41,5 +41,3 @@ export function buildProviderRequest(provider: string, req: NormalizedRequest, k
 // ——— 注册内置 adapter（加新模型在此追加一行 import + register）———
 import { dashscopeAdapter } from './dashscope';
 registerProvider(dashscopeAdapter);   // 通义 Qwen（DashScope）—— 现役云脑
-import { deepseekAdapter } from './deepseek';
-registerProvider(deepseekAdapter);    // DeepSeek —— 回退云脑（未配 DashScope key 时）

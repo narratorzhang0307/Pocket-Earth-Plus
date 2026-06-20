@@ -7,7 +7,7 @@ import { edgeSafe } from '../../../frost-agent/edge/contract';
 import { HUMAN_VOICE, cleanVoice } from '../../../frost-agent/harness/persona';
 
 export type CouncilMode = 'roundtable' | 'debate' | 'courtroom' | 'brainstorm';
-export type CouncilBackend = 'cloud' | 'edge';  // 云端大模型(DeepSeek) / 端侧本地(Qwen via ollama)
+export type CouncilBackend = 'cloud' | 'edge';  // 云端大模型(通义 Qwen) / 端侧本地(Qwen via ollama)
 
 export interface CouncilModeDef { id: CouncilMode; label: string; emoji: string; blurb: string; tone: string }
 export const COUNCIL_MODES: CouncilModeDef[] = [

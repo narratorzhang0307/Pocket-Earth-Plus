@@ -5,7 +5,7 @@
 ```
 浏览器 ──https──▶ nginx :443  ──proxy──▶ node server.mjs :3008
                   （Certbot 证书）          ├─ /            静态托管 dist/（SPA 回退）
-                  HTTP:80 → 301 https        ├─ /api/frost-llm  云脑代理（DeepSeek，密钥服务端读）
+                  HTTP:80 → 301 https        ├─ /api/frost-llm  云脑代理（通义 Qwen，密钥服务端读）
                                              ├─ /api/edge       端侧推理（MNN/ollama/stub 三级降级）
                                              └─ /api/unsplash   星球 agent 抓图代理
 ```
@@ -15,13 +15,13 @@
 - **单文件零依赖服务**：`server.mjs` 只用 Node 内置模块，无需 `npm install`，直接 `node server.mjs` 或 pm2 拉起。
 - **构建期 / 运行期分离**：
   - `VITE_MAPBOX_TOKEN` 是**构建期**注入（`import.meta.env`），随 `dist` 打包；本地 `npm run build` 后发布 `dist` 即可，无需在服务器上构建。
-  - `DEEPSEEK_API_KEY` / `UNSPLASH_ACCESS_KEY` 是**运行期**由服务端从 `.env` 读，**永不进前端 bundle**。
+  - `DASHSCOPE_API_KEY` / `UNSPLASH_ACCESS_KEY` 是**运行期**由服务端从 `.env` 读，**永不进前端 bundle**。
 - **端侧降级**：端侧模型本是给真机的；线上 Web demo 默认 `EDGE_BACKEND=stub`，`/api/edge` 返回确定性兜底值，前端 `edgeSafe` 自动降级，功能不受影响。若服务器另起了 MNN sidecar / ollama，设 `MNN_URL` 或 `EDGE_BACKEND` 即可切真端侧。
 
 ## 服务器 `.env`（放在与 server.mjs 同目录，chmod 600）
 
 ```
-DEEPSEEK_API_KEY=...        # 云脑，必填才有 agent 对话
+DASHSCOPE_API_KEY=...        # 云脑，必填才有 agent 对话
 UNSPLASH_ACCESS_KEY=...     # 可选，星球 agent 抓图；缺省则该功能优雅降级
 API_PORT=3008               # 反代到的内网端口
 EDGE_BACKEND=stub           # auto|mnn|ollama|stub；云上默认 stub

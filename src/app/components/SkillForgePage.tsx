@@ -24,7 +24,7 @@ export default function SkillForgePage({ onBack, onRun }: Props) {
     setBusy(true); setDraft(null); setReview(null); setErr('');
     const m = await proposeSkill(d);
     setBusy(false);
-    if (!m) { setErr('云脑未就绪或拟稿失败（需配置 DEEPSEEK_API_KEY）。'); return; }
+    if (!m) { setErr('云脑未就绪或拟稿失败（需配置 DASHSCOPE_API_KEY）。'); return; }
     setDraft(m); setReview(reviewSkill(m));
   };
 

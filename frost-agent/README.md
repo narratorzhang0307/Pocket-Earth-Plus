@@ -111,7 +111,7 @@ import { httpBrain } from './harness/httpBrain';
 setFrostBrain(httpBrain);
 ```
 
-服务端需提供 `/api/frost-llm`（dev 用 vite middleware，prod 用 Node API）；密钥只从服务端环境变量读取（如 `DEEPSEEK_API_KEY`），不进前端 bundle；无 key / 失败时返回空串，agent 自动走 fallback。
+服务端需提供 `/api/frost-llm`（dev 用 vite middleware，prod 用 Node API）；密钥只从服务端环境变量读取（如 `DASHSCOPE_API_KEY`），不进前端 bundle；无 key / 失败时返回空串，agent 自动走 fallback。
 
 ### 3.3 数据源
 
