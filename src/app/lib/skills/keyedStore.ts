@@ -24,8 +24,9 @@ export function keyedStore<T>(dbName: string, keyPath = 'key', storeName = 'inde
         const req = indexedDB.open(dbName, version);
         req.onupgradeneeded = () => { const d = req.result; if (!d.objectStoreNames.contains(storeName)) d.createObjectStore(storeName, { keyPath }); };
         req.onsuccess = () => res(req.result);
-        req.onerror = () => res(null);
-      } catch { res(null); }
+        req.onerror = () => { dbp = null; res(null); };          // 瞬时开库失败（配额/锁/删库在途）别永久缓存 null：清 memo 留待下次重试，否则整会话此后 get/put/all 静默吞掉，索引写入悄悄丢
+        req.onblocked = () => { dbp = null; res(null); };          // 被其它标签页连接阻塞：清 memo 兜底，别挂死所有 await
+      } catch { dbp = null; res(null); }
     });
     return dbp;
   };

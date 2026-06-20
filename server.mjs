@@ -80,6 +80,7 @@ async function handleFrostLlm(req, res) {
         ...(search && LLM.name === 'qwen' ? { enable_search: true } : {}),
       }),
     })
+    if (!r.ok) return sendJSON(res, { text: '', error: 'upstream_' + r.status }, r.status)   // 透传上游 Qwen 的 429/5xx：客户端 enrichJSON 的 withRetry 才能据 r.ok 重试瞬时故障（否则恒 200+空串、重试形同虚设）
     const data = await r.json()
     sendJSON(res, { text: data?.choices?.[0]?.message?.content || '' })
   } catch (e) {

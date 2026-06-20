@@ -77,7 +77,7 @@ export default function MarkerDetail({ data, onClose, onRemove }: { data: Marker
           <div>
             <div className="flex items-center justify-between px-2.5 py-1.5" style={{ background: '#ffb000' }}>
               <span className="font-pixel text-[7px] tracking-widest text-black">ADMIT ONE · 观影票根</span>
-              <span className="text-[11px] text-black/80">{stars(data.rating)}</span>
+              {data.rating != null && <span className="text-[11px] text-black/80">{stars(data.rating)}</span>}
             </div>
             <div className="px-3 py-2.5">
               <div className="text-[15px] font-bold leading-tight">{data.title}</div>

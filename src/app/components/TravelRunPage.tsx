@@ -48,13 +48,16 @@ export default function TravelRunPage({ onBack }: Props) {
 
   // B 线规划：runPlan 三级排序（云脑按画像挑 → 端侧真后端 → 本地兜底），mode 透明告知
   const makePlan = async () => {
+    if (planning) return;
     const run = startAgentRun(`规划行程 · ${destName} ${days}天`); setPlanRunId(run.runId);
     setPlanning(true); setPhase('');
-    const tp = await runPlan({ destName, prefs: [...prefs], days }, (p, detail) => { setPhase(p); run.phase(p, detail); });
-    run.end(!!tp);
-    setPlan(tp);
-    if (tp.mode === '本地') showToast('云脑/端侧未就绪 · 本地按喜好排序');
-    setPlanning(false);
+    try {
+      const tp = await runPlan({ destName, prefs: [...prefs], days }, (p, detail) => { setPhase(p); run.phase(p, detail); });
+      run.end(!!tp);
+      setPlan(tp);
+      if (tp.mode === '本地') showToast('云脑/端侧未就绪 · 本地按喜好排序');
+    } catch { run.end(false); showToast('规划出错了，稍后再试'); }
+    finally { setPlanning(false); setPhase(''); }   // 与 Movies/Books 同款收口：抛错也复位 planning，免规划按钮永久卡 spinner + unhandled rejection
   };
 
   // 完成行程 → 每个停留点钉星球（逻辑在 lib/travel/pin.ts，幂等去重 + 回流画像）

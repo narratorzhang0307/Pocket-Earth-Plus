@@ -35,6 +35,7 @@ function frostLlm(env: Record<string, string>): Plugin {
             messages.push({ role: 'user', content: prompt })
             const pr = buildProviderRequest(provider, { messages, json, model: MODEL, search: !!search }, KEY)
             const r = await fetch(pr.url, { method: 'POST', headers: pr.headers, body: JSON.stringify(pr.body) })
+            if (!r.ok) { res.writeHead(r.status, { 'content-type': 'application/json' }); res.end(JSON.stringify({ text: '', error: 'upstream_' + r.status })); return }   // 透传上游 429/5xx（send 写死 200，故直接写状态码）：客户端 withRetry 才能据 r.ok 重试
             const data = await r.json()
             send({ text: data?.choices?.[0]?.message?.content || '' })
           } catch (e) {

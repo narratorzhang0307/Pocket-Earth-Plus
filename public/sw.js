@@ -8,7 +8,7 @@
  * 注意：清理缓存只删 `pocket-earth-*` 旧版本，绝不碰 WebLLM 端侧模型缓存（webllm/*，约 400MB）
  *       与 mapbox-tiles —— 否则每次部署都会清掉用户已下的 Qwen 端侧模型，逼其重下。
  */
-const VERSION = 'pe-v14';
+const VERSION = 'pe-v15';
 const CACHE = `pocket-earth-${VERSION}`;
 const SHELL = [
   '/',
@@ -45,19 +45,22 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;        // 跨域放行（地图/图床/字体）
   if (url.pathname.startsWith('/api/')) return;           // 动态接口放行
 
-  // 导航：network-first，离线回退 SPA 壳
+  // 导航：network-first（弱网挂起时 5s 内回退已缓存的 SPA 壳，免白屏死等到 OS 级 TCP 超时），离线回退 SPA 壳
   if (req.mode === 'navigate') {
+    const network = fetch(req).then((res) => {
+      // 只缓存正常的同源 200，避免把部署瞬间的 502/500 错误页存成离线壳
+      if (res && res.ok && res.type === 'basic') {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put('/index.html', copy)).catch(() => {});
+      }
+      return res;
+    });
     event.respondWith(
-      fetch(req)
-        .then((res) => {
-          // 只缓存正常的同源 200，避免把部署瞬间的 502/500 错误页存成离线壳
-          if (res && res.ok && res.type === 'basic') {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put('/index.html', copy)).catch(() => {});
-          }
-          return res;
-        })
-        .catch(() => caches.match('/index.html').then((r) => r || caches.match('/')))
+      Promise.race([
+        network,
+        // 弱网挂起兜底：5s 后若本地有壳就先上壳（不 abort 网络，让它继续刷新缓存）；无缓存壳则永不 resolve、交给真实网络/.catch
+        new Promise((resolve) => setTimeout(() => { caches.match('/index.html').then((shell) => { if (shell) resolve(shell); }); }, 5000)),
+      ]).catch(() => caches.match('/index.html').then((r) => r || caches.match('/')))
     );
     return;
   }
