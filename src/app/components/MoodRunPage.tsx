@@ -1,7 +1,9 @@
-import { useReducer, useState, useEffect } from 'react';
+import { useReducer, useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, MapPin, X } from 'lucide-react';
 import { getMoodStickers, addMoodSticker, removeMoodSticker, subscribeMood, analyzeMood, randomPlace, detectToneLocal, MOOD_TONES, type MoodSticker, pickRot } from '../data/geoStickers';
 import { groupMoodsByTimeline, toneDistribution, moodSummary, dayKey } from '../lib/mood/retrospect';
+import { ensureHeavyMarkers } from '../data/mapMarkers';
+import { nearbyMarks, kindEmoji } from '../lib/marks/nearby';
 
 // mood-curator 运行页 —— 心绪 · 漫游。
 // 记录你在世界各地「赛博浏览」时的心情：写一句 → 云脑判「地点 + 情绪」→ 情绪给颜色、钉到对应经纬度。
@@ -11,15 +13,20 @@ interface Props { onBack: () => void }
 const ACCENT = '#ffd23b';
 
 export default function MoodRunPage({ onBack }: Props) {
-  const [, force] = useReducer((x) => x + 1, 0);
+  const [tick, force] = useReducer((x) => x + 1, 0);
   useEffect(() => subscribeMood(force), []);
+  useEffect(() => { ensureHeavyMarkers().catch(() => {}); }, []);   // 让「这一带」也能看到电影/书标记（懒加载）
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<'list' | 'retrospect'>('list');
+  // 记一笔后「这一带」：只存落点(suggest)，nearby 实时派生 —— 删掉附近某个标记会自动从卡里消失，不残留陈旧 chip
+  const [pinned, setPinned] = useState<{ lat: number; lng: number; place: string; excludeId: string } | null>(null);
 
   const stickers = getMoodStickers();
   const cities = new Set(stickers.map((s) => s.place)).size;
   const summary = moodSummary(stickers);   // 回望概览（仅统计有情绪基调的真心情贴）
+  // tick 随 subscribeMood 变化（增删心情都会触发）→ nearby 自动重算，不残留已删标记
+  const nearby = useMemo(() => (pinned ? nearbyMarks(pinned.lat, pinned.lng, { excludeId: pinned.excludeId }) : []), [pinned, tick]);
 
   // 钉下：云脑一次判「地点 + 情绪」→ 情绪决定颜色、地名决定落点；判不出地名落「此处」(当前中心)
   const submit = async () => {
@@ -29,6 +36,7 @@ export default function MoodRunPage({ onBack }: Props) {
     const r = await analyzeMood(t, [120.14, 30.24]);
     const id = 'mood-' + Date.now();
     addMoodSticker({ id, lat: r.lat, lng: r.lng, text: t, place: r.place, color: MOOD_TONES[r.tone].color, rot: pickRot(id), tone: r.tone });
+    setPinned({ lat: r.lat, lng: r.lng, place: r.place, excludeId: id });
     setText(''); setBusy(false);
   };
 
@@ -40,6 +48,7 @@ export default function MoodRunPage({ onBack }: Props) {
     const tone = detectToneLocal(t);
     const id = 'mood-' + Date.now();
     addMoodSticker({ id, lat: rp.lat, lng: rp.lng, text: t, place: `${rp.place} · 随机落点`, color: MOOD_TONES[tone].color, rot: pickRot(id), tone });
+    setPinned({ lat: rp.lat, lng: rp.lng, place: rp.place, excludeId: id });
     setText('');
   };
 
@@ -90,7 +99,7 @@ export default function MoodRunPage({ onBack }: Props) {
       {summary.count > 0 && (
         <div className="flex border-2 border-black bg-[#EAEAEA] p-1 mx-3 mt-2.5 gap-1 shrink-0">
           {([['list', '列表 ◎'], ['retrospect', '回望 ◍']] as const).map(([v, label]) => (
-            <button key={v} onClick={() => setView(v)}
+            <button key={v} onClick={() => { setView(v); setPinned(null); }}
               className={`flex-1 font-pixel text-[9px] py-1.5 tracking-wider ${view === v ? 'bg-black text-[#ffd23b]' : 'text-black/60'}`}>{label}</button>
           ))}
         </div>
@@ -113,6 +122,31 @@ export default function MoodRunPage({ onBack }: Props) {
           </button>
         </div>
       </div>
+
+      {/* 记一笔后「这一带」——跨标记地理联动，把孤立的点织成记忆网。
+          区分「你留下过」(心情/各 agent 主动落点) 与「也在这一带」(看过读过的书影/音乐照片城市)，不把看过说成到过 */}
+      {nearby.length > 0 && (
+        <div className="px-3 py-2 border-b-2 border-black bg-[#FFFCF2] shrink-0 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="font-pixel text-[8px] text-black/55 tracking-wider truncate pr-2">◍ {pinned?.place} 一带</span>
+            <button onClick={() => setPinned(null)} className="shrink-0 text-black/35 hover:text-black/70 active:translate-y-px"><X className="w-3.5 h-3.5" strokeWidth={3} /></button>
+          </div>
+          {([['visited', '你留下过'], ['seen', '也在这一带']] as const).map(([og, label]) => {
+            const items = nearby.filter((n) => n.origin === og);
+            if (!items.length) return null;
+            return (
+              <div key={og} className="flex flex-wrap items-center gap-1">
+                <span className="font-pixel text-[7px] text-black/40 tracking-wider mr-0.5 shrink-0">{label}</span>
+                {items.map((n) => (
+                  <span key={n.id} className="inline-flex items-center gap-1 border-2 px-1.5 py-0.5 text-[10px] bg-white" style={{ borderColor: n.color }}>
+                    <span>{kindEmoji(n.kind)}</span><span className="truncate max-w-[120px]">{n.label}</span>
+                  </span>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* 列表视图（非回望时显示，含 view 残留但已无真心情贴的回落情形） */}
       {!showRetrospect && (
