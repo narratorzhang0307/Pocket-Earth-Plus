@@ -14,9 +14,6 @@ function load(): Record<string, PlayStat> { try { if (typeof localStorage !== 'u
 function persist() { try { if (typeof localStorage !== 'undefined') localStorage.setItem(KEY, JSON.stringify(plays)); } catch { /* */ } }
 function emit() { subs.forEach((fn) => fn()); }
 
-export function getPlays(): Record<string, PlayStat> { return plays; }
-export function getTopPlayed(n = 12): PlayStat[] { return Object.values(plays).sort((a, b) => b.count - a.count || b.seconds - a.seconds).slice(0, n); }
-export function subscribePlays(fn: () => void): () => void { subs.add(fn); return () => { subs.delete(fn); }; }
 
 export interface PlayInput { id: string; title?: string; artist?: string; genre?: string; city?: string }
 // 开始播放某歌：次数 +1，并把这首的 artist/genre/city 回流长期画像（听得多的自然计数高，与书影 pin 同机制）。
@@ -27,12 +24,6 @@ export function recordPlay(s: PlayInput): void {
   if (s.title) p.title = s.title; if (s.artist) p.artist = s.artist; if (s.genre) p.genre = s.genre; if (s.city) p.city = s.city;
   persist(); emit();
   recordSignals('music', { artists: s.artist ? [s.artist] : [], genres: s.genre ? [s.genre] : [], cities: s.city ? [s.city] : [] });
-}
-// 累加某歌本次收听时长（切走/暂停/结束时调）。不 emit，避免频繁刷新。
-export function addListenSeconds(id: string, sec: number): void {
-  if (!id || !(sec > 0)) return;
-  const p = plays[id]; if (!p) return;
-  p.seconds += Math.round(sec); persist();
 }
 
 // 听歌画像：按收听次数加权排序某字段的 top 值

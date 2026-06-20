@@ -3,7 +3,7 @@
 // 的文本三件套(意图分类/排序/对话)改走浏览器内 Qwen；未启用回退服务端 /api/edge。
 // 视觉上做轻（细边、灰底、无大投影），区别于下方的 agent 卡。
 import { useEffect, useRef, useState } from 'react';
-import { Cpu, Loader2, Check, AlertTriangle, X, Send, ChevronDown } from 'lucide-react';
+import { Cpu, Loader2, AlertTriangle, X, Send, ChevronDown } from 'lucide-react';
 import {
   loadWebllm, unloadWebllm, getWebllmState, subscribeWebllm, webllmSupported,
   webllmEdge, type WebllmState,

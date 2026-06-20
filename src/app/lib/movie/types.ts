@@ -56,7 +56,6 @@ export type MoviePhase =
 export type OnMoviePhase = (phase: MoviePhase, detail?: string) => void;
 
 export const STAR = (n: number) => '★★★★★'.slice(0, Math.max(0, Math.min(5, n))) + '☆☆☆☆☆'.slice(0, 5 - Math.max(0, Math.min(5, n)));
-export const clampRating10 = (x: number) => (x < 0 ? 0 : x > 10 ? 10 : x);
 // 归一化片名为稳定主键：去《》空格标点、转小写，拼年份（同名不同年区分）
 export function movieKey(title: string, year?: number | null): string {
   const t = (title || '').replace(/[《》\s·\-—:：,，.。!！?？'"'']/g, '').toLowerCase();

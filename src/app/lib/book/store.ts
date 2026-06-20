@@ -18,7 +18,6 @@ export interface StoredBook {
 const store = keyedStore<StoredBook>('pe-books');
 export const getKnownBook = (key: string): Promise<StoredBook | null> => store.get(key);
 export const putBook = (b: StoredBook): Promise<void> => store.put(b);
-export const allBooks = (): Promise<StoredBook[]> => store.all();
 
 export type BookPrefs = Corrections;
 const prefs = correctionsStore('pe.bookPrefs.v1');

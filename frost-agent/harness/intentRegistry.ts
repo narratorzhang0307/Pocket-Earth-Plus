@@ -18,7 +18,6 @@ const handlers: Record<string, IntentHandler> = {};
 /** 注册 / 覆盖某意图的处理器（新 skill 接入时调用）。 */
 export function registerIntent(intent: string, handler: IntentHandler): void { handlers[intent] = handler; }
 export function getIntentHandler(intent: string): IntentHandler | undefined { return handlers[intent]; }
-export function hasIntentHandler(intent: string): boolean { return !!handlers[intent]; }
 
 // ——— 内置：电台(radio) 这套 skill 的意图处理器 ———
 registerIntent('switch', (ctx, opts) => {

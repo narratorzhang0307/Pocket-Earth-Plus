@@ -45,14 +45,6 @@ let _n = 0;
 /** 生成一个会话内单调递增的 runId。 */
 export const newRunId = (): string => `r${Date.now().toString(36)}${(_n++).toString(36)}`;
 
-/** 便捷：发一条挂在 parentId 下的子事件（agent 各阶段 / skill 调用用）。 */
-export function emitChild(parentId: string, name: string, opts?: { type?: RunType; phase?: Phase; note?: string; tags?: string[]; durMs?: number; ok?: boolean }): void {
-  frostBus.emit({
-    runId: newRunId(), parentId, name, ts: Date.now(),
-    type: opts?.type ?? 'skill', phase: opts?.phase ?? 'end', note: opts?.note, tags: opts?.tags, durMs: opts?.durMs, ok: opts?.ok ?? true,
-  });
-}
-
 const nowMs = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 export interface AgentRun {

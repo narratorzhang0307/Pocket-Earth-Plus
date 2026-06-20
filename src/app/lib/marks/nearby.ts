@@ -11,8 +11,6 @@ export type NearbyKind = MarkerKind | 'mood';
 export interface NearbyMark { id: string; kind: NearbyKind; label: string; color: string; km: number; origin: 'visited' | 'seen' }
 
 const MOOD_COLOR = '#ffd23b';
-const EMOJI: Record<string, string> = { music: '🎵', photo: '📷', movie: '🎬', book: '📖', travel: '🧭', council: '⚖️', custom: '✦', mood: '◍' };
-export function kindEmoji(kind: string): string { return EMOJI[kind] || '◍'; }
 
 // 粗略球面距离（km），城市级足够：纬度 1°≈111km，经度按纬度缩放。
 // 经度差先归一化到 [-180,180]，否则跨国际日期线(如 179.9 与 -179.9，实距 ~22km)会被算成 ~4 万 km 而漏连。

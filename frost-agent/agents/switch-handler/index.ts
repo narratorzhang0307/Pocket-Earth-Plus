@@ -22,7 +22,6 @@ const NEXT = /(下一首|下首|换一?首|换歌|next|skip)/i;
 const PREV = /(上一首|上首|前一首|回到上|prev|previous)/i;
 const PAUSE = /(暂停|停一下|别放了|停下|pause)/i;
 const RESUME = /^(继续|继续播放|播放|放吧|接着放|接着听|play|resume)$/i; // 裸恢复播放（无具体城市/曲目）
-const SWITCH = /(切到|切去|换到|去|跳到|切换到|switch)/i;
 const WANT_CITY = /(切|去|跳|换到|播放|放|听|来点|来一?首|station|城市|电台)/i; // 含城市名时表"想去这座城"
 
 /** 把城市名解析成「切城」结果（LLM 路由抽到城市后调用）。匹配不到返回 null。 */

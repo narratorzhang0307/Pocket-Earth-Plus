@@ -80,15 +80,6 @@ export function setSeedVersion(v: number): void {
   persist(); emit();
 }
 
-export function clearProfile(): void {
-  profile = empty();
-  persist(); emit();
-}
-
-export function subscribeProfile(fn: () => void): () => void {
-  subs.add(fn);
-  return () => { subs.delete(fn); };
-}
 
 // ——————————————————————————————————————————————
 // 画像摘要：注入云脑提示用（结构化、便宜、总是新鲜）

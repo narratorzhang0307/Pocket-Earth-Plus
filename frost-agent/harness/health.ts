@@ -22,13 +22,4 @@ export function recordHealth(step: string, ok: boolean, error?: string): void {
   subs.forEach((fn) => fn());
 }
 
-export function getHealth(): Record<string, StepHealth>;
-export function getHealth(step: string): StepHealth | undefined;
-export function getHealth(step?: string): Record<string, StepHealth> | StepHealth | undefined {
-  return step !== undefined ? steps[step] : steps;   // 显式判 undefined：'' 等任何 string 都视为查单步，避免 falsy 误返回整表
-}
-
-export function subscribeHealth(fn: () => void): () => void {
-  subs.add(fn);
-  return () => { subs.delete(fn); };
-}
+// 注：getHealth / subscribeHealth 曾为「健康面板」预留，从未接线，已删（R3 死代码清理）。recordHealth 仍在 edge/router/heartbeat 用。

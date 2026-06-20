@@ -29,7 +29,6 @@ export interface ProviderAdapter {
 const adapters: ProviderAdapter[] = [];
 
 export function registerProvider(a: ProviderAdapter): void { adapters.push(a); }
-export function listProviders(): string[] { return adapters.map((a) => a.name); }
 
 /** 按 provider 名取第一个匹配的 adapter 拼请求；无匹配则抛错（中间件兜底返回空串）。 */
 export function buildProviderRequest(provider: string, req: NormalizedRequest, key: string): ProviderRequest {

@@ -1,7 +1,7 @@
 // 端侧模型 · 前端客户端
 // 把请求 POST 给 /api/edge（dev 中间件 / 生产服务），由服务端路由到 ollama / MNN / stub。
 // 任何一步失败都安全降级：available 返回 false、其余返回空值，调用方走规则兜底。
-import type { EdgeModel, EdgeRequest, EdgeResponse, Selector } from './types';
+import type { EdgeModel, EdgeRequest, EdgeResponse } from './types';
 
 async function call(body: EdgeRequest): Promise<EdgeResponse> {
   try {
@@ -42,11 +42,4 @@ export const httpEdge: EdgeModel = {
     const r = await call({ task: 'vision', image, prompt });
     return typeof r.text === 'string' ? r.text : '';
   },
-};
-
-// v2.0 Selector：直接沿用端侧三件套。空返回时由调用方走规则兜底。
-export const edgeSelector: Selector = {
-  rank: httpEdge.rank,
-  classify: httpEdge.classify,
-  embed: httpEdge.embed,
 };

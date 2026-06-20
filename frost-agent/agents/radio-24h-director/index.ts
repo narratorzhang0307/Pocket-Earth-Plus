@@ -1,7 +1,7 @@
 // 24H 电台编排官 · 纯本地综合判断（无后端）。
 // 把「现在 → 午夜」沿日落线经过的城市逐座排开，每座城从它的六七首里挑最贴此刻心境的一首，
 // 并写出理由。全程留下可见的「思考痕迹」（含 skill 调用），用来证明这是一次 agent 的综合判断。
-import { RADIO_CITIES, RadioCity, RadioTrack } from '../../harness/domain';
+import { RadioCity, RadioTrack } from '../../harness/domain';
 
 const SUNSET_MIN = 18 * 60 + 30; // 当地 18:30 视为日落
 

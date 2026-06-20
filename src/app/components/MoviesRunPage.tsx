@@ -37,7 +37,7 @@ export default function MoviesRunPage({ onBack, embedded }: Props) {
 
   const [input, setInput] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
-  const [phase, setPhase] = useState<MoviePhase | ''>('');
+  const [, setPhase] = useState<MoviePhase | ''>('');
   const [runId, setRunId] = useState<string | null>(null);
   const [draft, setDraft] = useState<MovieDraft | null>(null);
   const [toast, setToast] = useState<string | null>(null);

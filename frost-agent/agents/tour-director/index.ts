@@ -21,7 +21,6 @@ function localMinutes(city: RadioCity, now: Date): number {
   return ((utcMin + city.tzOffset * 60) % 1440 + 1440) % 1440;
 }
 
-const ringDist = (a: number, b: number) => { const d = Math.abs(a - b); return Math.min(d, 1440 - d); };
 const forwardTo = (from: number, to: number) => ((to - from) % 1440 + 1440) % 1440;
 const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m) % 60).padStart(2, '0')}`;
 
@@ -36,18 +35,6 @@ export interface SunsetPick {
 function toPick(city: RadioCity, now: Date): SunsetPick {
   const lm = localMinutes(city, now);
   return { slug: city.slug, cityNameZh: city.cityNameZh, cityName: city.cityName, localTime: fmt(lm), minutesToSunset: forwardTo(lm, SUNSET_MIN) };
-}
-
-/** 此刻最临近日落（距 18:30 环形距离最小）的城市。 */
-export function pickSunsetCity(cities: RadioCity[], now: Date): SunsetPick | null {
-  let best: SunsetPick | null = null;
-  let bestD = Infinity;
-  for (const c of cities) {
-    const lm = localMinutes(c, now);
-    const d = ringDist(lm, SUNSET_MIN);
-    if (d < bestD) { bestD = d; best = toPick(c, now); }
-  }
-  return best;
 }
 
 /** 接下来日落的城市顺序（谁先到 18:30 谁在前）。 */

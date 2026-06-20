@@ -15,8 +15,6 @@ export const FROST_PERSONA = {
   ],
 } as const;
 
-export type FrostPersona = typeof FROST_PERSONA;
-
 /** 写进提示词：禁止大脑加括号动作/神态描写。 */
 export const NO_STAGE_DIRECTION = '只说话本身，不要加任何括号里的动作、神态或场景描写（如"（停顿片刻……）"）。';
 

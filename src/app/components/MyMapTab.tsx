@@ -127,7 +127,7 @@ function centralAngleDeg(a: [number, number], b: [number, number]) {
   return Math.acos(Math.max(-1, Math.min(1, cosc))) / r;
 }
 
-export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
+export default function MyMapTab(_props: MyMapTabProps) {
   const annotations = ANNOTATIONS;
 
   const [map, setMap] = useState<mapboxgl.Map | null>(null);

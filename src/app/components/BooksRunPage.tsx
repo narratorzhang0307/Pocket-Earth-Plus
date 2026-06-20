@@ -49,7 +49,7 @@ export default function BooksRunPage({ onBack, embedded }: Props) {
   const [mode, setMode] = useState<'mark' | 'note'>('mark');   // 标记书 / 整理笔记
   const [input, setInput] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
-  const [phase, setPhase] = useState<BookPhase | ''>('');
+  const [, setPhase] = useState<BookPhase | ''>('');
   const [runId, setRunId] = useState<string | null>(null);
   const [draft, setDraft] = useState<BookDraft | null>(null);
   const [toast, setToast] = useState<string | null>(null);

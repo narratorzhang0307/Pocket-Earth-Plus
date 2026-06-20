@@ -16,10 +16,6 @@ export function registerActionValidator(type: string, fn: ActionValidator): void
   validators[type] = fn;
 }
 
-export function hasActionValidator(type: string): boolean {
-  return !!validators[type];
-}
-
 // ——— 内置：电台(radio) 这套 skill 自带的动作校验器 ———
 const ok: ActionValidator = () => ({ ok: true });
 registerActionValidator('play', ok);

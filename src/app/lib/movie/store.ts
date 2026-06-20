@@ -18,7 +18,6 @@ export interface StoredMovie {
 const store = keyedStore<StoredMovie>('pe-movies');
 export const getKnownMovie = (key: string): Promise<StoredMovie | null> => store.get(key);
 export const putMovie = (m: StoredMovie): Promise<void> => store.put(m);
-export const allMovies = (): Promise<StoredMovie[]> => store.all();
 
 // 用户纠错偏好（地点/评分修正），供 critic 读取
 export type MoviePrefs = Corrections;

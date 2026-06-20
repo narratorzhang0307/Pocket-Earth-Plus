@@ -116,53 +116,6 @@ export function formatTime(sec: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-/** 某城此刻的当地分钟数 0..1439（落日 skill 内部用）。 */
-function _localMinutes(now: Date, city: { ianaTz: string | null; tzOffset: number }): number {
-  if (city.ianaTz) {
-    try {
-      const p = new Intl.DateTimeFormat('en-GB', { timeZone: city.ianaTz, hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(now);
-      return parseInt(p.find((x) => x.type === 'hour')!.value, 10) * 60 + parseInt(p.find((x) => x.type === 'minute')!.value, 10);
-    } catch { /* fall through */ }
-  }
-  const utc = now.getUTCHours() * 60 + now.getUTCMinutes();
-  return ((utc + city.tzOffset * 60) % 1440 + 1440) % 1440;
-}
-
-/** 落日 skill：此刻全世界哪座城最临近日落（当地 18:30）。随地球自转每分钟变化。 */
-export function currentSunsetCity(now: Date): RadioCity | undefined {
-  const SUNSET = 18 * 60 + 30;
-  let best: RadioCity | undefined;
-  let bestD = Infinity;
-  for (const c of RADIO_CITIES) {
-    const lm = _localMinutes(now, c);
-    const d = Math.min(Math.abs(lm - SUNSET), 1440 - Math.abs(lm - SUNSET));
-    if (d < bestD) { bestD = d; best = c; }
-  }
-  return best;
-}
-
-/**
- * 落日巡游 skill：以此刻正在日落的城市为队首，
- * 之后按「下一座即将日落」的先后，绕地球一圈把所有有音乐的城市排好序。
- */
-export function sunsetOrderedCities(now: Date): RadioCity[] {
-  const SUNSET = 18 * 60 + 30;
-  const withUntil = RADIO_CITIES
-    .filter((c) => c.tracks.length > 0)
-    .map((c) => {
-      const lm = _localMinutes(now, c);
-      // 距当地日落还有多少分钟（刚过则要等近 24h）→ 升序即「即将日落」的先后
-      const until = (((SUNSET - lm) % 1440) + 1440) % 1440;
-      return { c, until };
-    })
-    .sort((a, b) => a.until - b.until || a.c.cityNameZh.localeCompare(b.c.cityNameZh, 'zh'));
-  // 把队首对齐到「当下日落城」（与 currentSunsetCity 一致），其余顺势西移
-  const anchor = currentSunsetCity(now);
-  const ai = anchor ? withUntil.findIndex((x) => x.c.slug === anchor.slug) : 0;
-  const rotated = ai > 0 ? [...withUntil.slice(ai), ...withUntil.slice(0, ai)] : withUntil;
-  return rotated.map((x) => x.c);
-}
-
 /** 城市当地 hh:mm：优先 IANA 时区，退化到固定偏移。 */
 export function cityClock(date: Date, city: { ianaTz: string | null; tzOffset: number }): string {
   if (city.ianaTz) {

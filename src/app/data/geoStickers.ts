@@ -215,9 +215,3 @@ export async function analyzeMood(text: string, fallback: [number, number]): Pro
   return { ...loc, tone };
 }
 
-// 没判出地名时，随机落到一座城市（赛博漫游到随机一处）
-export function randomPlace(): { place: string; lng: number; lat: number } {
-  const ks = Object.keys(PLACE_COORDS);
-  const k = ks[Math.floor(Math.random() * ks.length)];
-  return { place: k, lng: PLACE_COORDS[k][0], lat: PLACE_COORDS[k][1] };
-}
