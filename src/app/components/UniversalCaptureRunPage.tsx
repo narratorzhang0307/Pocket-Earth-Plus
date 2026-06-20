@@ -61,7 +61,7 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
           <ChevronLeft className="w-4 h-4" strokeWidth={3} />
         </button>
         <div className="flex-1 min-w-0">
-          <div className="font-pixel text-[11px] tracking-wider truncate">JOT</div>
+          <div className="font-pixel text-[11px] tracking-wider truncate">JOT-AGENT</div>
           <div className="text-[9px] text-black/45 truncate">一句话 / 截图 → frost 判域 → 钉到对应图层</div>
         </div>
       </div>

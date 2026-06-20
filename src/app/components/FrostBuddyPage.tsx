@@ -32,7 +32,7 @@ const QUICK: { label: string; target: string }[] = [
   { label: '整理相册', target: 'photos-agent' },
   { label: '翻翻我的书', target: 'books-agent' },
   { label: '聊聊电影', target: 'movies-agent' },
-  { label: '记一笔', target: 'jot' },
+  { label: '记一笔', target: 'jot-agent' },
   { label: '造个 agent', target: 'agent-forge' },
 ];
 

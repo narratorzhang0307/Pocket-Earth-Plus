@@ -41,8 +41,24 @@ const WORLD_PHOTOS: Photo[] = (worldPhotos as WorldPhoto[]).map((w) => ({
   author: w.author, authorLink: w.authorLink, photoLink: w.photoLink,
 }));
 
-// 给地图主展示页（annotations 手帐贴）用的几张好看照片：世界日落照片里取一小撮（缩略图已校验可用）
-export const showcasePhotos: Photo[] = WORLD_PHOTOS.slice(0, 8);
+// 给地图主展示页（annotations 手帐贴）用的照片：我在西湖边真实拍的一组黄昏照。
+// 已传 OSS（last-night-on-earth bucket · pocket-earth/showcase/{thumb,full}/wl-N.jpg），用公网 URL 直链——
+// 线上展示更稳、不打进 bundle；本地备份仍在 resource-library/photos/showcase/。只换地图手帐贴，照片三视图相册不受影响。
+const SHOWCASE_OSS = 'https://last-night-on-earth.oss-cn-hangzhou.aliyuncs.com/pocket-earth/showcase';
+const SHOWCASE_META: Array<{ city: string; lat: number; lng: number; date: string }> = [
+  { city: '西湖 · 断桥残雪', lat: 30.2609, lng: 120.1470, date: '2025-03-14' },
+  { city: '西湖 · 平湖秋月', lat: 30.2542, lng: 120.1416, date: '2025-03-15' },
+  { city: '西湖 · 三潭印月', lat: 30.2408, lng: 120.1405, date: '2025-03-18' },
+  { city: '西湖 · 花港观鱼', lat: 30.2344, lng: 120.1374, date: '2025-03-20' },
+  { city: '西湖 · 雷峰塔', lat: 30.2339, lng: 120.1450, date: '2025-03-21' },
+  { city: '西湖 · 曲院风荷', lat: 30.2522, lng: 120.1287, date: '2025-03-22' },
+];
+export const showcasePhotos: Photo[] = SHOWCASE_META.map((m, i) => ({
+  id: 'wl-' + (i + 1), city: m.city, lat: m.lat, lng: m.lng,
+  thumb: `${SHOWCASE_OSS}/thumb/wl-${i + 1}.jpg`,
+  full: `${SHOWCASE_OSS}/full/wl-${i + 1}.jpg`,
+  date: m.date,
+}));
 
 const PHOTOS: Photo[] = [...PLACE_PHOTOS, ...WORLD_PHOTOS];
 

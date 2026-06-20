@@ -47,7 +47,7 @@ function candidates(): Suggestion[] {
   const au = topTag('books', 'authors'); if (au) out.push(mk('bk-au', `翻 ${au}：看你读过的书`, 'books-agent', '运行'));
   const ge = topTag('music', 'genres'); if (ge) out.push(mk('mu-ge', `点一单 ${ge}`, 'music-agent', '运行'));
   if (topTag('photos', 'cities')) out.push(mk('ph-ci', '整理相册，高价值照片钉地球', 'photos-agent', '运行'));
-  out.push(mk('jot', '随手记一笔：一句话钉到地球', 'jot', '运行'));
+  out.push(mk('jot', '随手记一笔：一句话钉到地球', 'jot-agent', '运行'));
   return out;
 }
 

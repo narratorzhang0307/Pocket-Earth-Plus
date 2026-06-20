@@ -35,7 +35,7 @@ const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
       { name: 'movies-agent', role: '把电影钉到取景地 / 故事地', status: '契约就位' },
       { name: 'photos-agent', role: '端侧整理相册，高价值照片钉地球', status: '契约就位' },
       { name: 'travel-agent', role: '按喜好端侧规划行程，完成即钉星球', status: '契约就位' },
-      { name: 'jot', role: '一句话/截图 → frost 判书·影·行程·心情 → 钉到对应图层；记心情还能回望', status: '可运行' },
+      { name: 'jot-agent', role: '一句话/截图 → frost 判书·影·行程·心情 → 钉到对应图层；记心情还能回望', status: '可运行' },
     ],
   },
   {
@@ -59,7 +59,7 @@ type Running = 'frost' | 'music' | 'podcast' | 'movies' | 'books' | 'photos' | '
 const RUN_BY_NAME: Record<string, Running> = {
   'music-agent': 'music', 'movies-agent': 'movies',
   'books-agent': 'books', 'photos-agent': 'photos', 'travel-agent': 'travel',
-  'council-room': 'council', 'jot': 'jot',
+  'council-room': 'council', 'jot-agent': 'jot',
   'public-plaza': 'plaza',
 };
 // FROST 总 agent 可直达的「非 agent」hero 入口（不计入上面 AGENTS 计数）：造物主 AGENT-FORGE。

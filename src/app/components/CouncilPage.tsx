@@ -241,7 +241,7 @@ export default function CouncilPage({ onBack }: Props) {
             {verdict && (
               <div className="border-2 border-black bg-[#FFFCF2] shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
                 <div className="flex items-center justify-between px-2.5 py-1.5" style={{ background: '#caa64a' }}>
-                  <span className="font-pixel text-[7px] tracking-widest text-black flex items-center gap-1"><Gavel className="w-3 h-3" strokeWidth={2.5} />VERDICT · 庭审裁断</span>
+                  <span className="font-pixel text-[7px] tracking-widest text-black flex items-center gap-1"><Gavel className="w-3 h-3" strokeWidth={2.5} />VERDICT · 庭长 FROST 裁断</span>
                   <span className="font-pixel text-[7px] text-black/70">置信 {Math.round(verdict.confidence * 100)}%</span>
                 </div>
                 <div className="px-2.5 py-2 space-y-1.5">

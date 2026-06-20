@@ -1,6 +1,6 @@
 # FROST 主-子 Agent 调用规范（Orchestration Protocol）
 
-> 一句话：**FROST = 主 agent（CEO / 调度器），agents / JOT / AGENT-FORGE = 子 agent（专项员工）。**
+> 一句话：**FROST = 主 agent（CEO / 调度器），agents / JOT-AGENT / AGENT-FORGE = 子 agent（专项员工）。**
 > 这正是黄佳《Claude Code 实战 · Harness 工程之道》第 4 章「分而治之：子智能体与任务委派的艺术」里的 **CEO 委派模型 / SubAgent 模式**。
 >
 > 本文回答三件事：①这到底是不是书里的「主-子 agent」关系（是）；②在**本 app 里**一个子 agent 怎样才能「被调用」；③写一个子 agent 的「定义」要多**规范**才能被可靠调起。
@@ -21,7 +21,7 @@
 
 主 agent vs 子 agent 的职责分工（书 §4.6）：
 
-| | 主 agent（FROST） | 子 agent（agent / JOT / forge） |
+| | 主 agent（FROST） | 子 agent（agent / JOT-AGENT / forge） |
 |---|---|---|
 | 身份 Who | CEO / 调度器 | 专项角色（点歌、看片、记一笔…） |
 | 任务 What | 意图识别、路由决策、结论汇总 | 单一职责的核心目标 |
@@ -103,7 +103,7 @@ output:      suggest-then-confirm —— 只产建议，用户确认才写数据
 | `movies-agent` | 把电影钉到取景地 / 故事地。Use when 看片·影单。 | →`movies` | QUICK「聊聊电影」· 列表 | MoviesAgentPage |
 | `photos-agent` | 端侧整理相册，高价值照片钉地球。Use when 整理照片·相册。 | →`photos` | QUICK「整理相册」· 列表 | PhotosAgentRunPage |
 | `travel-agent` | 按喜好端侧规划行程，完成即钉星球。Use when 规划行程·去某地玩。 | →`travel` | 列表 | TravelRunPage |
-| `jot`（**记一笔**） | 一句话/截图 → FROST 判书·影·行程·心情 → 钉到对应图层；记心情还能回望。Use when 不想先选 agent，随手记一切。**Not for**：明确要点歌/规划长行程时直接进专属 agent 更准。 | →`jot` | **QUICK「记一笔」**· 列表 | UniversalCaptureRunPage |
+| `jot-agent`（**记一笔**） | 一句话/截图 → FROST 判书·影·行程·心情 → 钉到对应图层；记心情还能回望。Use when 不想先选 agent，随手记一切。**Not for**：明确要点歌/规划长行程时直接进专属 agent 更准。 | →`jot` | **QUICK「记一笔」**· 列表 | UniversalCaptureRunPage |
 | `council-room` | 圆桌 / 辩论 / 法庭：多 agent 同台。Use when 想让多个 agent 一起出谋划策。 | →`council` | 列表 | CouncilPage |
 | `public-plaza` | 委派你的 agent 去公共广场社交，夜里回来报告。Use when 想让 agent 替你社交。 | →`plaza` | 列表 | PublicPlazaPage |
 | `agent-forge`（**AGENT-FORGE**） | 说一句话，让 FROST 造一个新 agent（端侧/云 Qwen 拟稿 → 安全闸 → 钉地球）。Use when 现成 agent 都不对味、想要个新的。 | **HERO_BY_NAME→`agentforge`**（hero，不计 AGENTS 数） | **QUICK「造个 agent」**· 控制台 hero 卡 | AgentForgePage |

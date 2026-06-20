@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Pocket Earth · 录制台（iPhone 15 Pro Max × 16:9）</title>
+<style>
+  :root { --arw: 16; --arh: 9; --ph: 94; }   /* 画布宽高比 + 手机占舞台高度% */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #060708; }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(130% 90% at 50% 0%, #1a2a36 0%, #0c1118 55%, #060708 100%);
+    font: 12px/1.4 -apple-system, "PingFang SC", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* —— 录制舞台：默认 16:9，等比适配窗口（窗口非该比例时居中留边）—— */
+  #stage {
+    position: relative;
+    aspect-ratio: var(--arw) / var(--arh);
+    width:  min(100vw, calc(100vh * var(--arw) / var(--arh)));
+    height: min(100vh, calc(100vw * var(--arh) / var(--arw)));
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(120% 100% at 50% 0%, #1c2d3a 0%, #0c1118 60%, #070a0e 100%);
+    overflow: hidden;
+  }
+
+  /* —— iPhone 15 Pro Max 外壳（尺寸/圆角/灵动岛 复用 App.tsx 的录制壳）—— */
+  #phone {
+    position: relative; flex: none;
+    height: calc(var(--ph) * 1%);
+    aspect-ratio: 430 / 932;
+    background: #1b1b1d;
+    border-radius: 13% / 6%;
+    padding: 1.5%;
+    box-shadow: 0 0 0 2px #3a3a3c, 0 26px 64px rgba(0,0,0,.6);
+  }
+  #screen {
+    position: relative; width: 100%; height: 100%;
+    background: #EAEAEA; overflow: hidden;
+    border-radius: 11% / 5%;
+    padding-top: 5.6%;                 /* 顶部给灵动岛留安全区，与 app 录制壳一致 */
+    display: flex; flex-direction: column;
+  }
+  #app { flex: 1; width: 100%; border: 0; display: block; background: #EAEAEA; }
+  #island {
+    position: absolute; top: 1.5%; left: 50%; transform: translateX(-50%);
+    width: 26%; height: 2.4%; background: #000; border-radius: 999px;
+    z-index: 60; pointer-events: none;
+  }
+
+  /* —— 16:9 录制辅助框（按 G 显隐；对齐录屏区域后隐藏即不进画面）—— */
+  #guide { position: absolute; inset: 0; z-index: 80; pointer-events: none; display: none; }
+  #guide.on { display: block; }
+  #guide .edge { position: absolute; inset: 0; border: 2px dashed rgba(0,255,136,.7); }
+  #guide .c { position: absolute; width: 26px; height: 26px; border: 0 solid #00ff88; }
+  #guide .tl { top: 0; left: 0;  border-top-width: 3px; border-left-width: 3px; }
+  #guide .tr { top: 0; right: 0; border-top-width: 3px; border-right-width: 3px; }
+  #guide .bl { bottom: 0; left: 0;  border-bottom-width: 3px; border-left-width: 3px; }
+  #guide .br { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; }
+  #guide .tag { position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    color: #00ff88; letter-spacing: 2px; font-size: 11px; opacity: .85; }
+
+  /* —— 工具条（按 H 显隐；录制时隐藏即可）—— */
+  #bar {
+    position: fixed; top: 12px; left: 12px; z-index: 200;
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    padding: 8px 10px; max-width: calc(100vw - 24px);
+    background: rgba(10,16,22,.82); border: 1px solid rgba(255,255,255,.14);
+    border-radius: 10px; color: #cfe; backdrop-filter: blur(6px);
+  }
+  #bar.hidden { display: none; }
+  #bar b { color: #8ef0bf; letter-spacing: 1px; margin-right: 4px; }
+  #bar button {
+    font: inherit; color: #cfe; background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.16); border-radius: 7px;
+    padding: 4px 9px; cursor: pointer;
+  }
+  #bar button.active { background: #00ff88; color: #062; border-color: #00ff88; font-weight: 700; }
+  #bar button:hover { border-color: rgba(0,255,136,.6); }
+  #bar input {
+    font: inherit; color: #cfe; background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.16); border-radius: 7px;
+    padding: 4px 8px; width: 210px;
+  }
+  #bar .sep { width: 1px; height: 18px; background: rgba(255,255,255,.16); margin: 0 2px; }
+  #bar .hint { color: #7d93a6; font-size: 11px; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <div id="phone">
+      <div id="screen">
+        <iframe id="app" title="Pocket Earth" allow="autoplay; fullscreen; clipboard-read; clipboard-write"></iframe>
+        <div id="island"></div>
+      </div>
+    </div>
+    <div id="guide">
+      <div class="edge"></div>
+      <div class="c tl"></div><div class="c tr"></div><div class="c bl"></div><div class="c br"></div>
+    </div>
+  </div>
+
+  <div id="bar">
+    <b>录制台</b>
+    <span class="hint">比例</span>
+    <span id="ratios"></span>
+    <span class="sep"></span>
+    <span class="hint">机身</span>
+    <button data-ph="-">－</button><button data-ph="+">＋</button>
+    <span class="sep"></span>
+    <button id="guideBtn">辅助框 (G)</button>
+    <span class="sep"></span>
+    <span class="hint">App</span>
+    <input id="appUrl" spellcheck="false" />
+    <button id="reload">载入</button>
+    <span class="sep"></span>
+    <span class="hint">H 隐藏此条 · G 切辅助框</span>
+  </div>
+
+<script>
+(function () {
+  var qs = new URLSearchParams(location.search);
+  var RATIOS = [['16:9',16,9],['9:16',9,16],['4:3',4,3],['3:2',3,2],['1:1',1,1]];
+
+  // —— App 地址：默认本地 3008 的 ?embed；自动补 ?embed ——
+  function withEmbed(u) {
+    try { var url = new URL(u, location.href); url.searchParams.set('embed','1'); return url.toString(); }
+    catch (e) { return u + (u.indexOf('?')<0?'?':'&') + 'embed=1'; }
+  }
+  var appBase = qs.get('app') || 'http://localhost:3008/';
+  var appUrl = document.getElementById('appUrl');
+  var frame  = document.getElementById('app');
+  function loadApp(u){ appBase = u; var full = withEmbed(u); appUrl.value = u; frame.src = full; }
+
+  // —— 比例 ——
+  var root = document.documentElement;
+  function setRatio(w,h){
+    root.style.setProperty('--arw', w); root.style.setProperty('--arh', h);
+    [].forEach.call(document.querySelectorAll('#ratios button'), function(b){
+      b.classList.toggle('active', b.dataset.w==w && b.dataset.h==h);
+    });
+    // 竖屏(高>宽)时手机占满一些，横屏时略小给两侧留白
+    if (!qs.get('ph')) root.style.setProperty('--ph', (h>=w? 96 : 94));
+  }
+  var ratiosEl = document.getElementById('ratios');
+  RATIOS.forEach(function(r){
+    var b=document.createElement('button'); b.textContent=r[0]; b.dataset.w=r[1]; b.dataset.h=r[2];
+    b.onclick=function(){ setRatio(r[1],r[2]); }; ratiosEl.appendChild(b);
+  });
+
+  // —— 机身大小微调 ——
+  function bumpPh(d){ var v=parseFloat(getComputedStyle(root).getPropertyValue('--ph'))||94; v=Math.max(60,Math.min(100,v+d)); root.style.setProperty('--ph', v); }
+  [].forEach.call(document.querySelectorAll('[data-ph]'), function(b){ b.onclick=function(){ bumpPh(b.dataset.ph==='+'?2:-2); }; });
+
+  // —— 辅助框 / 工具条 显隐 ——
+  var guide=document.getElementById('guide'), bar=document.getElementById('bar');
+  function toggleGuide(){ guide.classList.toggle('on'); }
+  document.getElementById('guideBtn').onclick=toggleGuide;
+  document.getElementById('reload').onclick=function(){ loadApp(appUrl.value.trim()); };
+  appUrl.addEventListener('keydown', function(e){ if(e.key==='Enter') loadApp(appUrl.value.trim()); });
+  window.addEventListener('keydown', function(e){
+    if (e.target===appUrl) return;
+    if (e.key==='g'||e.key==='G') toggleGuide();
+    if (e.key==='h'||e.key==='H') bar.classList.toggle('hidden');
+  });
+
+  // —— 初始化（支持 ?ratio=16:9 / ?ph=94 / ?app=... / ?guide=1）——
+  var rq = (qs.get('ratio')||'16:9').split(/[:x\/]/).map(Number);
+  setRatio(rq[0]||16, rq[1]||9);
+  if (qs.get('ph')) root.style.setProperty('--ph', qs.get('ph'));
+  if (qs.get('guide')==='1') guide.classList.add('on');
+  loadApp(appBase);
+})();
+</script>
+</body>
+</html>

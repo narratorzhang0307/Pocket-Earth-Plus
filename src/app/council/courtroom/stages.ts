@@ -105,7 +105,7 @@ export async function runCourtroom(o: CourtroomOpts): Promise<void> {
   o.onStage?.('立案'); o.onSpeaker(judge.id);
   let issues: string[] = [];
   const issueObj = await cloudJSON(
-    '你是审判长，负责立案。读议题，提炼 1-3 个真正需要裁断的「争点」。只输出 JSON：{"issues":["...","..."]}。争点要具体、可辩、互不重复。',
+    '你是弗洛斯特（FROST），本庭庭长，负责立案。读议题，提炼 1-3 个真正需要裁断的「争点」。只输出 JSON：{"issues":["...","..."]}。争点要具体、可辩、互不重复。',
     `议题：「${topic || '（自由发挥）'}」。请输出争点 JSON。`, o.signal);
   if (o.signal.aborted) return done(o);
   issues = strArr(issueObj?.issues);
@@ -148,7 +148,7 @@ export async function runCourtroom(o: CourtroomOpts): Promise<void> {
     .map((v) => `先例：${v.topic} → 要旨：${v.ruleEstablished}${v.dissent ? `（存异：${v.dissent}）` : ''}`)
     .join('\n');
   const verdictObj = await cloudJSON(
-    '你是审判长，综合整场庭审做出结构化裁决。只输出一个 JSON 对象，忠实于庭审公开记录、不要引入记录中没出现的证据。'
+    '你是弗洛斯特（FROST），本庭庭长，综合整场庭审做出结构化裁决。只输出一个 JSON 对象，忠实于庭审公开记录、不要引入记录中没出现的证据。'
     + '正反双方的证据可能有偏颇或夸大，采信前先掂量其可靠性，明显站不住的论据在 verdict 里点出来、不要被其气势带偏。'
     + '字段：issues(争点数组)、proArgs(正方论据数组,每条{claim,evidenceRef证据引用,reasoning推理})、conArgs(反方论据数组,同结构)、'
     + 'verdict(裁断文本,给出倾向与理由)、confidence(0到1的置信度数字)、dissent(保留的合理分歧)、ruleEstablished(本案确立的一句裁判要旨)。'

@@ -21,7 +21,7 @@ export const ALLOWED_TARGETS: Record<string, string> = {
   'books-agent': '读书',
   'photos-agent': '整理照片',
   'travel-agent': '规划行程',
-  'jot': '随手记一笔 / 记心情',
+  'jot-agent': '随手记一笔 / 记心情',
   'council-room': '多 agent 圆桌',
   'public-plaza': '代理社交广场',
 };

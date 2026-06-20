@@ -91,12 +91,12 @@ interface MyMapTabProps {
 // 标定点：固定到西湖周边真实经纬度（WGS84，源自 OpenStreetMap / Wikidata）。
 // 其中的「文字卡片」现已解耦为可拖动便贴（见 seedStickers）；此处保留绿点 + 照片 + 连线。
 const ANNOTATIONS = [
-  { id: 1, lng: 120.14703, lat: 30.260901, place: '断桥残雪', date: '03.14', text: '风卷着灰尘', dir: 'right', dx: 30, dy: -20, img: showcasePhotos[0]?.thumb, imgProps: { w: 60, h: 80, rot: -5, dx: -20, dy: 30 } },
-  { id: 2, lng: 120.1416133, lat: 30.2542019, place: '平湖秋月', date: '03.15', text: '紫晶暮色渐暗，夜色深深蓝', dir: 'left', dx: -40, dy: 20, img: showcasePhotos[1]?.thumb, imgProps: { w: 70, h: 70, rot: 8, dx: 40, dy: -10 } },
-  { id: 3, lng: 120.1405, lat: 30.2408, place: '三潭印月', date: '03.18', text: '我想起你，我的内心变得完整', dir: 'right', dx: 35, dy: 15, img: showcasePhotos[2]?.thumb, imgProps: { w: 80, h: 60, rot: -3, dx: -50, dy: 40 } },
-  { id: 4, lng: 120.13739, lat: 30.23439, place: '花港观鱼', date: '03.20', text: '玫瑰色的黄昏沿着无声的树篱入梦', dir: 'left', dx: -20, dy: -30, img: showcasePhotos[3]?.thumb, imgProps: { w: 65, h: 85, rot: 6, dx: 25, dy: 35 } },
-  { id: 5, lng: 120.14501, lat: 30.23388, place: '雷峰塔', date: '03.21', text: '这是一条长长的寂静的街道', dir: 'left', dx: -35, dy: -10 },
-  { id: 6, lng: 120.12868, lat: 30.25217, place: '曲院风荷', date: '03.22', text: '一辆遥远的汽车的回响，一声轻响', dir: 'right', dx: 25, dy: -25 },
+  { id: 1, lng: 120.14703, lat: 30.260901, place: '断桥残雪', date: '03.14', text: '一株黄色的树变成了许多飞燕', dir: 'right', dx: 30, dy: -20, img: showcasePhotos[0]?.thumb, imgProps: { w: 60, h: 80, rot: -5, dx: -20, dy: 30 } },
+  { id: 2, lng: 120.1416133, lat: 30.2542019, place: '平湖秋月', date: '03.15', text: '傍晚的光线金黄而辽远', dir: 'left', dx: -40, dy: 20, img: showcasePhotos[1]?.thumb, imgProps: { w: 70, h: 70, rot: 8, dx: 40, dy: -10 } },
+  { id: 3, lng: 120.1405, lat: 30.2408, place: '三潭印月', date: '03.18', text: '月光啊，忧伤，美丽，静寂', dir: 'right', dx: 35, dy: 15, img: showcasePhotos[2]?.thumb, imgProps: { w: 80, h: 60, rot: -3, dx: -50, dy: 40 } },
+  { id: 4, lng: 120.13739, lat: 30.23439, place: '花港观鱼', date: '03.20', text: '友好的夜晚被点亮', dir: 'left', dx: -20, dy: -30, img: showcasePhotos[3]?.thumb, imgProps: { w: 65, h: 85, rot: 6, dx: 25, dy: 35 } },
+  { id: 5, lng: 120.14501, lat: 30.23388, place: '雷峰塔', date: '03.21', text: '只有湖中的一对天鹅', dir: 'left', dx: -35, dy: -10, img: showcasePhotos[4]?.thumb, imgProps: { w: 82, h: 60, rot: -4, dx: -28, dy: 32 } },
+  { id: 6, lng: 120.12868, lat: 30.25217, place: '曲院风荷', date: '03.22', text: '一切的峰巅沉寂', dir: 'right', dx: 25, dy: -25, img: showcasePhotos[5]?.thumb, imgProps: { w: 84, h: 60, rot: 5, dx: 32, dy: 30 } },
 ];
 
 // 西湖（杭州）—— 地图默认聚焦点，初始缩放到能看到湖周街道
@@ -585,7 +585,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
               {/* 照片（含紫色图钉）：仅街道级别出现 */}
               {showDetail && ann.img && ann.imgProps && (
                 <div
-                  className="absolute bg-white p-1 border border-black shadow-[3px_3px_0px_rgba(0,0,0,0.8)] z-0"
+                  className="group pointer-events-auto cursor-pointer absolute bg-white p-1 border border-black shadow-[3px_3px_0px_rgba(0,0,0,0.8)] z-0"
                   style={{
                     width: `${ann.imgProps.w}px`,
                     height: `${ann.imgProps.h}px`,
@@ -595,7 +595,7 @@ export default function MyMapTab({ onViewInAR }: MyMapTabProps) {
                 >
                   {/* 紫色图钉（只有放大看清街道后才存在） */}
                   <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-[#ff00ff] border border-black shadow-sm z-10"></div>
-                  <ImageWithFallback src={ann.img} alt={ann.text} className="w-full h-full object-cover grayscale opacity-90 contrast-125 border border-black/20" />
+                  <ImageWithFallback src={ann.img} alt={ann.text} className="w-full h-full object-cover grayscale group-hover:grayscale-0 group-active:grayscale-0 opacity-90 group-hover:opacity-100 contrast-125 transition-all duration-500 border border-black/20" />
                 </div>
               )}
 

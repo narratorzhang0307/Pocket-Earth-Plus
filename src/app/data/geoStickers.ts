@@ -47,7 +47,7 @@ export function commitStickers() { persist(); }
 // 把「已有的白色卡片」种入便贴库。版本化：改种子内容（如卡片诗句）时把 SEED_VERSION +1，
 // 已种过的浏览器会重新同步种子卡片的文字——非破坏性：保留用户自建的心情贴，
 // 也保留用户拖动过的种子卡片位置，只覆盖文字 / 日期等种子内容。
-const SEED_VERSION = '2';
+const SEED_VERSION = '3';
 export function seedStickers(seeds: Array<Omit<MoodSticker, 'createdAt'>>) {
   const flagKey = KEY + '.seeded';
   let prev = '';

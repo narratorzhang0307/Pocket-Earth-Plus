@@ -55,6 +55,8 @@ export default function App() {
   const standalone = useStandalone();
   // 录制态：本地给地址加 ?rec（或 ?record）才套 iPhone 外壳 + 9:16 录制画布；线上 PWA 默认走正常手机框。
   const recordMode = typeof location !== 'undefined' && /[?&](rec|record)\b/.test(location.search);
+  // 嵌入态（?embed）：app 内容满铺、不套任何手机框——给外部独立录制台（record-stage/）用 iframe 套进自带的 iPhone 壳里。
+  const embedMode = typeof location !== 'undefined' && /[?&]embed\b/.test(location.search);
   // 录制版：9:16 录制框辅助线，按 G 显隐（对齐好录制区域后按 G 隐藏，框不进画面）
   const [guide, setGuide] = useState(true);
   useEffect(() => {
@@ -139,6 +141,13 @@ export default function App() {
       </div>
     );
   }
+
+  // 嵌入版（?embed）：只渲染满铺内容、无外壳/无手机框——外部录制台（record-stage）用 iframe 套进自带的 iPhone 15 Pro Max 壳里。
+  if (embedMode) return (
+    <div className="fixed inset-0 bg-[#EAEAEA] overflow-hidden flex flex-col">
+      {content}
+    </div>
+  );
 
   // 录制版（仅本地 ?rec 触发）：9:16 竖屏画布 + iPhone 15 Pro Max 外壳（黑色机身 + 灵动岛），方便录制小红书竖屏视频
   if (recordMode) return (
