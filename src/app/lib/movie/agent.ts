@@ -70,7 +70,7 @@ export async function runMovieAgent(input: MovieInput, onPhase?: OnMoviePhase): 
 
   // ⑤ 地理子 agent：取景地 > 故事地 > 国家
   ph('定位取景地/故事地');
-  if (!draft.geo) draft.geo = geoResolve({ filmingPlace, storyPlace, country: draft.country });
+  if (!draft.geo) draft.geo = await geoResolve({ filmingPlace, storyPlace, country: draft.country });
   draft.needPlace = !draft.geo;
 
   // ⑥ 校验 + 历史纠错

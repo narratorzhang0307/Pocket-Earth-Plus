@@ -1,6 +1,6 @@
 // 协作·子 agent 层：①补全子 agent（云脑 JSON：作者/译者/类型/流派/剧情 + 故事地/作者地）
-// ②地理子 agent（故事地→作者地→国家，逐级 geocode，纯端上）。镜像 lib/movie/tagging.ts。
-import { geocodeCity } from '../../data/geoStickers';
+// ②地理子 agent（故事地→作者地→国家，逐级 geocode，经 resolvePlace：本地表→Mapbox 全球）。镜像 lib/movie/tagging.ts。
+import { resolvePlace } from '../skills/resolvePlace';
 import { bookCountry } from '../../data/books';
 import type { GeoTarget } from './types';
 
@@ -58,12 +58,12 @@ export async function enrichTags(title: string, hint?: { author?: string; countr
   } catch { return { raw: EMPTY, ok: false }; }
 }
 
-// 地理子 agent：故事地 > 作者地 > 国家
-export function geoResolve(opts: { storyPlace?: string; authorPlace?: string; country?: string }): GeoTarget | null {
-  const story = opts.storyPlace ? geocodeCity(opts.storyPlace) : null;
-  if (story) return { kind: 'story', place: story.place, lng: story.lng, lat: story.lat, confidence: 0.9 };
-  const author = opts.authorPlace ? geocodeCity(opts.authorPlace) : null;
-  if (author) return { kind: 'author', place: author.place, lng: author.lng, lat: author.lat, confidence: 0.75 };
+// 地理子 agent：故事地 > 作者地 > 国家（经 [resolvePlace]：本地表命中即返回、未命中走 Mapbox 拿全球）
+export async function geoResolve(opts: { storyPlace?: string; authorPlace?: string; country?: string }): Promise<GeoTarget | null> {
+  const story = opts.storyPlace ? await resolvePlace(opts.storyPlace) : null;
+  if (story) return { kind: 'story', place: story.place, lng: story.lng, lat: story.lat, confidence: story.source === 'local' ? 0.9 : 0.82 };
+  const author = opts.authorPlace ? await resolvePlace(opts.authorPlace) : null;
+  if (author) return { kind: 'author', place: author.place, lng: author.lng, lat: author.lat, confidence: author.source === 'local' ? 0.75 : 0.7 };
   if (opts.country) {
     const c = bookCountry(opts.country);
     if (c) return { kind: 'country', place: opts.country, lng: c[0], lat: c[1], confidence: 0.5 };

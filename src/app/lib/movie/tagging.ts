@@ -1,8 +1,8 @@
 // 协作·子 agent 层：两个运行时子 agent。
 // ① 补全子 agent：一次云脑（/api/frost-llm, json）强约束 JSON，出 导演/演员/类型/流派/剧情 + 取景地/故事地 + 补国家年份。
 //    系统提示明确「不确定留空、禁编演员」——把幻觉压在 critic 护栏之前。
-// ② 地理子 agent：纯端上，取景地→故事地→国家逐级 geocode，返回 GeoTarget{kind} 让 UI 显示落点精度。
-import { geocodeCity } from '../../data/geoStickers';
+// ② 地理子 agent：取景地→故事地→国家逐级 geocode（经 resolvePlace：本地表→Mapbox 全球），返回 GeoTarget{kind} 让 UI 显示落点精度。
+import { resolvePlace } from '../skills/resolvePlace';
 import { movieCountry } from '../../data/movies';
 import { enrichJSON } from '../skills/enrichEntity';
 import type { GeoTarget } from './types';
@@ -47,12 +47,13 @@ export async function enrichTags(title: string, hint?: { director?: string; coun
   };
 }
 
-// 地理子 agent：取景地 > 故事地 > 国家，逐级落坐标。纯本地，不联网。
-export function geoResolve(opts: { filmingPlace?: string; storyPlace?: string; country?: string }): GeoTarget | null {
-  const film = opts.filmingPlace ? geocodeCity(opts.filmingPlace) : null;
-  if (film) return { kind: 'filming', place: film.place, lng: film.lng, lat: film.lat, confidence: 0.9 };
-  const story = opts.storyPlace ? geocodeCity(opts.storyPlace) : null;
-  if (story) return { kind: 'story', place: story.place, lng: story.lng, lat: story.lat, confidence: 0.75 };
+// 地理子 agent：取景地 > 故事地 > 国家，逐级落坐标。
+// 经 [resolvePlace] skill：本地表命中即返回（不联网）、未命中走 Mapbox 拿全球城市/区，破"只认 ~100 城"。
+export async function geoResolve(opts: { filmingPlace?: string; storyPlace?: string; country?: string }): Promise<GeoTarget | null> {
+  const film = opts.filmingPlace ? await resolvePlace(opts.filmingPlace) : null;
+  if (film) return { kind: 'filming', place: film.place, lng: film.lng, lat: film.lat, confidence: film.source === 'local' ? 0.9 : 0.82 };
+  const story = opts.storyPlace ? await resolvePlace(opts.storyPlace) : null;
+  if (story) return { kind: 'story', place: story.place, lng: story.lng, lat: story.lat, confidence: story.source === 'local' ? 0.75 : 0.7 };
   if (opts.country) {
     const c = movieCountry(opts.country);
     if (c) return { kind: 'country', place: opts.country, lng: c[0], lat: c[1], confidence: 0.5 };
