@@ -294,10 +294,10 @@ export default function MusicAgentRunPage({ onBack, embedded }: Props) {
         <div className="absolute bottom-[64px] left-1/2 -translate-x-1/2 bg-black text-[#7CFF6B] border-2 border-[#7CFF6B] px-3 py-1.5 font-pixel text-[8px] tracking-wider z-20">{hint}</div>
       )}
 
-      {/* 播放条（封面先空） */}
+      {/* 播放条 */}
       {cur && (
         <div className="px-3 py-2 border-t-2 border-black bg-black text-[#7CFF6B] shrink-0 flex items-center gap-2.5">
-          <div className="w-9 h-9 shrink-0 border border-[#7CFF6B]/50 bg-[#0a0a0a]" />
+          <div className="w-9 h-9 shrink-0 border border-[#7CFF6B]/50 bg-[#0a0a0a] overflow-hidden">{cur.cover && <img src={cur.cover} alt="" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.opacity = '0'; }} />}</div>
           <div className="min-w-0 flex-1">
             <div className="text-[11px] text-white truncate">{cur.title}<span className="text-white/45"> · {cur.artist}</span></div>
             <div className="font-pixel text-[6px] text-[#7CFF6B]/70 tracking-wider truncate mt-0.5">{cur.cityNameZh} · {idx + 1}/{queue.length}{srcMode === 'fallback' ? ' · 示例音源' : ''}</div>

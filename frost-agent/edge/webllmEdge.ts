@@ -84,6 +84,7 @@ async function complete(messages: { role: string; content: string }[], opts?: { 
   const res = await engine.chat.completions.create({
     messages,
     temperature: opts?.temperature ?? (opts?.json ? 0 : 0.7),
+    extra_body: { enable_thinking: false },   // 关 Qwen3 思考模式（与 ollama/MNN 的 think:false 对齐）：否则浏览器端 Qwen 回复前缀 <think>…</think>，破坏 rank 的 JSON.parse / classify 的 includes，并把推理过程漏给「端侧试一句」
     ...(opts?.json ? { response_format: { type: 'json_object' } } : {}),
   });
   return res?.choices?.[0]?.message?.content || '';

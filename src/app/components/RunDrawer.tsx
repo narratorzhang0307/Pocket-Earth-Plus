@@ -35,7 +35,7 @@ export default function RunDrawer() {
             <div className="mb-2 flex items-center gap-2 text-zinc-100">
               <Activity className="w-4 h-4 text-orange-400" strokeWidth={2.5} />
               <span className="font-semibold tracking-tight">运行轨迹 · 本次会话 {runs.length} 次</span>
-              <button onClick={() => setOpen(false)} className="ml-auto"><X className="w-4 h-4 text-zinc-400" /></button>
+              <button onClick={() => setOpen(false)} aria-label="关闭" className="ml-auto"><X className="w-4 h-4 text-zinc-400" /></button>
             </div>
             <div className="space-y-1.5">
               {runs.map((r) => (

@@ -79,7 +79,7 @@ function resolveDetail(id: string, kind: MarkerKind, label: string): MarkerDetai
   }
   if (kind === 'photo') { const p = photoById.get(id); return p ? { kind, full: p.full, thumb: p.thumb, city: (p.city || '').split(',')[0], authorName: p.author, authorLink: p.authorLink, photoLink: p.photoLink } : null; }
   if (kind === 'movie') { const m = movieById.get(id); return m ? { kind, title: m.title, original: m.original, director: m.director, country: m.country, year: m.year, rating: m.rating, date: m.date, synopsis: m.synopsis } : null; }
-  if (kind === 'book') { const b = bookById.get(id); return b ? { kind, title: b.title, author: b.author, place: b.country, year: b.year, synopsis: b.synopsis, date: b.date, rating: b.rating } : null; }
+  if (kind === 'book') { const b = bookById.get(id); return b ? { kind, title: b.title, author: b.author, country: b.country, place: b.country, year: b.year, synopsis: b.synopsis, date: b.date, rating: b.rating } : null; }
   if (kind === 'music') return { kind, title: label, city: label };
   return null;
 }
@@ -679,7 +679,7 @@ export default function MyMapTab(_props: MyMapTabProps) {
                 aria-label={`心情：${s.text}`}
                 onClick={() => map.flyTo({ center: [s.lng, s.lat], zoom: 8 })}
                 className="absolute z-[18] -translate-x-1/2 -translate-y-1/2 rounded-full border border-black shadow-[1px_1px_0_rgba(0,0,0,0.4)] pointer-events-auto active:scale-90"
-                style={{ left: `${pt.x}px`, top: `${pt.y}px`, width: `${sz}px`, height: `${sz}px`, background: '#ff00ff' }}
+                style={{ left: `${pt.x}px`, top: `${pt.y}px`, width: `${sz}px`, height: `${sz}px`, background: (s.variant === 'card' || !s.color) ? '#ff00ff' : s.color }}
               />
             );
           }

@@ -34,7 +34,7 @@ export default function MoodReview() {
         {s.tone && <span className="border border-black/40 px-1 py-0.5 text-black/70">{MOOD_TONES[s.tone].label}</span>}
         <span>◍ {s.place} · {dayKey(s.createdAt)}</span>
       </div>
-      <button onClick={() => removeMoodSticker(s.id)} className="absolute top-1.5 right-1.5 w-5 h-5 flex items-center justify-center text-black/40 hover:text-[#d23b3b] active:translate-y-px">
+      <button type="button" aria-label="删除这条心情" onClick={() => removeMoodSticker(s.id)} className="absolute top-1.5 right-1.5 w-5 h-5 flex items-center justify-center text-black/40 hover:text-[#d23b3b] active:translate-y-px">
         <X className="w-3.5 h-3.5" strokeWidth={3} />
       </button>
     </div>

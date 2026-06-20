@@ -93,7 +93,7 @@ export default function CouncilPage({ onBack }: Props) {
     <div className="h-full flex flex-col bg-[#EAEAEA] font-sans overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b-2 border-black bg-white shrink-0">
-        <button onClick={phase === 'run' ? () => { stop(); setPhase('setup'); } : onBack} className="w-8 h-8 border-2 border-black bg-white flex items-center justify-center shadow-[1px_1px_0_#000] active:translate-y-px">
+        <button onClick={phase === 'run' ? () => { stop(); setPhase('setup'); } : onBack} aria-label={phase === 'run' ? '停止运行并返回设置' : '返回'} className="w-8 h-8 border-2 border-black bg-white flex items-center justify-center shadow-[1px_1px_0_#000] active:translate-y-px">
           <ChevronLeft className="w-4 h-4" strokeWidth={3} />
         </button>
         <div className="flex-1 min-w-0">
