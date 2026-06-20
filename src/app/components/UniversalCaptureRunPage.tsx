@@ -87,7 +87,8 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
         <textarea
           value={text} onChange={(e) => setText(e.target.value)} rows={2}
           placeholder="随手写一句，如「看完了奥本海默，五星」「读完百年孤独」「上周去了京都」「今天有点累」"
-          className="w-full border-2 border-black px-2.5 py-2 text-[12px] bg-[#EAEAEA] focus:outline-none focus:bg-white resize-none" />
+          style={{ fontSize: '12px' }}   /* preflight 给 textarea 的 font-size:100% 继承了 html 16px、压过了 text-[12px]，内联强制 12px（= 绿框「一个框，记一切」同款）；占位文字自动继承 */
+          className="w-full border-2 border-black px-2.5 py-2 text-[12px] leading-snug bg-[#EAEAEA] focus:outline-none focus:bg-white resize-none" />
         {image && (
           <div className="flex items-center gap-2">
             <img src={image} alt="截图" className="w-10 h-10 object-cover border-2 border-black" />
