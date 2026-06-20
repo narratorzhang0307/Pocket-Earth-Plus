@@ -32,7 +32,7 @@
 
 **原则**：执行型子 agent 是日常最常用模式，核心是「信噪比优化」：输入海量（数百行/数千文件），只输出精炼结论（几行）。设计核心是对输出格式的严格约束——「禁止包含完整日志，仅输出摘要」。这是外观模式（Facade）。
 
-**在 frost-agent v2.0 里怎么落地**：`photos-curator`（相册整理）就是教科书级执行型场景：输入是上千张照片的端侧图文匹配（CLIP 类）结果，输出只是「为这次行程选出的 6 张 + 每张一句地点标注」。落地要点有两条：一是匹配/排序全部走端侧 `Selector`，原始照片与 embedding 不出端、不进主对话；二是在该子 agent 的契约里把 `Output` 钉死成结构化摘要（选中项 + 理由 + 地点锚点），严禁回传整个候选池的打分明细。主对话只见到那 6 张的结论。
+**在 frost-agent v2.0 里怎么落地**：`photos-agent`（相册整理）就是教科书级执行型场景：输入是上千张照片的端侧图文匹配（CLIP 类）结果，输出只是「为这次行程选出的 6 张 + 每张一句地点标注」。落地要点有两条：一是匹配/排序全部走端侧 `Selector`，原始照片与 embedding 不出端、不进主对话；二是在该子 agent 的契约里把 `Output` 钉死成结构化摘要（选中项 + 理由 + 地点锚点），严禁回传整个候选池的打分明细。主对话只见到那 6 张的结论。
 
 ---
 
@@ -44,11 +44,11 @@
 
 ---
 
-## 6. 并行型模式：多个 curator 同时跑，前提是子任务完全独立
+## 6. 并行型模式：多个 agent 同时跑，前提是子任务完全独立
 
 **原则**：当需要从多个独立维度剖析同一对象时用并行型（MapReduce）。严格前提：子任务之间无共享状态、无依赖。主 agent 做 Map（分发）+ Reduce（汇总）。优势是专业化——3 个「专才」在各自维度做到 90 分，胜过一个「全能」70 分。
 
-**在 frost-agent v2.0 里怎么落地**：批量整理个人对象时，可并行派出多个 curator：`music-curator`（音乐）、`photos-curator`（照片）、`books-curator`（书）、`movies-curator`（电影）。它们查同一个用户画像但互不依赖、不共享中间状态，可真正并行跑，由主 agent（Router 层）在 Reduce 阶段汇总成一份挂回地球的综合视图。落地约束：并行的前提是这些 curator 之间没有交接契约依赖——一旦出现「必须先选完书才能选配乐」这种依赖，就退回流水线型，不要硬并行。（未来可新增的 curator，如 `city-walk`、`museum-curator`，同理注册即并入。）
+**在 frost-agent v2.0 里怎么落地**：批量整理个人对象时，可并行派出多个 agent：`music-agent`（音乐）、`photos-agent`（照片）、`books-agent`（书）、`movies-agent`（电影）。它们查同一个用户画像但互不依赖、不共享中间状态，可真正并行跑，由主 agent（Router 层）在 Reduce 阶段汇总成一份挂回地球的综合视图。落地约束：并行的前提是这些 agent 之间没有交接契约依赖——一旦出现「必须先选完书才能选配乐」这种依赖，就退回流水线型，不要硬并行。（未来可新增的 agent，如 `city-walk`、`museum-agent`，同理注册即并入。）
 
 ---
 
@@ -56,7 +56,7 @@
 
 **原则**：清晰的职责划分——子 agent（.md 契约）负责战略层：Who（身份）、What（任务）、Where（工作边界）、Output（交付形式）；Skill（SKILL.md）负责战术层：How（流程步骤）、With What（脚本/模板）、By What Standard（规范）、Quality（验收标准）。子 agent 是知识的灵活消费者，Skill 是可迁移的知识模块。
 
-**在 frost-agent v2.0 里怎么落地**：现有 `contract.md` 已经写了 Who/What/Where/Output——保留并坚持这条边界。把「方法与标准」从契约里剥出来做成可插拔 Skill manifest：例如一份 `geo-anchoring` Skill 定义「如何把对象挂回地球某地点」的标准流程与字段规范，`research`/`curate`/`publish` 都可消费同一份 Skill；一份 `poem-style` Skill 定义播报串词的语气与模板，被 `script` 加载。这样新增 `museum-curator` 时，子 agent 只声明「我是谁、产出什么」，方法直接装配现成 Skill，注册即用、不改内核。
+**在 frost-agent v2.0 里怎么落地**：现有 `contract.md` 已经写了 Who/What/Where/Output——保留并坚持这条边界。把「方法与标准」从契约里剥出来做成可插拔 Skill manifest：例如一份 `geo-anchoring` Skill 定义「如何把对象挂回地球某地点」的标准流程与字段规范，`research`/`curate`/`publish` 都可消费同一份 Skill；一份 `poem-style` Skill 定义播报串词的语气与模板，被 `script` 加载。这样新增 `museum-agent` 时，子 agent 只声明「我是谁、产出什么」，方法直接装配现成 Skill，注册即用、不改内核。
 
 ---
 
@@ -108,6 +108,6 @@
 
 ---
 
-**覆盖核查**：上下文隔离与信噪比(1)、工具白名单最小权限(2/13)、model 作为成本/隐私杠杆=端侧 Selector vs 云 Brain(3)、5 种模式——执行型=海量输入→极少输出=照片整理(4)、流水线型+交接契约 Handoff Contract=书籍信息补全(5)、并行型=多 curator 同时跑(6)、只读型与团队型作为模式谱系两端在(4/6/9)中带出、子 agent 定义 Who/What/Where/Output 而 Skill 定义 How/Standard(7)、报文传输非共享内存(8)、嵌套≤2(9)、Token 经济学(10)、中断恢复持久化(11)，均已落点到 frost-agent 现有四层架构与演进路径。
+**覆盖核查**：上下文隔离与信噪比(1)、工具白名单最小权限(2/13)、model 作为成本/隐私杠杆=端侧 Selector vs 云 Brain(3)、5 种模式——执行型=海量输入→极少输出=照片整理(4)、流水线型+交接契约 Handoff Contract=书籍信息补全(5)、并行型=多 agent 同时跑(6)、只读型与团队型作为模式谱系两端在(4/6/9)中带出、子 agent 定义 Who/What/Where/Output 而 Skill 定义 How/Standard(7)、报文传输非共享内存(8)、嵌套≤2(9)、Token 经济学(10)、中断恢复持久化(11)，均已落点到 frost-agent 现有四层架构与演进路径。
 
 源文件：`/tmp/book-ch4.txt`、`/Users/zhangcheng/Desktop/Pocket Earth/frost-agent/ARCHITECTURE.md`

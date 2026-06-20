@@ -16,11 +16,11 @@ export interface LearnedSkill {
 
 // 白名单：技能唯一能路由到的目标 = 已存在的可运行 agent。名→中文用途（也喂给云脑拟稿）。
 export const ALLOWED_TARGETS: Record<string, string> = {
-  'music-curator': '点歌 / 音乐电台',
-  'movies-curator': '看电影',
-  'books-curator': '读书',
-  'photos-curator': '整理照片',
-  'travel-curator': '规划行程',
+  'music-agent': '点歌 / 音乐电台',
+  'movies-agent': '看电影',
+  'books-agent': '读书',
+  'photos-agent': '整理照片',
+  'travel-agent': '规划行程',
   'jot': '随手记一笔 / 记心情',
   'council-room': '多 agent 圆桌',
   'public-plaza': '代理社交广场',

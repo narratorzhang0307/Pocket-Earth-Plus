@@ -5,9 +5,9 @@ import { edgeSafe } from '../../../frost-agent/edge/contract';
 import { downscaleForVision } from '../lib/imageDownscale';
 import { runScreen, type PhotoResult, type PhotoType, type Verdict, TYPE_LABEL, addPhotoPins, toPins, learnFromOverride, recordPhotoOverride, getPrefs } from '../lib/photo';
 import RunTrace from './RunTrace';
-import { startCuratorRun } from '../lib/observe/bus';
+import { startAgentRun } from '../lib/observe/bus';
 
-// photos-curator 运行页 —— 真·端侧照片整理 agent。
+// photos-agent 运行页 —— 真·端侧照片整理 agent。
 // 「我的照片」：用户在系统选择器多选自己的真实照片 → 设年月范围 → 一键端侧筛选
 //   （混合：快速逐像素分析 + 可选小视觉模型精筛）→ 真实打分/查重/判留删，全程原图不出手机。
 // 「示例」：原概念报告（mock 数据），留作演示。
@@ -225,7 +225,7 @@ function RealView() {
   const run = async () => {
     if (!files.length || running) return;
     results.forEach((r) => URL.revokeObjectURL(r.url));
-    const tr = startCuratorRun(`端侧整理照片 · ${files.length} 张`); setRunId(tr.runId);
+    const tr = startAgentRun(`端侧整理照片 · ${files.length} 张`); setRunId(tr.runId);
     let lastPhase = '';
     setResults([]); setErr(''); setPinned(false); setRunning(true); setProgress({ done: 0, total: files.length, phase: '准备' });
     try {
@@ -438,7 +438,7 @@ function RealView() {
 }
 
 // ───────────────────────── 外壳 ─────────────────────────
-export default function PhotosCuratorRunPage({ onBack }: Props) {
+export default function PhotosAgentRunPage({ onBack }: Props) {
   const [mode, setMode] = useState<'real' | 'demo'>('real');
   return (
     <div className="h-full flex flex-col bg-[#EAEAEA] font-sans relative overflow-hidden">
@@ -447,7 +447,7 @@ export default function PhotosCuratorRunPage({ onBack }: Props) {
           <ChevronLeft className="w-4 h-4" strokeWidth={3} />
         </button>
         <div className="flex-1 min-w-0">
-          <div className="font-pixel text-[11px] tracking-wider truncate">PHOTOS-CURATOR</div>
+          <div className="font-pixel text-[11px] tracking-wider truncate">PHOTOS-AGENT</div>
           <div className="text-[9px] text-black/45 truncate">端侧整理 · 原图不出手机</div>
         </div>
         <div className="flex border-2 border-black bg-[#EAEAEA] p-0.5 shrink-0">

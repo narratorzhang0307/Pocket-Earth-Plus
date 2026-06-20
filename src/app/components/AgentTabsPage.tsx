@@ -2,8 +2,8 @@ import { useState, type ReactNode } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import AgentChat, { type AgentChatConfig } from './AgentChat';
 
-// 通用 curator 容器：顶部两 tab —— 左「数据层」(领域名录/记录) + 右「对话层」(领域 agent 对话)。
-// 与 music-curator 同构；两 tab 常驻挂载，切换不丢状态。
+// 通用 agent 容器：顶部两 tab —— 左「数据层」(领域名录/记录) + 右「对话层」(领域 agent 对话)。
+// 与 music-agent 同构；两 tab 常驻挂载，切换不丢状态。
 
 interface Props {
   onBack: () => void;
@@ -14,7 +14,7 @@ interface Props {
   chat: AgentChatConfig;      // 对话层配置
 }
 
-export default function CuratorTabsPage({ onBack, title, leftLabel, rightLabel, left, chat }: Props) {
+export default function AgentTabsPage({ onBack, title, leftLabel, rightLabel, left, chat }: Props) {
   const [tab, setTab] = useState<'data' | 'chat'>('data');
   return (
     <div className="h-full flex flex-col bg-[#EAEAEA] overflow-hidden">

@@ -10,7 +10,7 @@ import { addUserMark, spreadCoord } from '../data/userMarks';
 import { geocodeCity } from '../data/geoStickers';
 
 // 圆桌议事运行页（我们的像素风）：选谁入场 + 选讨论模式 + 出题 → 多 agent 轮流发言。
-// 机制是频道群聊式的多 agent 同台（见 council/engine.ts），UI 完全是 Pocket Earth 风格；与各 curator 解耦。
+// 机制是频道群聊式的多 agent 同台（见 council/engine.ts），UI 完全是 Pocket Earth 风格；与各 agent 解耦。
 
 const ACCENT = '#00ff88';
 interface Props { onBack: () => void }

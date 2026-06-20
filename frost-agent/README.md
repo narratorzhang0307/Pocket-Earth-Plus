@@ -1,6 +1,6 @@
 # Frost Agent · 设计框架 v2.0
 
-`frost-agent` 是 Pocket Earth 的内核：一个**把地球作为方法**的个人知识整理 agent。一个总 frost-agent 作为主 agent，把用户的书、电影、音乐、照片这些个人对象，委派给专门的 curator 子 agent；每个 curator 端侧整理、定位，产出 `mark_place` 落点建议，经 Boundary 校验后钉到地球，让地图长成一张属于「这个人」的知识地图。
+`frost-agent` 是 Pocket Earth 的内核：一个**把地球作为方法**的个人知识整理 agent。一个总 frost-agent 作为主 agent，把用户的书、电影、音乐、照片这些个人对象，委派给专门的 agent 子 agent；每个 agent 端侧整理、定位，产出 `mark_place` 落点建议，经 Boundary 校验后钉到地球，让地图长成一张属于「这个人」的知识地图。
 
 底层是一套可插拔的多 agent Harness：统一接收自然语言，路由到专门的子 agent，生成带「人格声音」的回复、可见的 thinking trace 与结构化动作建议，再由 Boundary 校验后执行。
 
@@ -9,7 +9,7 @@
 - **模型可插拔**：默认 stub brain；注入 `httpBrain` 即接真实 LLM，无 key 时自动规则兜底。
 - **端侧优先**：选择 / 打标 / 价值打分这类「挑和找」走端侧，个人数据（尤其相册原图）不出端。
 
-> v2.0 目标架构（Router → Skill → Sub-agent → Tool，主 frost-agent 编排四个 curator，端侧 + 云双速模型）见 [ARCHITECTURE.md](ARCHITECTURE.md)；落到架构里的子 agent 工程原则见 [HARNESS-PRINCIPLES.md](HARNESS-PRINCIPLES.md)。
+> v2.0 目标架构（Router → Skill → Sub-agent → Tool，主 frost-agent 编排四个 agent，端侧 + 云双速模型）见 [ARCHITECTURE.md](ARCHITECTURE.md)；落到架构里的子 agent 工程原则见 [HARNESS-PRINCIPLES.md](HARNESS-PRINCIPLES.md)。
 
 > 这是设计框架代码 + 契约文档，radio 是其中一类对象的处理方式，不是 frost-agent 的全部。
 
@@ -152,14 +152,14 @@ import { RADIO_CITIES, resolveTracksByIds } from './harness/domain'; // 等同 d
 | `script-tts-pipeline` | DJ 文稿口语化、TTS 音频、字幕、写库 | 离线流水线 | 部分落地 |
 | `writer-book` | 本地书/笔记抽取分块，形成 RAG 语料 | 离线流水线 | 分块落地，向量检索待接 |
 
-v2.0 新增的 curator 子 agent（把个人对象钉到地球，契约就位、待实现）：
+v2.0 新增的 agent 子 agent（把个人对象钉到地球，契约就位、待实现）：
 
 | 子 agent | 职责 | 端侧 / 云 | 模式 | 状态 |
 |---|---|---|---|---|
-| [`books-curator`](agents/books-curator/contract.md) | 把读过的书钉到故事地/作者地 + 读完日期；信息不全联网补全 | 端侧抽取 + 联网补 + 云写 | 流水线型 | 契约就位 |
-| [`movies-curator`](agents/movies-curator/contract.md) | 把看过的电影钉到取景地/故事地 + 观看日期 | 端侧整理 + 联网补 | 执行型 / 流水线型 | 契约就位 |
-| [`music-curator`](agents/music-curator/contract.md) | 把听过的音乐钉到歌手出身地/歌曲城市 + 收听足迹 | 端侧选择聚类 + geocode | 流水线型 | 契约就位 |
-| [`photos-curator`](agents/photos-curator/contract.md) | 端侧整本相册打标打分，只把高价值照片钉到地球 | 全端侧（原图不出端） | 执行型 | 契约就位 |
+| [`books-agent`](agents/books-agent/contract.md) | 把读过的书钉到故事地/作者地 + 读完日期；信息不全联网补全 | 端侧抽取 + 联网补 + 云写 | 流水线型 | 契约就位 |
+| [`movies-agent`](agents/movies-agent/contract.md) | 把看过的电影钉到取景地/故事地 + 观看日期 | 端侧整理 + 联网补 | 执行型 / 流水线型 | 契约就位 |
+| [`music-agent`](agents/music-agent/contract.md) | 把听过的音乐钉到歌手出身地/歌曲城市 + 收听足迹 | 端侧选择聚类 + geocode | 流水线型 | 契约就位 |
+| [`photos-agent`](agents/photos-agent/contract.md) | 端侧整本相册打标打分，只把高价值照片钉到地球 | 全端侧（原图不出端） | 执行型 | 契约就位 |
 
 ## 5. 设计原则与边界
 

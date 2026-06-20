@@ -11,7 +11,7 @@ import {
   type AgentManifest, type ManifestReview, type CustomDraft, type MapDraft, type MapRecord,
 } from '../lib/agent';
 import RunTrace from './RunTrace';
-import { startCuratorRun } from '../lib/observe/bus';
+import { startAgentRun } from '../lib/observe/bus';
 
 const ACCENT = '#ff8a3d';
 
@@ -211,8 +211,8 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
     const g = goal.trim();
     if (!g || mapBusy) return;
     setMapBusy(true); setMapDraft(null); setMapMsg('');
-    // 一次 FrostBus 运行 → RunTrace 把 规划→搜索→反思→地理编码 渲成实时编排树（与各 curator 同款可观测）
-    const run = startCuratorRun(`建图 · ${manifest.domain} · ${g.slice(0, 16)}`); setMapRunId(run.runId);
+    // 一次 FrostBus 运行 → RunTrace 把 规划→搜索→反思→地理编码 渲成实时编排树（与各 agent 同款可观测）
+    const run = startAgentRun(`建图 · ${manifest.domain} · ${g.slice(0, 16)}`); setMapRunId(run.runId);
     const d = await populateMap(manifest, g, (p, note) => run.phase(p, note));
     run.end(d.records.length > 0);
     setMapBusy(false); setMapDraft(d);

@@ -2,9 +2,9 @@
 // 把「按归一名在本地库里精确→模糊匹配一条记录」抽成 skill：归一(去年份括号/标点/空格/小写) → 精确命中 →
 // 包含式模糊(长度差≤1 收紧，取最接近，防短名前缀误命中)。movie/book 的本地豆瓣库锚定都复用它。
 // 关注点分离：matching 逻辑通用（在此）；catalog 数据 + 记录类型 + 索引字段(电影 title+original / 书 title)
-// 是领域专属，留各 curator 用 buildCatalogIndex 自建索引。app 层 skill（不依赖内核）。
+// 是领域专属，留各 agent 用 buildCatalogIndex 自建索引。app 层 skill（不依赖内核）。
 
-/** 与各 curator 一致口径的书名/片名归一：去结尾年份括号、去标点空格、小写。 */
+/** 与各 agent 一致口径的书名/片名归一：去结尾年份括号、去标点空格、小写。 */
 export function normTitle(s: string): string {
   return (s || '')
     .replace(/\(\d{4}\)|（\d{4}）/g, '')

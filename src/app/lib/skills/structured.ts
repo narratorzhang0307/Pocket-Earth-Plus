@@ -2,7 +2,7 @@
 // 可复用 Skill（app 层）· structured —— schema 驱动「提示生成 + 运行时校验」（借鉴 langchain output-parsers）
 // ────────────────────────────────────────────────────────────────────────────
 // langchain 把「让 LLM 吐结构化数据」拆成四个正交关注点。这里借两个最高性价比的，用最朴素的 schema 实现：
-//   · formatInstructions(schema) —— schema【确定性派生】成提示词约束，收敛各 curator 手写的「请返回 JSON…」。
+//   · formatInstructions(schema) —— schema【确定性派生】成提示词约束，收敛各 agent 手写的「请返回 JSON…」。
 //   · validateShape<T>(obj, schema) —— 补 enrichJSON<T> 的【运行时空洞】：T 只是编译期标注，运行时不校验形状；
 //     这里真按 schema 校验类型，不符返回 null 走舱壁（契合优雅降级）。
 // 不引 zod 全家桶、不搬 langchain 的 parser 类层级——对手搓 harness 是过度工程。

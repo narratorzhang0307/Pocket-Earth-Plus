@@ -1,11 +1,11 @@
-// 音乐 tab —— frost-agent 架构控制台：展示 v2.0 各 agent（curator / harness / pipeline）
+// 音乐 tab —— frost-agent 架构控制台：展示 v2.0 各 agent（agent / harness / pipeline）
 // 内容静态提炼自 frost-agent/ARCHITECTURE.md 与各 contract.md
 import { useState, useEffect } from 'react';
-import MusicCuratorPage from './MusicCuratorPage';
-import PodcastCuratorPage from './PodcastCuratorPage';
-import MoviesCuratorPage from './MoviesCuratorPage';
-import BooksCuratorPage from './BooksCuratorPage';
-import PhotosCuratorRunPage from './PhotosCuratorRunPage';
+import MusicAgentPage from './MusicAgentPage';
+import PodcastAgentPage from './PodcastAgentPage';
+import MoviesAgentPage from './MoviesAgentPage';
+import BooksAgentPage from './BooksAgentPage';
+import PhotosAgentRunPage from './PhotosAgentRunPage';
 import TravelRunPage from './TravelRunPage';
 import CouncilPage from './CouncilPage';
 import PublicPlazaPage from './PublicPlazaPage';
@@ -27,14 +27,14 @@ interface AgentItem {
 
 const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
   {
-    title: 'CURATORS',
+    title: 'AGENTS',
     sub: '子 agent',
     items: [
-      { name: 'music-curator', role: '把音乐钉到歌手出身地 / 歌曲城市', status: '契约就位' },
-      { name: 'books-curator', role: '把书钉到故事地 / 作者地 + 读完日期', status: '契约就位' },
-      { name: 'movies-curator', role: '把电影钉到取景地 / 故事地', status: '契约就位' },
-      { name: 'photos-curator', role: '端侧整理相册，高价值照片钉地球', status: '契约就位' },
-      { name: 'travel-curator', role: '按喜好端侧规划行程，完成即钉星球', status: '契约就位' },
+      { name: 'music-agent', role: '把音乐钉到歌手出身地 / 歌曲城市', status: '契约就位' },
+      { name: 'books-agent', role: '把书钉到故事地 / 作者地 + 读完日期', status: '契约就位' },
+      { name: 'movies-agent', role: '把电影钉到取景地 / 故事地', status: '契约就位' },
+      { name: 'photos-agent', role: '端侧整理相册，高价值照片钉地球', status: '契约就位' },
+      { name: 'travel-agent', role: '按喜好端侧规划行程，完成即钉星球', status: '契约就位' },
       { name: 'jot', role: '一句话/截图 → frost 判书·影·行程·心情 → 钉到对应图层；记心情还能回望', status: '可运行' },
     ],
   },
@@ -57,12 +57,12 @@ const GROUPS: { title: string; sub: string; items: AgentItem[] }[] = [
 
 type Running = 'frost' | 'music' | 'podcast' | 'movies' | 'books' | 'photos' | 'travel' | 'council' | 'plaza' | 'forge' | 'agentforge' | 'jot' | null;
 const RUN_BY_NAME: Record<string, Running> = {
-  'music-curator': 'music', 'movies-curator': 'movies',
-  'books-curator': 'books', 'photos-curator': 'photos', 'travel-curator': 'travel',
+  'music-agent': 'music', 'movies-agent': 'movies',
+  'books-agent': 'books', 'photos-agent': 'photos', 'travel-agent': 'travel',
   'council-room': 'council', 'jot': 'jot',
   'public-plaza': 'plaza',
 };
-// FROST 总 agent 可直达的「非 curator」hero 入口（不计入上面 AGENTS 计数）：造物主 AGENT-FORGE。
+// FROST 总 agent 可直达的「非 agent」hero 入口（不计入上面 AGENTS 计数）：造物主 AGENT-FORGE。
 // 让 FROST 的快捷入口能像调子 agent 一样把活派给它（route A：显式委派）。
 const HERO_BY_NAME: Record<string, Running> = { 'agent-forge': 'agentforge' };
 
@@ -80,11 +80,11 @@ export default function MusicAgentsTab() {
   const runSkill = (target: string) => { const t = RUN_BY_NAME[target] ?? HERO_BY_NAME[target]; if (t) setRunning(t); };
 
   if (running === 'frost') return <FrostBuddyPage onBack={() => setRunning(null)} onRun={runSkill} />;
-  if (running === 'music') return <MusicCuratorPage onBack={() => setRunning(null)} />;
-  if (running === 'podcast') return <PodcastCuratorPage onBack={() => setRunning(null)} />;
-  if (running === 'movies') return <MoviesCuratorPage onBack={() => setRunning(null)} />;
-  if (running === 'books') return <BooksCuratorPage onBack={() => setRunning(null)} />;
-  if (running === 'photos') return <PhotosCuratorRunPage onBack={() => setRunning(null)} />;
+  if (running === 'music') return <MusicAgentPage onBack={() => setRunning(null)} />;
+  if (running === 'podcast') return <PodcastAgentPage onBack={() => setRunning(null)} />;
+  if (running === 'movies') return <MoviesAgentPage onBack={() => setRunning(null)} />;
+  if (running === 'books') return <BooksAgentPage onBack={() => setRunning(null)} />;
+  if (running === 'photos') return <PhotosAgentRunPage onBack={() => setRunning(null)} />;
   if (running === 'travel') return <TravelRunPage onBack={() => setRunning(null)} />;
   if (running === 'council') return <CouncilPage onBack={() => setRunning(null)} />;
   if (running === 'plaza') return <PublicPlazaPage onBack={() => setRunning(null)} />;
@@ -133,13 +133,13 @@ export default function MusicAgentsTab() {
           <span className="shrink-0 font-pixel text-[6px] uppercase tracking-wider border border-black bg-black text-[#7CFF6B] px-1.5 py-1">▶ RUN</span>
         </button>
 
-        {/* 造物主：一个能造 agent 的 agent —— 说一句话长出新的 curator */}
+        {/* 造物主：一个能造 agent 的 agent —— 说一句话长出新的 agent */}
         <button
           onClick={() => setRunning('agentforge')}
           className="w-full text-left flex items-center gap-2.5 border-2 border-black p-2.5 shadow-[3px_3px_0_rgba(0,0,0,0.85)] active:translate-y-px"
           style={{ background: '#fff1e6' }}
         >
-          {/* 小橙方块（与 curator 同款，只是橙色）——不用大图标 */}
+          {/* 小橙方块（与 agent 同款，只是橙色）——不用大图标 */}
           <div className="w-3 h-3 shrink-0 bg-black flex items-center justify-center border border-black" style={{ boxShadow: '1px 1px 0px #ff8a3d' }}>
             <div className="w-1.5 h-1.5" style={{ background: '#ff8a3d' }} />
           </div>

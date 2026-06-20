@@ -1,10 +1,10 @@
 // 可复用 Skill（app 层）· 钉地球 / 落点（mark_place）
 // 把「把一个对象钉到地球」的统一机制抽成一个 skill：校验坐标 → 去重(同 id 不重钉) → spreadCoord 抖散 → 写 userMarks。
-// 这是 ARCHITECTURE §6.2「统一动作 mark_place」的唯一实现，所有 curator（movie/book/photo-外）+ 主 frost-agent
+// 这是 ARCHITECTURE §6.2「统一动作 mark_place」的唯一实现，所有 agent（movie/book/photo-外）+ 主 frost-agent
 // + 造物主引擎都 `import { markPlace }` 复用，不再各自抄一遍落点逻辑。
 //
 // 关注点分离：本 skill 只管「落点 How」（机制）；领域专属的「拼 meta / 喂长期画像 recordSignals / 落本地索引」
-// 留在各 curator（Who/What/Where）。依赖倒置：调用方依赖下面的契约（输入/输出类型），换内部实现不影响调用方。
+// 留在各 agent（Who/What/Where）。依赖倒置：调用方依赖下面的契约（输入/输出类型），换内部实现不影响调用方。
 //
 // 放 src/app/lib/skills/（app 层）而非 frost-agent/skills/（内核层）——因为它依赖 userMarks / MarkerKind 这些 app 数据，
 // 内核不可反向依赖 app。内核层 skill（只依赖 harness）见 frost-agent/skills/（如 curatePlaylist）。

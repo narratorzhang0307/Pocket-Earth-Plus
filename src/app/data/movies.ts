@@ -1,5 +1,5 @@
 // 观影数据源（解耦）：豆瓣观影记录（douban-movies.json，已精简入库）→ 按「国家/地区」落到代表城市坐标，
-// 同国多片用确定性微抖动散开。导出给地图的电影点 moviePoints，以及给「观影 curator」运行页用的记录与统计。
+// 同国多片用确定性微抖动散开。导出给地图的电影点 moviePoints，以及给「观影 agent」运行页用的记录与统计。
 // 换数据只换 douban-movies.json；坐标映射在下方 COUNTRY_COORDS。
 
 import raw from './douban-movies.json';

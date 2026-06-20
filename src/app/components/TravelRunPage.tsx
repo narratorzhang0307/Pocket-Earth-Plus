@@ -6,9 +6,9 @@ import {
 } from '../lib/travel';
 import { getUserMarksByKind, subscribeUserMarks } from '../data/userMarks';
 import RunTrace from './RunTrace';
-import { startCuratorRun } from '../lib/observe/bus';
+import { startAgentRun } from '../lib/observe/bus';
 
-// travel-curator 运行页 —— 行程 agent（薄 UI，业务逻辑在 src/app/lib/travel/*）。
+// travel-agent 运行页 —— 行程 agent（薄 UI，业务逻辑在 src/app/lib/travel/*）。
 // B 线（规划）：选目的地+喜好 → 三级排序（云脑按你跨域口味挑 / 端侧真后端 / 本地兜底）→ 逐日行程 → 钉星球。
 //   隐私：画像只走云脑那一级；端侧只按旅行偏好，画像不出端。
 // A 线（存档·P0 手动版）：车票截图自动识别属 P1（端侧 OCR+脱敏），P0 先手填一笔已走过的行程钉点。
@@ -48,7 +48,7 @@ export default function TravelRunPage({ onBack }: Props) {
 
   // B 线规划：runPlan 三级排序（云脑按画像挑 → 端侧真后端 → 本地兜底），mode 透明告知
   const makePlan = async () => {
-    const run = startCuratorRun(`规划行程 · ${destName} ${days}天`); setPlanRunId(run.runId);
+    const run = startAgentRun(`规划行程 · ${destName} ${days}天`); setPlanRunId(run.runId);
     setPlanning(true); setPhase('');
     const tp = await runPlan({ destName, prefs: [...prefs], days }, (p, detail) => { setPhase(p); run.phase(p, detail); });
     run.end(!!tp);
@@ -81,7 +81,7 @@ export default function TravelRunPage({ onBack }: Props) {
 
   const onPickShots = async (files: FileList | null) => {
     if (!files || !files.length) return;
-    const run = startCuratorRun(`截图存档 · ${[...files].length} 张`); setArchiveRunId(run.runId);
+    const run = startAgentRun(`截图存档 · ${[...files].length} 张`); setArchiveRunId(run.runId);
     setArchiveBusy(true); setArchiveDraft(null); setArchivePhase('读取截图'); run.phase('读取截图');
     try {
       const urls = await Promise.all([...files].slice(0, 8).map((f) => new Promise<string>((res) => {
@@ -110,7 +110,7 @@ export default function TravelRunPage({ onBack }: Props) {
           <ChevronLeft className="w-4 h-4" strokeWidth={3} />
         </button>
         <div className="flex-1 min-w-0">
-          <div className="font-pixel text-[11px] tracking-wider truncate">TRAVEL-CURATOR</div>
+          <div className="font-pixel text-[11px] tracking-wider truncate">TRAVEL-AGENT</div>
         </div>
         <Plane className="w-4 h-4" strokeWidth={2.5} style={{ color: ROSE }} />
       </div>

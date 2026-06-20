@@ -22,7 +22,7 @@ export const DOMAIN_COLOR: Record<CaptureDomain, string> = { movie: '#ffb000', b
 export interface CaptureResult {
   domain: CaptureDomain;
   ok: boolean;             // 是否抽到可钉的东西
-  needPlace?: boolean;     // 认出了但没坐标（电影/书待补国家）→ 当下不可钉，引导去对应 curator 补地点
+  needPlace?: boolean;     // 认出了但没坐标（电影/书待补国家）→ 当下不可钉，引导去对应 agent 补地点
   title: string;           // 主体名（片名 / 书名 / 城市 / 心情摘要）
   where: string;           // 落点描述（取景地·东京 / 京都 / 此处）
   note: string;            // 一句说明 / 失败原因
@@ -71,13 +71,13 @@ export async function runCapture(text: string, imageDataUrl?: string, onPhase?: 
 
   if (domain === 'movie') {
     const d = await runMovieAgent({ kind: imageDataUrl ? 'image' : 'text', text: t, imageDataUrl }, onPhase ? (p, d) => onPhase(p, d) : undefined);
-    if (!d) return { domain, ok: false, title: '', where: '', note: '没认出影片，换种说法、或去 movies-curator 手填', confirm: NO_PIN };
-    return { domain, ok: true, needPlace: d.needPlace, title: d.title, where: d.geo ? `${MOVIE_GEO[d.geo.kind]}·${d.geo.place}` : '待补国家', note: d.needPlace ? '认出了，但还没定位到地点 —— 去 movies-curator 补国家后可钉' : '', rating: d.tags.userRating, movieDraft: d, confirm: () => confirmMovie(d) };
+    if (!d) return { domain, ok: false, title: '', where: '', note: '没认出影片，换种说法、或去 movies-agent 手填', confirm: NO_PIN };
+    return { domain, ok: true, needPlace: d.needPlace, title: d.title, where: d.geo ? `${MOVIE_GEO[d.geo.kind]}·${d.geo.place}` : '待补国家', note: d.needPlace ? '认出了，但还没定位到地点 —— 去 movies-agent 补国家后可钉' : '', rating: d.tags.userRating, movieDraft: d, confirm: () => confirmMovie(d) };
   }
   if (domain === 'book') {
     const d = await runBookAgent({ kind: imageDataUrl ? 'image' : 'text', text: t, imageDataUrl }, onPhase ? (p, d) => onPhase(p, d) : undefined);
-    if (!d) return { domain, ok: false, title: '', where: '', note: '没认出书，换种说法、或去 books-curator 手填', confirm: NO_PIN };
-    return { domain, ok: true, needPlace: d.needPlace, title: d.title, where: d.geo ? `${BOOK_GEO[d.geo.kind]}·${d.geo.place}` : '待补国家', note: d.needPlace ? '认出了，但还没定位到地点 —— 去 books-curator 补国家后可钉' : '', rating: d.tags.userRating, bookDraft: d, confirm: () => confirmBook(d) };
+    if (!d) return { domain, ok: false, title: '', where: '', note: '没认出书，换种说法、或去 books-agent 手填', confirm: NO_PIN };
+    return { domain, ok: true, needPlace: d.needPlace, title: d.title, where: d.geo ? `${BOOK_GEO[d.geo.kind]}·${d.geo.place}` : '待补国家', note: d.needPlace ? '认出了，但还没定位到地点 —— 去 books-agent 补国家后可钉' : '', rating: d.tags.userRating, bookDraft: d, confirm: () => confirmBook(d) };
   }
   if (domain === 'travel') {
     onPhase?.('定位行程地点', 'resolvePlace 本地→Mapbox');

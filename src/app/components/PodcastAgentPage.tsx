@@ -1,17 +1,17 @@
-import CuratorTabsPage from './CuratorTabsPage';
+import AgentTabsPage from './AgentTabsPage';
 import PodcastRunPage from './PodcastRunPage';
 import { RADIO_CITIES } from '../../../frost-agent/data/radio';
 
-// 城市播客 curator：左「城市·播客」(各城播客 + 播放) + 右「对话·城市」(城市文化 agent)。
+// 城市播客 agent：左「城市·播客」(各城播客 + 播放) + 右「对话·城市」(城市文化 agent)。
 
 const PODCAST_CITIES = RADIO_CITIES.filter((c) => c.podcast && c.podcast.length > 0).map((c) => c.cityNameZh);
 const PODCAST_CONTEXT = `有深度播客的城市：${PODCAST_CITIES.join('、') || '（暂无）'}`;
 
-export default function PodcastCuratorPage({ onBack }: { onBack: () => void }) {
+export default function PodcastAgentPage({ onBack }: { onBack: () => void }) {
   return (
-    <CuratorTabsPage
+    <AgentTabsPage
       onBack={onBack}
-      title="PODCAST-CURATOR"
+      title="PODCAST-AGENT"
       leftLabel="城市"
       rightLabel="Frost_City"
       left={<PodcastRunPage onBack={onBack} embedded />}

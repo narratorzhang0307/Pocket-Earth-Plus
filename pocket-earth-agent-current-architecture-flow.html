@@ -366,12 +366,12 @@
   <section class="page">
     <div class="kicker">Pocket Earth · frost-agent</div>
     <h1>Pocket Earth 当前 Agent 架构流程图</h1>
-    <div class="subtitle">项目版：把“本地空间知识库”落成一套端云双脑、多 curator、统一地球索引的 harness。图中强调当前代码真实闭环与可插拔接入点。</div>
+    <div class="subtitle">项目版：把“本地空间知识库”落成一套端云双脑、多 agent、统一地球索引的 harness。图中强调当前代码真实闭环与可插拔接入点。</div>
     <div class="meta">版本 B：项目当前实现<br/>参考：README / 代码 / PPT</div>
     <div class="legend">
       <span><i class="swatch core"></i>frost-agent Harness</span>
       <span><i class="swatch engine"></i>端云双脑</span>
-      <span><i class="swatch agent"></i>可运行 agent / curator</span>
+      <span><i class="swatch agent"></i>可运行 agent / agent</span>
       <span><i class="swatch data"></i>地球索引 / 本地状态</span>
       <span><i class="swatch future"></i>契约就位 / 演进层</span>
     </div>
@@ -479,7 +479,7 @@
       <path class="lineBlueB dashB" d="M1005 479 L1080 479"/>
 
       <rect class="bandB" x="12" y="574" width="1436" height="112" rx="14"/>
-      <text class="bandTitleB" x="32" y="602">4 · SUB-AGENTS / CURATORS</text>
+      <text class="bandTitleB" x="32" y="602">4 · SUB-AGENTS / AGENTS</text>
       <rect class="boxB agentB" x="44" y="620" width="190" height="42"/>
       <text class="labelB" x="76" y="647">music / radio</text>
       <rect class="boxB agentB" x="258" y="620" width="190" height="42"/>
@@ -532,12 +532,12 @@
       <div class="panel">
         <h2>运行链路</h2>
         <ol class="steps">
-          <li>用户在 <span class="code">MusicAgentRunPage</span>、通用 <span class="code">AgentChat</span>，或各 curator 运行页发起操作。</li>
+          <li>用户在 <span class="code">MusicAgentRunPage</span>、通用 <span class="code">AgentChat</span>，或各 agent 运行页发起操作。</li>
           <li>音乐对话层调用 <span class="code">runFrost(ctx)</span>，传入当前时间、用户文本和最近对话。</li>
           <li><span class="code">switch-handler</span> 先做明确指令匹配：下一首、暂停、切城等不动用模型。</li>
           <li>不是明确指令时，Router 调 <span class="code">edgeSafe.classify</span> 做端侧预分类；命中合法意图就直接 dispatch。</li>
           <li>端侧没把握时，<span class="code">llmRoute</span> 走云脑 <span class="code">/api/frost-llm</span> 判意图、抽实体；云不可用则正则兜底。</li>
-          <li>意图通过 <span class="code">intentRegistry</span> 找到处理器，委派到 runtime agent 或页面内 curator 逻辑。</li>
+          <li>意图通过 <span class="code">intentRegistry</span> 找到处理器，委派到 runtime agent 或页面内 agent 逻辑。</li>
           <li>子 agent 返回 Frost 回复、结构化数据、trace，以及可选动作建议。</li>
           <li><span class="code">validator.ts</span> 只放行已注册动作；未来 <span class="code">mark_place</span> 也按同一模式接校验器。</li>
           <li>播放动作进入播放器；地理落点进入 <span class="code">userMarks / planets / geoStickers</span> 并触发地图刷新。</li>
@@ -601,24 +601,24 @@
     <div class="kicker">Pocket Earth · agents inventory</div>
     <h1>Agent 清单、输入输出与落地状态</h1>
     <div class="subtitle">这页用于向评审或团队说明每个 agent 处理什么对象、在哪执行、产出什么，以及当前在代码中的成熟度。</div>
-    <div class="meta">对象：curator / runtime agent / pipeline<br/>状态：当前仓库代码</div>
+    <div class="meta">对象：agent / runtime agent / pipeline<br/>状态：当前仓库代码</div>
 
     <div class="grid" style="grid-template-columns: 1.12fr 1fr;">
       <div class="panel">
-        <h2>Curator / Product Agents</h2>
+        <h2>Agent / Product Agents</h2>
         <table>
           <thead>
             <tr><th>Agent</th><th>输入</th><th>核心处理</th><th>输出 / 落点</th><th>状态</th></tr>
           </thead>
           <tbody>
-            <tr><td>music-curator</td><td>曲库 / 场景一句话</td><td>端侧排序 + 云写歌单理由</td><td>播放队列 + 音乐城市点</td><td><span class="status">已运行</span></td></tr>
-            <tr><td>books-curator</td><td>书架 / 新读完一本</td><td>截图认书、作者/故事地定位、画像增量</td><td>书点 + 藏书票</td><td><span class="status partial">运行页 + 契约</span></td></tr>
-            <tr><td>movies-curator</td><td>豆瓣影单 / 新观影</td><td>截图认片、国别/取景地归位、画像增量</td><td>电影点 + 票根</td><td><span class="status partial">运行页 + 契约</span></td></tr>
-            <tr><td>photos-curator</td><td>相册 / OSS 图池</td><td>端侧视觉评分、打标、重复清理</td><td>高价值照片点 + 日历</td><td><span class="status">已运行</span></td></tr>
-            <tr><td>travel-curator</td><td>目的地 + 喜好</td><td>端侧 POI 排序，逐日行程规划</td><td>完成后写 travel 足迹</td><td><span class="status">已运行</span></td></tr>
-            <tr><td>podcast-curator</td><td>城市播客库</td><td>城市列表 + 播客播放 + 城市对话</td><td>城市文化叙事</td><td><span class="status">已运行</span></td></tr>
+            <tr><td>music-agent</td><td>曲库 / 场景一句话</td><td>端侧排序 + 云写歌单理由</td><td>播放队列 + 音乐城市点</td><td><span class="status">已运行</span></td></tr>
+            <tr><td>books-agent</td><td>书架 / 新读完一本</td><td>截图认书、作者/故事地定位、画像增量</td><td>书点 + 藏书票</td><td><span class="status partial">运行页 + 契约</span></td></tr>
+            <tr><td>movies-agent</td><td>豆瓣影单 / 新观影</td><td>截图认片、国别/取景地归位、画像增量</td><td>电影点 + 票根</td><td><span class="status partial">运行页 + 契约</span></td></tr>
+            <tr><td>photos-agent</td><td>相册 / OSS 图池</td><td>端侧视觉评分、打标、重复清理</td><td>高价值照片点 + 日历</td><td><span class="status">已运行</span></td></tr>
+            <tr><td>travel-agent</td><td>目的地 + 喜好</td><td>端侧 POI 排序，逐日行程规划</td><td>完成后写 travel 足迹</td><td><span class="status">已运行</span></td></tr>
+            <tr><td>podcast-agent</td><td>城市播客库</td><td>城市列表 + 播客播放 + 城市对话</td><td>城市文化叙事</td><td><span class="status">已运行</span></td></tr>
             <tr><td>planet-builder</td><td>一句主题</td><td>端侧解析主题 + Unsplash 抓图</td><td>主题星球圆点图层</td><td><span class="status">已运行</span></td></tr>
-            <tr><td>mood-curator</td><td>一句心情</td><td>端侧判地名，失败随机城市</td><td>心情贴钉经纬度</td><td><span class="status">已运行</span></td></tr>
+            <tr><td>mood-agent</td><td>一句心情</td><td>端侧判地名，失败随机城市</td><td>心情贴钉经纬度</td><td><span class="status">已运行</span></td></tr>
             <tr><td>council-room</td><td>议题 + 入场 agent</td><td>频道群聊回合引擎，云/端可切</td><td>圆桌 / 辩论 / 法庭 transcript</td><td><span class="status">已运行</span></td></tr>
             <tr><td>public-plaza</td><td>长期画像</td><td>本机画像生成相似人示意</td><td>代理社交报告入口</td><td><span class="status future">前瞻入口</span></td></tr>
           </tbody>
@@ -660,7 +660,7 @@
     <div class="grid three" style="margin-top: 12px;">
       <div class="panel">
         <h2>为什么是 Harness</h2>
-        <p>主 Frost 不吞原始噪声，只委派 curator，并只接收结构化结论。照片、书影、网页补全这类高噪声任务被隔离在子上下文里。</p>
+        <p>主 Frost 不吞原始噪声，只委派 agent，并只接收结构化结论。照片、书影、网页补全这类高噪声任务被隔离在子上下文里。</p>
       </div>
       <div class="panel">
         <h2>为什么是地球</h2>

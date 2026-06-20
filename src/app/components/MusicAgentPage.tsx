@@ -3,13 +3,13 @@ import { ChevronLeft } from 'lucide-react';
 import MusicLibraryView from './MusicLibraryView';
 import MusicAgentRunPage from './MusicAgentRunPage';
 
-// music-curator 容器：顶部两个 tab —— 左「曲库」(全部歌曲条目，可按地域/城市/歌手/流派归类)，
+// music-agent 容器：顶部两个 tab —— 左「曲库」(全部歌曲条目，可按地域/城市/歌手/流派归类)，
 // 右「对话」(原电台 / 音乐 agent 对话框，行为完全保留)。两个 tab 都常驻挂载，切换不丢对话与播放状态。
 
 interface Props { onBack: () => void }
 type Tab = 'library' | 'chat';
 
-export default function MusicCuratorPage({ onBack }: Props) {
+export default function MusicAgentPage({ onBack }: Props) {
   const [tab, setTab] = useState<Tab>('library');
 
   return (
@@ -21,7 +21,7 @@ export default function MusicCuratorPage({ onBack }: Props) {
             <ChevronLeft className="w-4 h-4" strokeWidth={3} />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="font-pixel text-[11px] tracking-wider truncate">MUSIC-CURATOR</div>
+            <div className="font-pixel text-[11px] tracking-wider truncate">MUSIC-AGENT</div>
           </div>
         </div>
         <div className="flex border-2 border-black bg-[#EAEAEA] p-0.5">

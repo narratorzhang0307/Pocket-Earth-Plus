@@ -278,7 +278,7 @@ async function handleUnsplash(req, res, url) {
 // ——————————————————— /api/travel-mcp（只读旅行数据：OSM 地理编码/POI + Open-Meteo 天气） ———————————————————
 // 红线：只挂【只读查询】工具（geocode / poi / weather），无 book/pay/任何下单端点。
 // 经本服务代理（守 OSM/Open-Meteo 使用政策的 User-Agent + 超时），前端绝不直连。任何失败让前端走本地兜底。
-const UA_TRAVEL = { 'User-Agent': 'PocketEarth/1.0 (personal travel curator)' }
+const UA_TRAVEL = { 'User-Agent': 'PocketEarth/1.0 (personal travel agent)' }
 async function handleTravelMcp(req, res, url) {
   const tool = url.searchParams.get('tool') || ''
   try {

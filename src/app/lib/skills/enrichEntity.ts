@@ -3,9 +3,9 @@
 //   · extractJSON —— 容错抽 JSON（容忍 ```json 包裹、前后废话；first{…last}），movie/tagging、engine、
 //     research、forge 各自抄过一份，统一到这里。
 //   · enrichJSON —— 组装 system+prompt → /api/frost-llm(json) → 带超时 → extractJSON，返回对象或 null。
-// 关注点分离：本 skill 管「LLM→JSON」的 How；各 curator 的字段 schema / 系统提示 / 结果映射是领域专属，留在调用方
+// 关注点分离：本 skill 管「LLM→JSON」的 How；各 agent 的字段 schema / 系统提示 / 结果映射是领域专属，留在调用方
 //   （电影 导演/演员/流派 vs 书 作者/译者 字段不同，强行塞进一个"通用 schema"会是泄漏抽象，故不做）。
-// 任何要"让云脑按结构吐数据"的 agent/场景都可复用。app 层 skill（打 /api/frost-llm，与 curator 同层）。
+// 任何要"让云脑按结构吐数据"的 agent/场景都可复用。app 层 skill（打 /api/frost-llm，与 agent 同层）。
 import { withRetry, HttpError, isTransient } from './withRetry';
 
 /** 从 LLM 文本里容错抽出 JSON（容忍代码块包裹与前后废话）。对象优先→数组→整段，取第一个能解析的。失败返回 null。 */

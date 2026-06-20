@@ -3,8 +3,8 @@ import { ChevronLeft, Play, Pause, Mic, Maximize2 } from 'lucide-react';
 import { RADIO_CITIES } from '../../../frost-agent/data/radio';
 import { RadioStage } from './radio/RadioStage';
 
-// podcast-curator 运行页 —— 城市播客：每座城一段深度文化叙事（文稿 + DJ 音频）。
-// 与 music-curator 同源（同一资料库），但策展的是「城市播客」而非歌单。
+// podcast-agent 运行页 —— 城市播客：每座城一段深度文化叙事（文稿 + DJ 音频）。
+// 与 music-agent 同源（同一资料库），但策展的是「城市播客」而非歌单。
 // 数据驱动：从资料库筛出有播客的城市；换数据三视图自动更新。
 
 const PODS = RADIO_CITIES.filter((c) => c.podcast && c.podcast.length > 0).map((c) => ({
@@ -79,7 +79,7 @@ export default function PodcastRunPage({ onBack, embedded }: Props) {
             <ChevronLeft className="w-4 h-4" strokeWidth={3} />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="font-pixel text-[11px] tracking-wider truncate">PODCAST-CURATOR</div>
+            <div className="font-pixel text-[11px] tracking-wider truncate">PODCAST-AGENT</div>
             <div className="text-[9px] text-black/45 truncate">城市播客 agent · {PODS.length} 城有播客</div>
           </div>
           <Mic className="w-4 h-4 text-black/50" strokeWidth={2.5} />

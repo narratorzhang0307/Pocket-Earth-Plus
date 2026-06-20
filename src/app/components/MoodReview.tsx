@@ -3,7 +3,7 @@ import { MapPin, X } from 'lucide-react';
 import { getMoodStickers, removeMoodSticker, subscribeMood, MOOD_TONES, type MoodSticker } from '../data/geoStickers';
 import { groupMoodsByTimeline, toneDistribution, moodSummary, dayKey } from '../lib/mood/retrospect';
 
-// 心情回望（review-only）—— 从原 mood-curator 抽出的「列表 / 回望」复盘面板，并进 JOT 的「心情」页。
+// 心情回望（review-only）—— 从原 mood-agent 抽出的「列表 / 回望」复盘面板，并进 JOT 的「心情」页。
 // 只读 + 删除：写心情走 JOT「记一笔」（统一入口），这里专管回看——情绪分布 + 时间线分组，看心情如何累积。
 // 纯派生自 geoStickers（与中间地球同一份数据），subscribeMood 增删自动重渲染。
 

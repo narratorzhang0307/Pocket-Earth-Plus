@@ -3,13 +3,13 @@
 // ────────────────────────────────────────────────────────────────────────────
 // langchain 把「执行过程」标准化成一棵带 run_id/parent_id 的生命周期事件树，被动 handler 订阅——
 // 同一棵树既能喂 logger/tracer 做可观测，又能反转成前端 token 流。pocket-earth 之前只有零散 trace+health，
-// 没有统一事件词汇、没有把一次 router→curator→skill→enrich 串成可追踪的树。这里补这个地基。
+// 没有统一事件词汇、没有把一次 router→agent→skill→enrich 串成可追踪的树。这里补这个地基。
 //
 // 只借三个抽象：① 统一事件词汇(带 runId/parentId 串成树) ② 被动订阅 ③ handler 抛错绝不打断主流程(与舱壁价值观一致)。
 // 不搬 langchain 的 CallbackManager(2826 行)/跨事件循环队列——单浏览器单 React 树用不上。
 // ════════════════════════════════════════════════════════════════════════════
 
-export type RunType = 'router' | 'curator' | 'skill' | 'brain' | 'edge' | 'enrich' | 'geo';
+export type RunType = 'router' | 'agent' | 'skill' | 'brain' | 'edge' | 'enrich' | 'geo';
 export type Phase = 'start' | 'end' | 'error';
 
 export interface FrostEvent {
@@ -45,7 +45,7 @@ let _n = 0;
 /** 生成一个会话内单调递增的 runId。 */
 export const newRunId = (): string => `r${Date.now().toString(36)}${(_n++).toString(36)}`;
 
-/** 便捷：发一条挂在 parentId 下的子事件（curator 各阶段 / skill 调用用）。 */
+/** 便捷：发一条挂在 parentId 下的子事件（agent 各阶段 / skill 调用用）。 */
 export function emitChild(parentId: string, name: string, opts?: { type?: RunType; phase?: Phase; note?: string; tags?: string[]; durMs?: number; ok?: boolean }): void {
   frostBus.emit({
     runId: newRunId(), parentId, name, ts: Date.now(),
@@ -55,20 +55,20 @@ export function emitChild(parentId: string, name: string, opts?: { type?: RunTyp
 
 const nowMs = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-export interface CuratorRun {
+export interface AgentRun {
   runId: string;
   phase(name: string, note?: string): void;   // 报一个阶段开始（RunTrace 据相邻阶段算耗时）
   end(ok: boolean): void;                       // 收尾：成功/失败
 }
 
-/** 开一次 curator 运行：发 start，返回 {runId, phase, end}。各运行页统一用它接 FrostBus，免重复样板。 */
-export function startCuratorRun(label: string): CuratorRun {
+/** 开一次 agent 运行：发 start，返回 {runId, phase, end}。各运行页统一用它接 FrostBus，免重复样板。 */
+export function startAgentRun(label: string): AgentRun {
   const runId = newRunId();
   const t0 = nowMs();
-  frostBus.emit({ runId, type: 'curator', name: label, phase: 'start', ts: Date.now() });
+  frostBus.emit({ runId, type: 'agent', name: label, phase: 'start', ts: Date.now() });
   return {
     runId,
     phase: (name, note) => frostBus.emit({ runId: newRunId(), parentId: runId, type: 'skill', name, phase: 'start', ts: Date.now(), note }),
-    end: (ok) => frostBus.emit({ runId, type: 'curator', name: 'done', phase: ok ? 'end' : 'error', ts: Date.now(), durMs: nowMs() - t0, ok }),
+    end: (ok) => frostBus.emit({ runId, type: 'agent', name: 'done', phase: ok ? 'end' : 'error', ts: Date.now(), durMs: nowMs() - t0, ok }),
   };
 }

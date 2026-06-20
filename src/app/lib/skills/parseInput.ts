@@ -12,7 +12,7 @@ const CN_NUM: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4,
 
 /**
  * 从一句话抽用户评分（→ 0-5 星）：「五星/5星/★★★★」直接星；「三星半」+1；「8分」按 10 制折半。
- * fullPhrases=判 5 星的口头语（默认 满分/神作/封神，各 curator 可补自己的）。判不出返回 undefined。
+ * fullPhrases=判 5 星的口头语（默认 满分/神作/封神，各 agent 可补自己的）。判不出返回 undefined。
  */
 export function parseRating(text: string, fullPhrases: RegExp = /满分|神作|封神/): number | undefined {
   const t = text || '';

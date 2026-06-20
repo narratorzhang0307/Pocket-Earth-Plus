@@ -7,9 +7,9 @@ import { runBookAgent, confirmPin, recordRatingFix, recordPlaceFix, GEO_LABEL, G
 import { AnimatePresence } from 'motion/react';
 import MarkerDetail, { type MarkerDetailData } from './MarkerDetail';
 import RunTrace from './RunTrace';
-import { startCuratorRun } from '../lib/observe/bus';
+import { startAgentRun } from '../lib/observe/bus';
 
-// books-curator 运行页 —— 读书 agent。
+// books-agent 运行页 —— 读书 agent。
 // 1) 把豆瓣阅读记录做成「藏书票 EX LIBRIS」流；2) 用户记一本/截图认书 → 钉到「作者 / 故事之地」，与地球联动。
 // 藏书票卡片显示一句话，点开 = 与地球点书点同款的紫色简介详情（≤100 字）。
 // 和 obsidian 的区别：不是书目笔记，而是「书 → 地理 → 地球落点」；端侧模型从书封/书页截图认书。
@@ -88,7 +88,7 @@ export default function BooksRunPage({ onBack, embedded }: Props) {
   const analyze = async (inp: Parameters<typeof runBookAgent>[0]) => {
     if (analyzing) return;
     const label = inp.kind === 'image' ? '书封认书' : inp.kind === 'manual' ? '手动记录' : `「${(inp.text || '').slice(0, 14)}」`;
-    const run = startCuratorRun(`记一本书 · ${label}`); setRunId(run.runId);
+    const run = startAgentRun(`记一本书 · ${label}`); setRunId(run.runId);
     setAnalyzing(true); setDraft(null); setPhase('解析输入');
     try {
       const d = await runBookAgent(inp, (p, detail) => { setPhase(p); run.phase(p, detail); });
@@ -159,7 +159,7 @@ export default function BooksRunPage({ onBack, embedded }: Props) {
             <ChevronLeft className="w-4 h-4" strokeWidth={3} />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="font-pixel text-[11px] tracking-wider truncate">BOOKS-CURATOR</div>
+            <div className="font-pixel text-[11px] tracking-wider truncate">BOOKS-AGENT</div>
             <div className="text-[9px] text-black/45 truncate">读书 agent · {bookTotal} 本 · 藏书票钉地球</div>
           </div>
           <BookOpen className="w-4 h-4" strokeWidth={2.5} style={{ color: VIOLET }} />

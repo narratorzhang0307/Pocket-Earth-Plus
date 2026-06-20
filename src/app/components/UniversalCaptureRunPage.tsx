@@ -3,11 +3,11 @@ import { ChevronLeft, ImagePlus, Check, RotateCcw, X } from 'lucide-react';
 import { runCapture, DOMAIN_LABEL, DOMAIN_COLOR, type CaptureResult } from '../lib/capture/route';
 import MoodReview from './MoodReview';
 import RunTrace from './RunTrace';
-import { startCuratorRun } from '../lib/observe/bus';
+import { startAgentRun } from '../lib/observe/bus';
 
 // 统一万能记一笔 —— 一个框（+可选截图）记一切：frost 判这是书/影/乐/地点/心情 → 钉到对应图层。
 // 沿用各域现成管线（见 lib/capture/route）；suggest-then-confirm，用户确认才落地球。
-// 「记一笔 / 心情」双页：记一笔=统一录入；心情=回看累积的情绪足迹（原 mood-curator 的回望并到这里）。
+// 「记一笔 / 心情」双页：记一笔=统一录入；心情=回看累积的情绪足迹（原 mood-agent 的回望并到这里）。
 
 interface Props { onBack: () => void }
 const ACCENT = '#00ff88';
@@ -34,8 +34,8 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
   const go = async () => {
     if ((!text.trim() && !image) || busy) return;
     setBusy(true); setResult(null); setPinned(false); setToast('');
-    // 一次 FrostBus 运行 → RunTrace 把「判域 + 各子 agent 阶段」渲成实时编排树（与各 curator 同款可观测）
-    const run = startCuratorRun(`记一笔 · ${(text.trim() || '截图').slice(0, 16)}`); setRunId(run.runId);
+    // 一次 FrostBus 运行 → RunTrace 把「判域 + 各子 agent 阶段」渲成实时编排树（与各 agent 同款可观测）
+    const run = startAgentRun(`记一笔 · ${(text.trim() || '截图').slice(0, 16)}`); setRunId(run.runId);
     try {
       const d = await runCapture(text, image || undefined, (p, detail) => { setPhase(p); run.phase(p, detail); });
       run.end(!!d); setResult(d);
@@ -66,7 +66,7 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
         </div>
       </div>
 
-      {/* 记一笔 / 心情 切换（心情=把原 mood-curator 的回望并进来） */}
+      {/* 记一笔 / 心情 切换（心情=把原 mood-agent 的回望并进来） */}
       <div className="flex border-b-2 border-black bg-[#EAEAEA] shrink-0">
         {([['jot', '记一笔 ◍'], ['mood', '心情 ◍']] as const).map(([v, label]) => (
           <button key={v} onClick={() => { setTab(v); setToast(''); }}

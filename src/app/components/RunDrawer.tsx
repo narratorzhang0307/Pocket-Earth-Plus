@@ -1,4 +1,4 @@
-// 全局运行轨迹抽屉（可观测 manifestation ②）：会话内所有 curator 运行的时间线，每条可展开成它的编排树。
+// 全局运行轨迹抽屉（可观测 manifestation ②）：会话内所有 agent 运行的时间线，每条可展开成它的编排树。
 // 与 RunTrace 共用同一 FrostBus——RunTrace 管单次运行(内联在运行页)，本抽屉管跨运行(浮在手机框内)。一套事件、两个视图。
 import { useEffect, useState } from 'react';
 import { Activity, X } from 'lucide-react';
@@ -13,12 +13,12 @@ export default function RunDrawer() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => frostBus.on((e) => {
-    if (e.type !== 'curator') return;   // 只收 curator 根事件（一次运行一条）
+    if (e.type !== 'agent') return;   // 只收 agent 根事件（一次运行一条）
     if (e.phase === 'start') setRuns((p) => [{ runId: e.runId, name: e.name, ts: e.ts, done: false }, ...p].slice(0, 40));
     else setRuns((p) => p.map((r) => (r.runId === e.runId ? { ...r, done: true, ok: e.ok, durMs: e.durMs } : r)));
   }), []);
 
-  if (!runs.length) return null;   // 没跑过任何 curator 就不显示
+  if (!runs.length) return null;   // 没跑过任何 agent 就不显示
 
   return (
     <>

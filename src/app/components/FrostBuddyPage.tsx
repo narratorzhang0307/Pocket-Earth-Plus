@@ -9,7 +9,7 @@ import FrostBuddy, { FrostAvatar } from './FrostBuddy';
 import UserZhaIcon from './UserZhaIcon';
 
 // FROST · 总 agent 宠物页（第一阶段：界面 + 状态）
-// 整页走「全黑终端」配色，和其它 curator 的浅灰界面拉开层级、凸显总 agent。
+// 整页走「全黑终端」配色，和其它 agent 的浅灰界面拉开层级、凸显总 agent。
 // 上：随对话变表情的 ASCII 方盒宠物；中：路线A 快捷入口（统领子 agent）；
 // 下：跟 FROST 对话（经 runFrost 委派子 agent），展示回复 + thinking trace。
 
@@ -18,28 +18,28 @@ interface Turn {
   text: string;
   trace?: string[];
   intent?: FrostIntent;
-  runTarget?: string;   // 这轮意图对应可展开的 curator
+  runTarget?: string;   // 这轮意图对应可展开的 agent
 }
 
 interface Props {
   onBack: () => void;
-  onRun?: (target: string) => void;   // 跳到某 curator 运行页（路线A 联动）
+  onRun?: (target: string) => void;   // 跳到某 agent 运行页（路线A 联动）
 }
 
-// 路线A：FROST 把意图派给子 agent。快捷入口直接落到 curator 运行页。
+// 路线A：FROST 把意图派给子 agent。快捷入口直接落到 agent 运行页。
 const QUICK: { label: string; target: string }[] = [
-  { label: '来份歌单', target: 'music-curator' },
-  { label: '整理相册', target: 'photos-curator' },
-  { label: '翻翻我的书', target: 'books-curator' },
-  { label: '聊聊电影', target: 'movies-curator' },
+  { label: '来份歌单', target: 'music-agent' },
+  { label: '整理相册', target: 'photos-agent' },
+  { label: '翻翻我的书', target: 'books-agent' },
+  { label: '聊聊电影', target: 'movies-agent' },
   { label: '记一笔', target: 'jot' },
   { label: '造个 agent', target: 'agent-forge' },
 ];
 
-// 对话后若意图对得上某 curator，给一个「展开」入口
+// 对话后若意图对得上某 agent，给一个「展开」入口
 const INTENT_RUN: Partial<Record<FrostIntent, string>> = {
-  open_dj: 'music-curator',
-  playlist: 'music-curator',
+  open_dj: 'music-agent',
+  playlist: 'music-agent',
 };
 
 export default function FrostBuddyPage({ onBack, onRun }: Props) {
@@ -199,7 +199,7 @@ export default function FrostBuddyPage({ onBack, onRun }: Props) {
                 </div>
               )}
 
-              {/* 路线A：意图对得上 curator 时给「展开」入口 */}
+              {/* 路线A：意图对得上 agent 时给「展开」入口 */}
               {turn.runTarget && (
                 <button
                   onClick={() => { if (!busy) onRun?.(turn.runTarget!); }}

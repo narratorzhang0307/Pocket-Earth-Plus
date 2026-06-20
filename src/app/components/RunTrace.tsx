@@ -1,6 +1,6 @@
-// 可观测 UI · 编排树：把 curator 的单行阶段进度，升级成边跑边长出来的「实时编排树」。
-// 订阅 FrostBus，按 runId 收本次运行的根(curator)+子(各阶段)事件，渲成带耗时/状态/徽章的树。
-// 这是 PPT「难点不在让模型更聪明，而在编排」的活证据——评委亲眼看到 router→curator→skill 一跳跳发生。
+// 可观测 UI · 编排树：把 agent 的单行阶段进度，升级成边跑边长出来的「实时编排树」。
+// 订阅 FrostBus，按 runId 收本次运行的根(agent)+子(各阶段)事件，渲成带耗时/状态/徽章的树。
+// 这是 PPT「难点不在让模型更聪明，而在编排」的活证据——评委亲眼看到 router→agent→skill 一跳跳发生。
 import { useEffect, useState } from 'react';
 import { Loader2, Check, AlertTriangle } from 'lucide-react';
 import { frostBus, type FrostEvent } from '../lib/observe/bus';

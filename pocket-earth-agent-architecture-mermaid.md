@@ -61,7 +61,7 @@ flowchart TD
 
     REGISTRY --> MUSIC["music / radio agents<br/>open-dj / tour / 24H / deep-answer"]
     REGISTRY --> CHAT["books / movies / podcast 对话层<br/>AgentChat + 领域数据注入"]
-    UI --> RUNPAGES["运行态 curator 页面<br/>photos / travel / planet / mood / council"]
+    UI --> RUNPAGES["运行态 agent 页面<br/>photos / travel / planet / mood / council"]
 
     EDGE --> MUSIC
     EDGE --> RUNPAGES
@@ -85,7 +85,7 @@ flowchart TD
 
 ## 口径摘要
 
-- frost-agent 不是聊天机器人，而是主 Frost 编排子 curator 的 harness。
+- frost-agent 不是聊天机器人，而是主 Frost 编排子 agent 的 harness。
 - 端侧 Selector 管「挑和找」：分类、排序、嵌入、视觉打标、照片价值打分。
 - 云端 Brain 管「写」：叙事、推荐、回答、圆桌发言。
 - 子 agent 只建议动作，所有落点和播放动作都必须经过 Boundary 校验。

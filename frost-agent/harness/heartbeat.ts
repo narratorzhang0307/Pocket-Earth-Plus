@@ -8,7 +8,7 @@ import { recordHealth } from './health';
 export interface Suggestion {
   id: string;
   text: string;        // 给用户看的一句话建议
-  target?: string;     // 采纳后导航到的可运行 agent 名（如 'movies-curator'）
+  target?: string;     // 采纳后导航到的可运行 agent 名（如 'movies-agent'）
   cta?: string;        // 采纳按钮文案
   createdAt: string;   // ISO
 }
@@ -43,10 +43,10 @@ function topTag(domain: string, field: string): string | null {
 function candidates(): Suggestion[] {
   const out: Suggestion[] = [];
   const mk = (id: string, text: string, target: string, cta: string): Suggestion => ({ id, text, target, cta, createdAt: '' });
-  const dir = topTag('movies', 'directors'); if (dir) out.push(mk('mv-dir', `重温 ${dir}：看你钉过的电影`, 'movies-curator', '运行'));
-  const au = topTag('books', 'authors'); if (au) out.push(mk('bk-au', `翻 ${au}：看你读过的书`, 'books-curator', '运行'));
-  const ge = topTag('music', 'genres'); if (ge) out.push(mk('mu-ge', `点一单 ${ge}`, 'music-curator', '运行'));
-  if (topTag('photos', 'cities')) out.push(mk('ph-ci', '整理相册，高价值照片钉地球', 'photos-curator', '运行'));
+  const dir = topTag('movies', 'directors'); if (dir) out.push(mk('mv-dir', `重温 ${dir}：看你钉过的电影`, 'movies-agent', '运行'));
+  const au = topTag('books', 'authors'); if (au) out.push(mk('bk-au', `翻 ${au}：看你读过的书`, 'books-agent', '运行'));
+  const ge = topTag('music', 'genres'); if (ge) out.push(mk('mu-ge', `点一单 ${ge}`, 'music-agent', '运行'));
+  if (topTag('photos', 'cities')) out.push(mk('ph-ci', '整理相册，高价值照片钉地球', 'photos-agent', '运行'));
   out.push(mk('jot', '随手记一笔：一句话钉到地球', 'jot', '运行'));
   return out;
 }

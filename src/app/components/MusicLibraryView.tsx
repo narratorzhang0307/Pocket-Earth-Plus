@@ -8,7 +8,7 @@ import musicCities from '../data/music-cities.json';
 import { recordPlay } from '../lib/music/plays';
 import { RadioStage } from './radio/RadioStage';
 
-// 音乐曲库视图（music-curator 的「曲库」tab）：把所有歌曲做成条目，按 地域/城市/歌手/流派 归类。
+// 音乐曲库视图（music-agent 的「曲库」tab）：把所有歌曲做成条目，按 地域/城市/歌手/流派 归类。
 // 点条目即播放（真实音源不可达时回落到示例音源，保证出声）。对话 tab 完全独立、不受影响。
 
 function fallbackAudio(i: number): string {

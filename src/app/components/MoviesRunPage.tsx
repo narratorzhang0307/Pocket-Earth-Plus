@@ -6,9 +6,9 @@ import { runMovieAgent, confirmPin, recordRatingFix, recordPlaceFix, GEO_LABEL, 
 import { AnimatePresence } from 'motion/react';
 import MarkerDetail, { type MarkerDetailData } from './MarkerDetail';
 import RunTrace from './RunTrace';
-import { startCuratorRun } from '../lib/observe/bus';
+import { startAgentRun } from '../lib/observe/bus';
 
-// movies-curator 运行页 —— 观影 agent。
+// movies-agent 运行页 —— 观影 agent。
 // 1) 把豆瓣观影记录做成「电影票根」流；2) 用户记一笔/截图 → 端侧识别 → 实时钉到中间的地球（与 tab1 联动）。
 // 和 obsidian 的区别：不是纯文本笔记，而是「票根 + 地球落点」，端侧模型负责从截图认片。
 
@@ -73,7 +73,7 @@ export default function MoviesRunPage({ onBack, embedded }: Props) {
     if (analyzing) return;
     // 一次 FrostBus 运行 → RunTrace 把各阶段渲成实时编排树（可观测）
     const label = inp.kind === 'image' ? '截图认片' : inp.kind === 'manual' ? '手动记录' : `「${(inp.text || '').slice(0, 14)}」`;
-    const run = startCuratorRun(`记一部电影 · ${label}`); setRunId(run.runId);
+    const run = startAgentRun(`记一部电影 · ${label}`); setRunId(run.runId);
     setAnalyzing(true); setDraft(null); setPhase('解析输入');
     try {
       const d = await runMovieAgent(inp, (p, detail) => { setPhase(p); run.phase(p, detail); });
@@ -124,7 +124,7 @@ export default function MoviesRunPage({ onBack, embedded }: Props) {
             <ChevronLeft className="w-4 h-4" strokeWidth={3} />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="font-pixel text-[11px] tracking-wider truncate">MOVIES-CURATOR</div>
+            <div className="font-pixel text-[11px] tracking-wider truncate">MOVIES-AGENT</div>
             <div className="text-[9px] text-black/45 truncate">观影 agent · {movieTotal} 部 · 票根钉地球</div>
           </div>
           <Film className="w-4 h-4" strokeWidth={2.5} style={{ color: AMBER }} />

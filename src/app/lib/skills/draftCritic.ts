@@ -3,14 +3,14 @@
 // ────────────────────────────────────────────────────────────────────────────
 // movie/critic.ts 与 book/critic.ts 此前是镜像（mergeKnown 字节级相同、applyUserFix 只差 geo.kind、
 // applyCritic 内核相同）。这里把"挑错强于一次判对"的确定性护栏收口成领域无关的几个函数；
-// 各 curator 只补自己那一两条领域护栏（电影钳豆瓣分/演员，书钳作者长度）。
+// 各 agent 只补自己那一两条领域护栏（电影钳豆瓣分/演员，书钳作者长度）。
 //
-// 用结构化接口（MovieDraft/BookDraft 都结构兼容），不引入对各 curator types 的依赖（避免反向耦合）。
+// 用结构化接口（MovieDraft/BookDraft 都结构兼容），不引入对各 agent types 的依赖（避免反向耦合）。
 // ════════════════════════════════════════════════════════════════════════════
 import type { Corrections } from './keyedStore';
 
 export interface CriticGeo { kind: string; place: string; lng: number; lat: number; confidence: number }
-/** 各 curator 的 Draft 的共有形状（结构兼容即可传入）。 */
+/** 各 agent 的 Draft 的共有形状（结构兼容即可传入）。 */
 export interface CriticDraftLike {
   id: string;
   year: number | null;

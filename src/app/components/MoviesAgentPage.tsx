@@ -1,9 +1,9 @@
-import CuratorTabsPage from './CuratorTabsPage';
+import AgentTabsPage from './AgentTabsPage';
 import MoviesRunPage from './MoviesRunPage';
 import { movieRecords, movieTotal } from '../data/movies';
 import { seenBefore } from '../lib/movie';
 
-// 观影 curator：左「片库·我的观影」(电影票根) + 右「对话·观影」(懂你豆瓣口味的观影 agent)。
+// 观影 agent：左「片库·我的观影」(电影票根) + 右「对话·观影」(懂你豆瓣口味的观影 agent)。
 
 // 口味摘要（静态预计算，避免每次发送遍历 2000+ 条）
 const countryCount: Record<string, number> = {};
@@ -19,11 +19,11 @@ const MOVIE_CONTEXT = `我已看过 ${movieTotal} 部电影（覆盖极广，主
 口味样本（仅供你判断我的偏好，绝不要把这些、或它们人尽皆知的同类拿来推荐——我都看过了）：${topRated}
 要推荐就只推我大概率没看过的冷门 / 小众 / 近作。`;
 
-export default function MoviesCuratorPage({ onBack }: { onBack: () => void }) {
+export default function MoviesAgentPage({ onBack }: { onBack: () => void }) {
   return (
-    <CuratorTabsPage
+    <AgentTabsPage
       onBack={onBack}
-      title="MOVIES-CURATOR"
+      title="MOVIES-AGENT"
       leftLabel="片库"
       rightLabel="Frost_Movie"
       left={<MoviesRunPage onBack={onBack} embedded />}

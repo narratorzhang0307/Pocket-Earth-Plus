@@ -8,7 +8,7 @@ import { recommendMusic, recordPlay, type MusicRecs } from '../lib/music/plays';
 import AgentLuIcon from './AgentLuIcon';
 import UserZhaIcon from './UserZhaIcon';
 
-// music-curator 运行页 —— 电台 agent 的对话闭环（像素风）。
+// music-agent 运行页 —— 电台 agent 的对话闭环（像素风）。
 // 用户说话 → runFrost 路由到子 agent（经 通义 Qwen 大脑）→ 展示回复 + thinking trace + 歌单。
 // 点歌单的播放在模块④接入真实音频；此处先把待播曲目交给 onPlay 回调。
 
@@ -138,7 +138,7 @@ export default function MusicAgentRunPage({ onBack, embedded }: Props) {
             <ChevronLeft className="w-4 h-4" strokeWidth={3} />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="font-pixel text-[11px] tracking-wider truncate">MUSIC-CURATOR</div>
+            <div className="font-pixel text-[11px] tracking-wider truncate">MUSIC-AGENT</div>
             <div className="text-[9px] text-black/45 truncate">电台 agent · {RADIO_CITIES.length} 城在库</div>
           </div>
           <button onClick={recommend} disabled={busy} className="border-2 border-black bg-[#00ff88] text-black px-2 py-1.5 font-pixel text-[7px] tracking-widest active:translate-y-px disabled:opacity-40">♪ 懂我</button>

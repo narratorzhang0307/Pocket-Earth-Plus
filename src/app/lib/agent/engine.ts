@@ -1,4 +1,4 @@
-// 自定义 agent 工厂 · 通用 curator 引擎（meta-agent 生成的 agent 的「跑」）。
+// 自定义 agent 工厂 · 通用 agent 引擎（meta-agent 生成的 agent 的「跑」）。
 // 这是 movie/book 六层骨架的【参数化版】：吃一份 manifest + 用户一句输入 →
 //   感知 → 云脑/端侧按 manifest.tagFields 打标 + 按 geoStrategy 选落点城市 → geocode → 草稿(suggest)。
 // 单级失败降级、不抛错（舱壁）。产出未钉，由 pin.ts 确认才落地。完全解耦：只依赖共享 geocodeCity + 模型。
