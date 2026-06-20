@@ -2,6 +2,8 @@ import { useState, useRef } from 'react';
 import { ChevronLeft, ImagePlus, Check, RotateCcw, X } from 'lucide-react';
 import { runCapture, DOMAIN_LABEL, DOMAIN_COLOR, type CaptureResult } from '../lib/capture/route';
 import MoodReview from './MoodReview';
+import RunTrace from './RunTrace';
+import { startCuratorRun } from '../lib/observe/bus';
 
 // 统一万能记一笔 —— 一个框（+可选截图）记一切：frost 判这是书/影/乐/地点/心情 → 钉到对应图层。
 // 沿用各域现成管线（见 lib/capture/route）；suggest-then-confirm，用户确认才落地球。
@@ -18,6 +20,7 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState('');
   const [result, setResult] = useState<CaptureResult | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);   // FrostBus 运行 id → RunTrace 实时编排树
   const [pinned, setPinned] = useState(false);
   const [toast, setToast] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -31,8 +34,12 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
   const go = async () => {
     if ((!text.trim() && !image) || busy) return;
     setBusy(true); setResult(null); setPinned(false); setToast('');
-    try { setResult(await runCapture(text, image || undefined, setPhase)); }
-    catch { setResult(null); }
+    // 一次 FrostBus 运行 → RunTrace 把「判域 + 各子 agent 阶段」渲成实时编排树（与各 curator 同款可观测）
+    const run = startCuratorRun(`记一笔 · ${(text.trim() || '截图').slice(0, 16)}`); setRunId(run.runId);
+    try {
+      const d = await runCapture(text, image || undefined, (p, detail) => { setPhase(p); run.phase(p, detail); });
+      run.end(!!d); setResult(d);
+    } catch { run.end(false); setResult(null); }
     setBusy(false); setPhase('');
   };
 
@@ -44,7 +51,7 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
     window.setTimeout(() => setToast(''), 2400);
   };
 
-  const reset = () => { setResult(null); setText(''); setImage(null); setPinned(false); setToast(''); };
+  const reset = () => { setResult(null); setRunId(null); setText(''); setImage(null); setPinned(false); setToast(''); };
 
   return (
     <div className="h-full flex flex-col bg-[#EAEAEA] font-sans overflow-hidden">
@@ -105,7 +112,8 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
       {/* 结果 / 预览（记一笔）｜ 心情回望 */}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
         {tab === 'mood' ? <MoodReview /> : (<>
-        {!result && !busy && (
+        {runId && <div className="mb-2"><RunTrace runId={runId} /></div>}
+        {!result && !busy && !runId && (
           <div className="border-2 border-black bg-white p-4 shadow-[2px_2px_0_rgba(0,0,0,0.85)] text-center">
             <div className="text-[12px] font-bold mb-1">一个框，记一切</div>
             <div className="text-[11px] text-black/55 leading-snug">frost 会判断你这句是书、影、行程还是心情，自动钉到地球对应的图层——你不用先想"该进哪个 agent"。</div>

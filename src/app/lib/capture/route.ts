@@ -60,27 +60,27 @@ async function classifyDomain(text: string): Promise<CaptureDomain> {
 }
 
 // 一句话（+可选截图）→ 判域 → 走对应 agent → 统一 CaptureResult（suggest，confirm 才钉）。
-export async function runCapture(text: string, imageDataUrl?: string, onPhase?: (p: string) => void): Promise<CaptureResult | null> {
+export async function runCapture(text: string, imageDataUrl?: string, onPhase?: (phase: string, detail?: string) => void): Promise<CaptureResult | null> {
   const t = (text || '').trim();
   if (!t && !imageDataUrl) return null;
   // 只给截图没文字时默认先认作品（电影封面 / 海报最常见）；否则云脑判域
-  onPhase?.('判断这是哪一类');
+  onPhase?.('判断这是哪一类', '云脑判域');
   let domain: CaptureDomain = imageDataUrl && !t ? 'movie' : await classifyDomain(t);
   // 确定性护栏：明显的「去过某地」(出行动词 + 可识别城市) 强制 travel，别被云脑误判成 mood
   if (domain === 'mood' && /去了|去过|到了|到过|玩了|逛了|出差|旅行|刚从.{0,6}回来/.test(t) && geocodeCity(t)) domain = 'travel';
 
   if (domain === 'movie') {
-    const d = await runMovieAgent({ kind: imageDataUrl ? 'image' : 'text', text: t, imageDataUrl }, onPhase ? (p) => onPhase(p) : undefined);
+    const d = await runMovieAgent({ kind: imageDataUrl ? 'image' : 'text', text: t, imageDataUrl }, onPhase ? (p, d) => onPhase(p, d) : undefined);
     if (!d) return { domain, ok: false, title: '', where: '', note: '没认出影片，换种说法、或去 movies-curator 手填', confirm: NO_PIN };
     return { domain, ok: true, needPlace: d.needPlace, title: d.title, where: d.geo ? `${MOVIE_GEO[d.geo.kind]}·${d.geo.place}` : '待补国家', note: d.needPlace ? '认出了，但还没定位到地点 —— 去 movies-curator 补国家后可钉' : '', rating: d.tags.userRating, movieDraft: d, confirm: () => confirmMovie(d) };
   }
   if (domain === 'book') {
-    const d = await runBookAgent({ kind: imageDataUrl ? 'image' : 'text', text: t, imageDataUrl }, onPhase ? (p) => onPhase(p) : undefined);
+    const d = await runBookAgent({ kind: imageDataUrl ? 'image' : 'text', text: t, imageDataUrl }, onPhase ? (p, d) => onPhase(p, d) : undefined);
     if (!d) return { domain, ok: false, title: '', where: '', note: '没认出书，换种说法、或去 books-curator 手填', confirm: NO_PIN };
     return { domain, ok: true, needPlace: d.needPlace, title: d.title, where: d.geo ? `${BOOK_GEO[d.geo.kind]}·${d.geo.place}` : '待补国家', note: d.needPlace ? '认出了，但还没定位到地点 —— 去 books-curator 补国家后可钉' : '', rating: d.tags.userRating, bookDraft: d, confirm: () => confirmBook(d) };
   }
   if (domain === 'travel') {
-    onPhase?.('定位行程地点');
+    onPhase?.('定位行程地点', 'resolvePlace 本地→Mapbox');
     const geo = await resolvePlace(t);
     if (!geo) return { domain, ok: false, title: '', where: '', note: '没认出地点，写清城市名再试', confirm: NO_PIN };
     return {
@@ -89,7 +89,7 @@ export async function runCapture(text: string, imageDataUrl?: string, onPhase?: 
     };
   }
   // mood：含 地点 / 随手想法 / 音乐感想 等一切兜底
-  onPhase?.('判地点 + 情绪');
+  onPhase?.('判地点 + 情绪', '云脑判情绪');
   const r = await analyzeMood(t, FALLBACK);
   return {
     domain: 'mood', ok: true, title: `${MOOD_TONES[r.tone].label} · ${t.slice(0, 12)}`, where: r.place, note: '记为一条心情贴',
