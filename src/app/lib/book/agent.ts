@@ -25,7 +25,7 @@ export async function runBookAgent(input: BookInput, onPhase?: OnBookPhase): Pro
   };
 
   // ② 本地书库
-  ph('查本地书库');
+  ph('查本地书库', 'matchCatalog');
   const hit = matchInCatalog(title);
   if (hit) {
     const r = hit.record;
@@ -44,7 +44,7 @@ export async function runBookAgent(input: BookInput, onPhase?: OnBookPhase): Pro
   const lackTags = !draft.tags.translator || !draft.tags.movement || !draft.tags.genre || draft.needPlace;
   let storyPlace = '', authorPlace = '';
   if (!alreadyEnriched && lackTags) {
-    ph('云脑补全标签');
+    ph('云脑补全标签', '调 Qwen-Plus');
     const { raw, ok } = await enrichTags(draft.title, { author: draft.tags.author, country: draft.country, year: draft.year });
     if (ok) {
       draft.tags.author = draft.tags.author || raw.author;
@@ -64,7 +64,7 @@ export async function runBookAgent(input: BookInput, onPhase?: OnBookPhase): Pro
   }
 
   // ⑤ 地理子 agent：故事地 > 作者地 > 国家
-  ph('定位故事地/作者地');
+  ph('定位故事地/作者地', 'resolvePlace 本地→Mapbox');
   if (!draft.geo) draft.geo = await geoResolve({ storyPlace, authorPlace, country: draft.country });
   draft.needPlace = !draft.geo;
 

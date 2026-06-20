@@ -52,3 +52,23 @@ export function emitChild(parentId: string, name: string, opts?: { type?: RunTyp
     type: opts?.type ?? 'skill', phase: opts?.phase ?? 'end', note: opts?.note, tags: opts?.tags, durMs: opts?.durMs, ok: opts?.ok ?? true,
   });
 }
+
+const nowMs = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+export interface CuratorRun {
+  runId: string;
+  phase(name: string, note?: string): void;   // 报一个阶段开始（RunTrace 据相邻阶段算耗时）
+  end(ok: boolean): void;                       // 收尾：成功/失败
+}
+
+/** 开一次 curator 运行：发 start，返回 {runId, phase, end}。各运行页统一用它接 FrostBus，免重复样板。 */
+export function startCuratorRun(label: string): CuratorRun {
+  const runId = newRunId();
+  const t0 = nowMs();
+  frostBus.emit({ runId, type: 'curator', name: label, phase: 'start', ts: Date.now() });
+  return {
+    runId,
+    phase: (name, note) => frostBus.emit({ runId: newRunId(), parentId: runId, type: 'skill', name, phase: 'start', ts: Date.now(), note }),
+    end: (ok) => frostBus.emit({ runId, type: 'curator', name: 'done', phase: ok ? 'end' : 'error', ts: Date.now(), durMs: nowMs() - t0, ok }),
+  };
+}

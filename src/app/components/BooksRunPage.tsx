@@ -6,6 +6,8 @@ import { runBookAgent, confirmPin, recordRatingFix, recordPlaceFix, GEO_LABEL, G
   structureNotes, getNotes, addNote, removeNote, subscribeNotes, type StructuredNote } from '../lib/book';
 import { AnimatePresence } from 'motion/react';
 import MarkerDetail, { type MarkerDetailData } from './MarkerDetail';
+import RunTrace from './RunTrace';
+import { startCuratorRun } from '../lib/observe/bus';
 
 // books-curator 运行页 —— 读书 agent。
 // 1) 把豆瓣阅读记录做成「藏书票 EX LIBRIS」流；2) 用户记一本/截图认书 → 钉到「作者 / 故事之地」，与地球联动。
@@ -48,6 +50,7 @@ export default function BooksRunPage({ onBack, embedded }: Props) {
   const [input, setInput] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [phase, setPhase] = useState<BookPhase | ''>('');
+  const [runId, setRunId] = useState<string | null>(null);
   const [draft, setDraft] = useState<BookDraft | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -84,12 +87,15 @@ export default function BooksRunPage({ onBack, embedded }: Props) {
   // 跑读书 agent：一句话 / 书封截图 → 解析→本地库→云脑补全子agent→地理子agent→校验 → 草稿藏书票
   const analyze = async (inp: Parameters<typeof runBookAgent>[0]) => {
     if (analyzing) return;
+    const label = inp.kind === 'image' ? '书封认书' : inp.kind === 'manual' ? '手动记录' : `「${(inp.text || '').slice(0, 14)}」`;
+    const run = startCuratorRun(`记一本书 · ${label}`); setRunId(run.runId);
     setAnalyzing(true); setDraft(null); setPhase('解析输入');
     try {
-      const d = await runBookAgent(inp, (p) => setPhase(p));
+      const d = await runBookAgent(inp, (p, detail) => { setPhase(p); run.phase(p, detail); });
+      run.end(!!d);
       if (!d) showToast('没认出书名，换种说法或手动记一下');
       else setDraft(d);
-    } catch { showToast('解析出错了，稍后再试'); }
+    } catch { run.end(false); showToast('解析出错了，稍后再试'); }
     finally { setAnalyzing(false); setPhase(''); }
   };
 
@@ -191,10 +197,8 @@ export default function BooksRunPage({ onBack, embedded }: Props) {
             {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={3} /> : '标记'}
           </button>
         </div>
-        {analyzing && (
-          <div className="text-[10px] text-black/55 leading-snug flex items-center gap-1.5">
-            <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2.5} /> 子 agent 工作中 · {phase || '解析'}…（本地库 → 云脑补全 → 定位故事地）
-          </div>
+        {runId && (
+          <div className="mt-1"><RunTrace runId={runId} /></div>
         )}
         {!analyzing && !draft && (
           <div className="font-pixel text-[7px] text-black/35 leading-relaxed tracking-wide">

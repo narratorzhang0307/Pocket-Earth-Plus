@@ -6,7 +6,7 @@ import { runMovieAgent, confirmPin, recordRatingFix, recordPlaceFix, GEO_LABEL, 
 import { AnimatePresence } from 'motion/react';
 import MarkerDetail, { type MarkerDetailData } from './MarkerDetail';
 import RunTrace from './RunTrace';
-import { frostBus, newRunId } from '../lib/observe/bus';
+import { startCuratorRun } from '../lib/observe/bus';
 
 // movies-curator 运行页 —— 观影 agent。
 // 1) 把豆瓣观影记录做成「电影票根」流；2) 用户记一笔/截图 → 端侧识别 → 实时钉到中间的地球（与 tab1 联动）。
@@ -71,24 +71,17 @@ export default function MoviesRunPage({ onBack, embedded }: Props) {
   // 跑电影 agent：一句话 / 截图 → 解析→本地库→云脑补全子agent→地理子agent→校验 → 出草稿卡
   const analyze = async (inp: Parameters<typeof runMovieAgent>[0]) => {
     if (analyzing) return;
-    // 发一次 FrostBus 运行 → RunTrace 把各阶段渲成实时编排树（可观测）
-    const rid = newRunId(); setRunId(rid);
-    const t0 = performance.now();
+    // 一次 FrostBus 运行 → RunTrace 把各阶段渲成实时编排树（可观测）
     const label = inp.kind === 'image' ? '截图认片' : inp.kind === 'manual' ? '手动记录' : `「${(inp.text || '').slice(0, 14)}」`;
-    frostBus.emit({ runId: rid, type: 'curator', name: `记一部电影 · ${label}`, phase: 'start', ts: Date.now() });
+    const run = startCuratorRun(`记一部电影 · ${label}`); setRunId(run.runId);
     setAnalyzing(true); setDraft(null); setPhase('解析输入');
     try {
-      const d = await runMovieAgent(inp, (p, detail) => {
-        setPhase(p);
-        frostBus.emit({ runId: newRunId(), parentId: rid, type: 'skill', name: p, phase: 'start', ts: Date.now(), note: detail });
-      });
-      frostBus.emit({ runId: rid, type: 'curator', name: 'done', phase: d ? 'end' : 'error', ts: Date.now(), durMs: performance.now() - t0, ok: !!d });
+      const d = await runMovieAgent(inp, (p, detail) => { setPhase(p); run.phase(p, detail); });
+      run.end(!!d);
       if (!d) { showToast('没认出片名，换种说法或手动记一下'); }
       else setDraft(d);
-    } catch {
-      frostBus.emit({ runId: rid, type: 'curator', name: 'done', phase: 'error', ts: Date.now(), durMs: performance.now() - t0, ok: false });
-      showToast('解析出错了，稍后再试');
-    } finally { setAnalyzing(false); setPhase(''); }
+    } catch { run.end(false); showToast('解析出错了，稍后再试'); }
+    finally { setAnalyzing(false); setPhase(''); }
   };
 
   const onSubmitText = () => { const t = input.trim(); if (t) analyze({ kind: 'text', text: t }); };

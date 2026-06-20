@@ -5,6 +5,8 @@ import {
   MODE_LABEL, MODE_COLOR, TRIP_MODES, getTravelStats, type Pref, type TripPlan, type TripMode, type TripArchive,
 } from '../lib/travel';
 import { getUserMarksByKind, subscribeUserMarks } from '../data/userMarks';
+import RunTrace from './RunTrace';
+import { startCuratorRun } from '../lib/observe/bus';
 
 // travel-curator 运行页 —— 行程 agent（薄 UI，业务逻辑在 src/app/lib/travel/*）。
 // B 线（规划）：选目的地+喜好 → 三级排序（云脑按你跨域口味挑 / 端侧真后端 / 本地兜底）→ 逐日行程 → 钉星球。
@@ -26,6 +28,7 @@ export default function TravelRunPage({ onBack }: Props) {
   const [plan, setPlan] = useState<TripPlan | null>(null);
   const [planning, setPlanning] = useState(false);
   const [phase, setPhase] = useState('');
+  const [planRunId, setPlanRunId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   // A 线手动录入 state
@@ -45,8 +48,10 @@ export default function TravelRunPage({ onBack }: Props) {
 
   // B 线规划：runPlan 三级排序（云脑按画像挑 → 端侧真后端 → 本地兜底），mode 透明告知
   const makePlan = async () => {
+    const run = startCuratorRun(`规划行程 · ${destName} ${days}天`); setPlanRunId(run.runId);
     setPlanning(true); setPhase('');
-    const tp = await runPlan({ destName, prefs: [...prefs], days }, setPhase);
+    const tp = await runPlan({ destName, prefs: [...prefs], days }, (p) => { setPhase(p); run.phase(p); });
+    run.end(!!tp);
     setPlan(tp);
     if (tp.mode === '本地') showToast('云脑/端侧未就绪 · 本地按喜好排序');
     setPlanning(false);
@@ -71,16 +76,19 @@ export default function TravelRunPage({ onBack }: Props) {
   const shotRef = useRef<HTMLInputElement>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [archivePhase, setArchivePhase] = useState('');
+  const [archiveRunId, setArchiveRunId] = useState<string | null>(null);
   const [archiveDraft, setArchiveDraft] = useState<TripArchive | null>(null);
 
   const onPickShots = async (files: FileList | null) => {
     if (!files || !files.length) return;
-    setArchiveBusy(true); setArchiveDraft(null); setArchivePhase('读取截图');
+    const run = startCuratorRun(`截图存档 · ${[...files].length} 张`); setArchiveRunId(run.runId);
+    setArchiveBusy(true); setArchiveDraft(null); setArchivePhase('读取截图'); run.phase('读取截图');
     try {
       const urls = await Promise.all([...files].slice(0, 8).map((f) => new Promise<string>((res) => {
         const r = new FileReader(); r.onload = () => res(String(r.result || '')); r.onerror = () => res(''); r.readAsDataURL(f);
       })));
-      const { archive, reason } = await runArchive(urls.filter(Boolean), setArchivePhase);
+      const { archive, reason } = await runArchive(urls.filter(Boolean), (p) => { setArchivePhase(p); run.phase(p); });
+      run.end(!!archive);
       if (archive) setArchiveDraft(archive);
       else if (reason === 'noEdge') showToast('端侧模型未就绪：去控制台加载端侧 Qwen3，或用下面手动录入');
       else showToast('没读出行程信息，换张清晰点的截图或手填');
@@ -146,6 +154,7 @@ export default function TravelRunPage({ onBack }: Props) {
             );
           })}
         </div>
+        {planRunId && <div className="mt-1.5"><RunTrace runId={planRunId} /></div>}
       </div>
 
       {/* 内容 */}
@@ -204,6 +213,7 @@ export default function TravelRunPage({ onBack }: Props) {
             <span className="ml-auto text-[9px] text-black/40">端侧识别</span>
           </button>
           <div className="px-2.5 pb-2 text-[10px] text-black/45 leading-snug">原图只在端侧读、不出手机；身份证/手机号自动打码；只把脱敏后的文字交云脑理成行程。</div>
+          {archiveRunId && <div className="px-2.5 pb-2"><RunTrace runId={archiveRunId} /></div>}
           {archiveDraft && (
             <div className="px-2.5 pb-2.5 border-t-2 border-black/10 pt-2 space-y-1">
               <div className="text-[12px] font-bold">{archiveDraft.title}</div>

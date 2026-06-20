@@ -4,6 +4,8 @@ import { curated, dupGroups, curationStats, VERDICT_LABEL, VERDICT_COLOR, type C
 import { edgeSafe } from '../../../frost-agent/edge/contract';
 import { downscaleForVision } from '../lib/imageDownscale';
 import { runScreen, type PhotoResult, type PhotoType, type Verdict, TYPE_LABEL, addPhotoPins, toPins, learnFromOverride, recordPhotoOverride, getPrefs } from '../lib/photo';
+import RunTrace from './RunTrace';
+import { startCuratorRun } from '../lib/observe/bus';
 
 // photos-curator 运行页 —— 真·端侧照片整理 agent。
 // 「我的照片」：用户在系统选择器多选自己的真实照片 → 设年月范围 → 一键端侧筛选
@@ -200,6 +202,7 @@ function RealView() {
   const [results, setResults] = useState<PhotoResult[]>([]);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, phase: '' });
+  const [runId, setRunId] = useState<string | null>(null);
   const [useModel, setUseModel] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
   const [err, setErr] = useState('');
@@ -222,17 +225,24 @@ function RealView() {
   const run = async () => {
     if (!files.length || running) return;
     results.forEach((r) => URL.revokeObjectURL(r.url));
+    const tr = startCuratorRun(`端侧整理照片 · ${files.length} 张`); setRunId(tr.runId);
+    let lastPhase = '';
     setResults([]); setErr(''); setPinned(false); setRunning(true); setProgress({ done: 0, total: files.length, phase: '准备' });
     try {
       const fromYM = fromY && fromM ? +fromY * 12 + (+fromM - 1) : undefined;
       const toYM = toY && toM ? +toY * 12 + (+toM - 1) : undefined;
       const res = await runScreen(files, { fromYM, toYM, useModel, maxAnalyze: 256, modelTopN: 24 },
-        (done, total, phase) => setProgress({ done, total, phase }));
+        (done, total, phase) => {
+          setProgress({ done, total, phase });
+          if (phase && phase !== lastPhase) { tr.phase(phase, total > 1 ? `共 ${total} 张` : undefined); lastPhase = phase; }   // 里程碑变化才发一条，不每张图一行
+        });
+      tr.end(true);
       // 若筛选期间组件已卸载（用户返回），这批 objectURL 永远进不了 state 的清理 → 此处主动释放，杜绝泄漏
       if (!mountedRef.current) { res.forEach((r) => URL.revokeObjectURL(r.url)); return; }
       setResults(res);
       if (!res.length) setErr('这批照片里没有落在所选时间段内的（或都无法解析）。换个范围或多选一些试试。');
     } catch (e) {
+      tr.end(false);
       if (mountedRef.current) setErr('筛选出错了：' + (e instanceof Error ? e.message : String(e)));
     } finally { if (mountedRef.current) setRunning(false); }
   };
@@ -326,6 +336,8 @@ function RealView() {
           </div>
         </div>
       )}
+
+      {runId && <div className="m-3"><RunTrace runId={runId} /></div>}
 
       {err && <div className="m-3 border-2 border-[#d23b3b] bg-[#fff0f0] text-[#a02020] text-[11px] p-2.5 leading-relaxed">{err}</div>}
 
