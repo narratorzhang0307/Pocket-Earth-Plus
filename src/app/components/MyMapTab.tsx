@@ -276,10 +276,22 @@ export default function MyMapTab(_props: MyMapTabProps) {
   // 记一笔等入口钉完后，自动飞到落点并放大到便签展开可见（zoom≥6.5）。挂载时消费挂起的焦点请求 + 订阅后续实时请求。
   useEffect(() => {
     if (!map) return;
-    const fly = (c: { lng: number; lat: number; zoom: number }) => map.flyTo({ center: [c.lng, c.lat], zoom: Math.max(map.getZoom(), c.zoom), duration: 1600 });
+    let alive = true;
+    // 轮询等 style 加载完再 flyTo：切回 earth tab 重新挂载的新 map 初始 styleLoaded=false，
+    // once('idle') 在重渲染/重建过程中不可靠（实测不触发）；轮询确保 style 就绪后必然飞过去。
+    const fly = (c: { lng: number; lat: number; zoom: number }) => {
+      let tries = 0;
+      const tick = () => {
+        if (!alive) return;
+        if (map.isStyleLoaded()) map.flyTo({ center: [c.lng, c.lat], zoom: Math.max(map.getZoom(), c.zoom), duration: 1600 });
+        else if (tries++ < 50) setTimeout(tick, 100);
+      };
+      tick();
+    };
     const pend = consumePendingMapFocus();
-    if (pend) { if (map.isStyleLoaded()) fly(pend); else map.once('idle', () => fly(pend)); }
-    return subscribeMapFocus(fly);
+    if (pend) fly(pend);
+    const unsub = subscribeMapFocus(fly);
+    return () => { alive = false; unsub(); };
   }, [map]);
 
   useEffect(() => {
