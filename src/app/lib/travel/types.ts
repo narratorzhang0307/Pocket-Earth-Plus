@@ -21,7 +21,9 @@ export const TRIP_MODES: { key: TripMode; label: string }[] = [
   { key: 'train', label: '高铁/火车' }, { key: 'flight', label: '飞机' },
   { key: 'bus', label: '大巴' }, { key: 'car', label: '自驾' }, { key: 'walk', label: '步行/其他' },
 ];
-export interface ManualStop { city: string; date?: string; mode?: TripMode; note?: string }
+// lng/lat 可选：上游若已解析出坐标（如 JOT 记一笔已走 resolvePlace 命中 Mapbox），直接带进来，
+// 免 pin 层拿地名二次地理编码（Mapbox 常回繁体名 / 长尾城市，本地表+OSM 多半查不到 → 明明定位到了却钉不上）。
+export interface ManualStop { city: string; date?: string; mode?: TripMode; note?: string; lng?: number; lat?: number }
 
 // 稳定 id slug（中文保留，去空格标点）——钉点幂等、可去重、可撤销。
 export const slug = (s: string) => (s || '').replace(/[\s·\-—:：,，.。!！?？'"'']/g, '').slice(0, 16);

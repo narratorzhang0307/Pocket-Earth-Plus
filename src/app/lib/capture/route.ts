@@ -85,7 +85,7 @@ export async function runCapture(text: string, imageDataUrl?: string, onPhase?: 
     if (!geo) return { domain, ok: false, title: '', where: '', note: '没认出地点，写清城市名再试', confirm: NO_PIN };
     return {
       domain, ok: true, title: geo.place, where: geo.place, note: '记为去过的一段行程',
-      confirm: async () => { const res = await pinManualStop({ city: geo.place, note: t.slice(0, 40) }); return { pinned: res.ok, reason: res.reason }; },
+      confirm: async () => { const res = await pinManualStop({ city: geo.place, note: t.slice(0, 40), lng: geo.lng, lat: geo.lat }); return { pinned: res.ok, reason: res.reason }; },
     };
   }
   // mood：含 地点 / 随手想法 / 音乐感想 等一切兜底

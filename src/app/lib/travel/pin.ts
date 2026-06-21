@@ -37,7 +37,11 @@ export function confirmTrip(dest: Destination, days: DayPlan[], prefs: Pref[], d
 export async function pinManualStop(stop: ManualStop): Promise<{ ok: boolean; reason?: string }> {
   const city = (stop.city || '').trim();
   if (!city) return { ok: false, reason: 'needCity' };
-  const geo = await resolveCityGeo(city);
+  // 上游已带坐标（如 JOT 记一笔已 resolvePlace 命中）→ 直接用，跳过二次地理编码：
+  // 否则会把 Mapbox 返回的繁体/长尾城市名喂回本地表+OSM，常查不到 → 定位到了却钉不上（圣地亚哥即此坑）。
+  const geo = (Number.isFinite(stop.lng) && Number.isFinite(stop.lat))
+    ? { lng: stop.lng as number, lat: stop.lat as number }
+    : await resolveCityGeo(city);
   if (!geo) return { ok: false, reason: 'noGeo' };   // 本地字典 + OSM 都查不到 → 让用户换写法
   const date = stop.date || new Date().toISOString().slice(0, 10);
   const id = `utr-manual-${slug(city)}-${slug(date)}-${stop.mode || 'x'}`;
