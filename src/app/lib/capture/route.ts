@@ -92,7 +92,7 @@ export async function runCapture(text: string, imageDataUrl?: string, onPhase?: 
   onPhase?.('判地点 + 情绪', '云脑判情绪');
   const r = await analyzeMood(t, FALLBACK);
   return {
-    domain: 'mood', ok: true, title: `${MOOD_TONES[r.tone].label} · ${t.slice(0, 12)}`, where: r.place, note: '记为一条心情贴',
+    domain: 'mood', ok: true, title: `${MOOD_TONES[r.tone].label} · ${t.slice(0, 12)}`, where: r.place === '此处' ? '未定位 · 暂落地图' : r.place, note: '记为一条心情贴',
     confirm: async () => {
       const id = 'mood-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);   // 加随机尾，免同毫秒撞 id → React key 重复 / removeMoodSticker 误删两条
       addMoodSticker({ id, lat: r.lat, lng: r.lng, text: t, place: r.place, color: MOOD_TONES[r.tone].color, rot: pickRot(id), tone: r.tone });

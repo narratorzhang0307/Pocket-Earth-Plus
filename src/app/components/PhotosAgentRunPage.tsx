@@ -136,7 +136,7 @@ function DemoView() {
             {edgeRunning ? '端侧看图打分中…' : '▶ 端侧看图打分 · 真模型看 3 张'}
           </button>
           {shown.map((c, i) => Card(c, i))}
-          {!done && <div className="text-center font-pixel text-[8px] text-black/40 py-2 tracking-widest animate-pulse">端侧整理中… {scanned}/{total}</div>}
+          {!done && <div className="text-center font-pixel text-[8px] text-black/40 py-2 tracking-widest animate-pulse">示例载入中… {scanned}/{total}</div>}
         </>)}
         {segment === '重复清理' && (<>
           <div className="flex items-center justify-between bg-white border-2 border-black p-2.5 shadow-[2px_2px_0_rgba(0,0,0,0.85)]">

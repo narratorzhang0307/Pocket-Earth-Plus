@@ -226,7 +226,7 @@ export default function MyMapTab(_props: MyMapTabProps) {
         if (map.getSource('marks')) refreshMapSources();
         else map.once('idle', () => { if (alive) refreshMapSources(); });
       })
-      .catch(() => {});
+      .catch(() => { if (alive) setMarkersReady(true); });   // 懒加载失败也认定「已就绪」：宁可少几百点，也不让统计条带永久省略号
     return () => { alive = false; };
   }, [map]);
 
@@ -519,7 +519,7 @@ export default function MyMapTab(_props: MyMapTabProps) {
       {/* Stat Strip */}
       <div className="px-4 py-2.5 border-b-2 border-black bg-black text-[#00ff88]">
         <div className="font-pixel text-[9px] flex justify-center items-center gap-3 tracking-widest">
-          <span>MARKERS: {visibleMarkers.length}</span>
+          <span>MARKERS: {visibleMarkers.length}{markersReady ? '' : '…'}</span>
           <span className="opacity-50">·</span>
           <span>CITIES: {cityCount}</span>
         </div>
@@ -628,7 +628,7 @@ export default function MyMapTab(_props: MyMapTabProps) {
                 style={{ left: `${pt.x}px`, top: `${pt.y}px`, width: '58px', transform: `translate(-50%,-50%) rotate(${rot}deg)` }}>
                 <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full border border-black" style={{ background: pin }} />
                 <div className={`w-full ${tall ? 'aspect-[3/4]' : 'aspect-square'} overflow-hidden bg-[#d8d8d6]`}>
-                  <img src={thumb} alt="" className="w-full h-full object-cover grayscale hover:grayscale-0 active:grayscale-0 transition-all duration-500" loading="lazy" draggable={false} />
+                  <img src={thumb} alt="" className="w-full h-full object-cover grayscale hover:grayscale-0 active:grayscale-0 transition-all duration-500" loading="lazy" draggable={false} onError={(e) => { e.currentTarget.style.opacity = '0'; }} />
                 </div>
               </button>
             );

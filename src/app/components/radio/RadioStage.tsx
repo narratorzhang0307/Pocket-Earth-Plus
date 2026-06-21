@@ -340,7 +340,7 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startTrackId, start
             transition={{ duration: 0.3 }}
             className="fixed bottom-4 right-4 z-[200] flex items-center gap-2.5 pl-2 pr-2.5 py-2 max-w-[300px] bg-[#0a0a0a] border-2 border-[#00ff88]/40 shadow-[3px_3px_0_rgba(0,0,0,0.6)] select-none"
           >
-            <img src={curCover} alt={curCityZh} className="w-9 h-9 object-cover shrink-0 grayscale border border-[#00ff88]/30" referrerPolicy="no-referrer" />
+            <img src={curCover} alt={curCityZh} className="w-9 h-9 object-cover shrink-0 grayscale border border-[#00ff88]/30" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.opacity = '0'; }} />
             <div className="min-w-0 flex flex-col leading-tight">
               <span className="text-[11px] text-white truncate">{miniTitle}</span>
               <span className="font-pixel text-[6px] text-[#00ff88]/60 truncate tracking-wider uppercase mt-0.5">{curCityZh} · {miniSub}</span>
@@ -400,7 +400,7 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startTrackId, start
                     <button onClick={() => goItem(1)} disabled={itemIndex >= queue.length - 1} className="absolute right-[-38px] top-1/2 -translate-y-1/2 z-20 w-9 h-9 flex items-center justify-center text-[#00ff88]/50 hover:text-[#00ff88] hover:scale-110 disabled:opacity-20 transition-all" aria-label="next"><ChevronRight size={30} strokeWidth={1.5} /></button>
 
                     <div className="relative w-full aspect-[4/5] bg-black overflow-hidden border-2 border-[#00ff88]/25 shadow-[0_20px_40px_rgba(0,0,0,0.5)]">
-                      <img src={curCover} alt={curCityZh} className="absolute inset-0 w-full h-full object-cover grayscale" draggable={false} referrerPolicy="no-referrer" />
+                      <img src={curCover} alt={curCityZh} className="absolute inset-0 w-full h-full object-cover grayscale" draggable={false} referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.opacity = '0'; }} />
                       <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/85 to-transparent pointer-events-none" />
                       <div className="absolute left-3 right-3 bottom-2.5 text-left">
                         <div className="text-[17px] text-white font-bold leading-tight drop-shadow truncate">{track?.title || segment?.title || city.cityNameZh}</div>
@@ -443,7 +443,7 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startTrackId, start
                 </div>
 
                 {/* 对话区（DJ 解说稿在此做字幕：开 DJ 随声音走，关 DJ 自走） */}
-                <RadioChat chat={chat} chatInput={chatInput} onInputChange={setChatInput} onSend={sendChat} voiceSync={voiceSync} className="flex-1 w-full mt-3 px-2 relative z-10" />
+                <RadioChat chat={chat} chatInput={chatInput} onInputChange={setChatInput} onSend={sendChat} voiceSync={voiceSync} busy={chatBusy} className="flex-1 w-full mt-3 px-2 relative z-10" />
               </div>
 
               {/* footer */}

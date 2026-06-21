@@ -169,7 +169,7 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<CustomDraft | null>(null);
-  const [pinMsg, setPinMsg] = useState('');
+  const [pinMsg, setPinMsg] = useState<{ text: string; ok: boolean } | null>(null);   // 带 tone：失败提示不再误用绿色成功配色
 
   // 建图挡：一句主题 → 多步自主流水线 → 草稿批 → 勾选钉地球
   const [goal, setGoal] = useState('');
@@ -182,10 +182,10 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
   const go = async () => {
     const t = input.trim();
     if (!t || busy) return;
-    setBusy(true); setDraft(null); setPinMsg('');
+    setBusy(true); setDraft(null); setPinMsg(null);
     const d = await runCustomAgent(manifest, t, { onEdge });
     setBusy(false);
-    if (!d) { setPinMsg('没认出来，换一句试试'); return; }
+    if (!d) { setPinMsg({ text: '没认出来，换一句试试', ok: false }); return; }
     setDraft(d);
   };
 
@@ -193,18 +193,18 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
   const onImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; e.target.value = '';
     if (!f || busy) return;
-    setBusy(true); setDraft(null); setPinMsg('');
+    setBusy(true); setDraft(null); setPinMsg(null);
     const url = await new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result || '')); r.onerror = () => res(''); r.readAsDataURL(f); });
     const d = url ? await runCustomAgentFromImage(manifest, url) : null;
     setBusy(false);
-    if (!d) { setPinMsg('端侧识图未就绪或没读出（原图不会上云）。可改用文字，或先在控制台启用端侧大脑。'); return; }
+    if (!d) { setPinMsg({ text: '端侧识图未就绪或没读出（原图不会上云）。可改用文字，或先在控制台启用端侧大脑。', ok: false }); return; }
     setDraft(d);
   };
 
   const pin = () => {
     if (!draft) return;
     const r = confirmPin(manifest, draft);
-    setPinMsg(r.pinned ? (r.reason === 'exists' ? '已经钉过了' : '已钉到地球「自建」层 ✓') : '还没定位到地点，无法钉');
+    setPinMsg({ text: r.pinned ? (r.reason === 'exists' ? '已经钉过了' : '已钉到地球「自建」层 ✓') : '还没定位到地点，无法钉', ok: r.pinned });
   };
 
   const buildMap = async () => {
@@ -288,14 +288,14 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
                 className="flex items-center gap-1 border-2 border-black px-3 py-1.5 text-[11px] font-bold text-white shadow-[1px_1px_0_#000] active:translate-y-px disabled:opacity-40" style={{ background: manifest.color }}>
                 <MapPin className="w-3.5 h-3.5" strokeWidth={2.5} />钉到地球
               </button>
-              <button onClick={() => { setDraft(null); setInput(''); setPinMsg(''); }}
+              <button onClick={() => { setDraft(null); setInput(''); setPinMsg(null); }}
                 className="flex items-center gap-1 border-2 border-black px-2.5 py-1.5 text-[10px] font-bold bg-white shadow-[1px_1px_0_#000] active:translate-y-px">
                 <Archive className="w-3.5 h-3.5" strokeWidth={2.5} />换一条
               </button>
             </div>
           </div>
         )}
-        {pinMsg && <div className="border-2 border-black bg-[#f6fff9] text-[12px] p-2.5 font-bold" style={{ color: '#0a8' }}>{pinMsg}</div>}
+        {pinMsg && <div className="border-2 border-black text-[12px] p-2.5 font-bold" style={pinMsg.ok ? { background: '#f6fff9', color: '#0a8' } : { background: '#ffecec', color: '#b00' }}>{pinMsg.text}</div>}
         </>)}
 
         {mode === 'map' && (<>
@@ -314,7 +314,12 @@ function RunView({ manifest, onBack, onEdge }: { manifest: AgentManifest; onBack
           {mapRunId && <div className="mt-2"><RunTrace runId={mapRunId} /></div>}
         </div>
 
-        {mapDraft && (
+        {mapDraft && mapDraft.records.length === 0 && (   // 跑过却一无所获：给中性引导卡（非绿色成功色），别留「0 个 / 已选 0」的空草案卡像卡住
+          <div className="border-2 border-black bg-white p-3 text-[12px] text-black/65 shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
+            这个主题没搜到可落点的条目（已搜 {mapDraft.queriesRun.length} 次）。换个更具体的主题再试，例：「杭州西湖周边观鸟点」。
+          </div>
+        )}
+        {mapDraft && mapDraft.records.length > 0 && (
           <div className="border-2 border-black bg-white p-3 shadow-[2px_2px_0_rgba(0,0,0,0.85)]">
             <div className="flex items-center justify-between mb-1">
               <div className="font-pixel text-[8px] tracking-widest" style={{ color: manifest.color }}>◍ 草案批 · {mapDraft.records.length} 个</div>

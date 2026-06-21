@@ -46,11 +46,12 @@ interface RadioChatProps {
   onInputChange: (v: string) => void;
   onSend: () => void;
   className?: string;
+  busy?: boolean;   // 云端 Qwen 往返中：显示「FROST 正在想…」，免全屏电台里静止数秒像卡死
   // 字幕跟随：某条 frost 气泡正被声音播报时，把它的打字进度交给声音驱动
   voiceSync?: { text: string; progress: number } | null;
 }
 
-export function RadioChat({ chat, chatInput, onInputChange, onSend, className = '', voiceSync }: RadioChatProps) {
+export function RadioChat({ chat, chatInput, onInputChange, onSend, className = '', voiceSync, busy }: RadioChatProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
@@ -87,6 +88,12 @@ export function RadioChat({ chat, chatInput, onInputChange, onSend, className = 
             </div>
           </div>
         ))}
+        {busy && (
+          <div className="flex gap-2 items-start">
+            <FrostAvatar />
+            <span className="text-[11px] text-[#00ff88]/60 animate-pulse self-center">FROST 正在想…</span>
+          </div>
+        )}
         <div ref={chatEndRef} />
       </div>
 

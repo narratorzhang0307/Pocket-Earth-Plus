@@ -40,7 +40,11 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
     try {
       const d = await runCapture(text, image || undefined, (p, detail) => { setPhase(p); run.phase(p, detail); });
       run.end(!!d); setResult(d);
-    } catch { run.end(false); setResult(null); }
+    } catch {
+      run.end(false); setResult(null);
+      setToast('这次没记成，稍后再试一笔');   // 罕见意外抛错时不再「点了没反应」：给一句兜底反馈（管线本身是舱壁式降级、极少走到这里）
+      window.setTimeout(() => setToast(''), 2400);
+    }
     setBusy(false); setPhase('');
   };
 
@@ -126,6 +130,13 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
           <div className="border-2 border-black bg-white p-4 shadow-[2px_2px_0_rgba(0,0,0,0.85)] text-center">
             <div className="text-[12px] font-bold mb-1">一个框，记一切</div>
             <div className="text-[11px] text-black/55 leading-snug">frost 会判断你这句是书、影、行程还是心情，自动钉到地球对应的图层——你不用先想"该进哪个 agent"。</div>
+          </div>
+        )}
+        {!result && !busy && runId && (   // 跑完却无结果（罕见意外抛错）：保留上方轨迹树便于复盘，同时给「再记一笔」引导，不留孤悬空白
+          <div className="border-2 border-black bg-white p-4 shadow-[2px_2px_0_rgba(0,0,0,0.85)] text-center">
+            <div className="text-[12px] font-bold mb-1">这次没记成</div>
+            <div className="text-[11px] text-black/55 leading-snug mb-2">可能网络抖了一下。换句话，或稍后再记一笔。</div>
+            <button onClick={reset} className="border-2 border-black bg-white px-3 py-1.5 text-[11px] font-bold shadow-[1px_1px_0_#000] active:translate-y-px">再记一笔</button>
           </div>
         )}
 

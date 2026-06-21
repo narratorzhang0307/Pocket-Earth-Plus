@@ -48,6 +48,8 @@ export default function CouncilPage({ onBack }: Props) {
   // 法庭模式需正反各一人：「庭长以外」≥2 且两侧各至少 1；其余模式 ≥2 即可
   const nonChairCount = nonChairSelected.length;
   const canStart = mode === 'courtroom' ? (nonChairCount >= 2 && proCount >= 1 && conCount >= 1) : selected.size >= 2;
+  // 法庭必登场庭长 FROST（用户没手选也会自动请来收尾）：人数 +1，与台上实际发言角色数一致，免镜头里写「4 人」却 5 人发言
+  const headcount = mode === 'courtroom' && !selected.has('chair') ? selected.size + 1 : selected.size;
 
   const start = async () => {
     if (!canStart) return;
@@ -100,7 +102,7 @@ export default function CouncilPage({ onBack }: Props) {
           <div className="font-pixel text-[11px] tracking-wider truncate">COUNCIL · 圆桌议事</div>
           <div className="text-[9px] text-black/45 truncate">多 agent 讨论 / 辩论 / 法庭 · 你来组局</div>
         </div>
-        <span className="font-pixel text-[7px] text-black/45">{selected.size} 人</span>
+        <span className="font-pixel text-[7px] text-black/45">{headcount} 人</span>
       </div>
 
       {phase === 'setup' ? (
@@ -200,7 +202,7 @@ export default function CouncilPage({ onBack }: Props) {
           {/* 开始 */}
           <button onClick={start} disabled={!canStart}
             className="w-full flex items-center justify-center gap-1.5 border-2 border-black bg-black text-[#7CFF6B] py-2.5 font-pixel text-[10px] tracking-widest shadow-[2px_2px_0_rgba(0,0,0,0.85)] active:translate-y-px disabled:opacity-40">
-            <Play className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} /> 开始议事（{selected.size} 人 · {modeDef(mode).label}）
+            <Play className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} /> 开始议事（{headcount} 人 · {modeDef(mode).label}）
           </button>
           {!canStart && <div className="text-center text-[10px] text-black/40">{mode === 'courtroom' ? '法庭模式：至少选两名「庭长以外」的人当正反方' : '至少选两个人才能开始讨论'}</div>}
         </div>
@@ -246,6 +248,25 @@ export default function CouncilPage({ onBack }: Props) {
                 </div>
                 <div className="px-2.5 py-2 space-y-1.5">
                   {!!verdict.issues.length && <div className="flex flex-wrap gap-1">{verdict.issues.map((s, i) => <span key={i} className="font-pixel text-[6px] border border-black/30 px-1 py-0.5 bg-[#f5edd6]">争点·{s}</span>)}</div>}
+                  {/* 双方结构化论据（举证质证→claim/据证，法庭引擎的核心产物，原先只存盘未展示） */}
+                  {(!!verdict.proArgs.length || !!verdict.conArgs.length) && (
+                    <div className="space-y-1">
+                      {([['正方', verdict.proArgs, '#2e7d4f'], ['反方', verdict.conArgs, '#a0432c']] as const).map(([label, args, c]) =>
+                        args.length ? (
+                          <div key={label} className="space-y-0.5">
+                            <span className="font-pixel text-[6px] tracking-widest px-1 py-0.5 border" style={{ color: c, borderColor: c }}>{label}论据</span>
+                            <ul className="space-y-0.5">
+                              {args.map((a, i) => (
+                                <li key={i} className="text-[10px] text-black/70 leading-snug border-l-2 pl-1.5" style={{ borderColor: c }}>
+                                  {a.claim}{a.evidenceRef && <span className="text-black/45"> · 据 {a.evidenceRef}</span>}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null,
+                      )}
+                    </div>
+                  )}
                   <div className="text-[12px] text-black/80 leading-relaxed">{verdict.verdict}</div>
                   {verdict.dissent && <div className="text-[10px] text-black/55 leading-snug">保留分歧 · {verdict.dissent}</div>}
                   {verdict.ruleEstablished && <div className="text-[11px] text-black/65 italic border-l-2 pl-2" style={{ borderColor: '#caa64a' }}>裁判要旨 · {verdict.ruleEstablished}</div>}

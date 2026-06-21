@@ -26,7 +26,7 @@ export default function MusicAgentPage({ onBack }: Props) {
         </div>
         <div className="flex border-2 border-black bg-[#EAEAEA] p-0.5">
           <button onClick={() => setTab('library')} className={`flex-1 py-1.5 text-[11px] font-bold ${tab === 'library' ? 'bg-black text-[#7CFF6B]' : 'text-black hover:bg-black/5'}`}>曲库</button>
-          <button onClick={() => setTab('chat')} className={`flex-1 py-1.5 text-[11px] font-bold ${tab === 'chat' ? 'bg-black text-[#7CFF6B]' : 'text-black hover:bg-black/5'}`}>Frost_Music</button>
+          <button onClick={() => setTab('chat')} className={`flex-1 py-1.5 text-[11px] font-bold ${tab === 'chat' ? 'bg-black text-[#7CFF6B]' : 'text-black hover:bg-black/5'}`}>对话</button>
         </div>
       </div>
 
