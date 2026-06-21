@@ -191,27 +191,31 @@ async function cloudMood(text: string): Promise<{ place?: string; tone?: string 
   } catch { return null; }
 }
 
-export interface MoodAnalysis { place: string; lng: number; lat: number; tone: MoodTone }
+export interface MoodAnalysis { place: string; lng: number; lat: number; tone: MoodTone; rawPlace?: string }
 // 「记一笔」做智能：一次性判出 地点 + 情绪。
 // 地点：本地字典 → 云脑兜底 → 端侧兜底 → 此处；情绪：本地词典即时打底 → 云脑覆盖（更准）。
 // 即使全程离线/无云，也能靠字典 + 词典给出合理结果（优雅降级）。
 export async function analyzeMood(text: string, fallback: [number, number]): Promise<MoodAnalysis> {
   let loc = matchPlace(text);            // 字典直配（即时）
   let tone: MoodTone = detectToneLocal(text); // 本地词典（即时打底）
+  let rawPlace: string | undefined;      // 云脑/端侧抽到的原始地名——即使本地字典没收录，也透传给上游用 resolvePlace 做全球定位
 
   const cloud = await cloudMood(text);   // 云脑判 地名 + 情绪
   if (cloud) {
     if (cloud.tone && isMoodTone(cloud.tone)) tone = cloud.tone;       // 云脑情绪更准 → 覆盖
+    if (cloud.place && cloud.place.trim()) rawPlace = cloud.place.trim();   // 记下原始地名（字典外的城市也留住，供全球定位）
     if (!loc && cloud.place) { const m = matchPlace(cloud.place); if (m) loc = m; }
   }
   if (!loc) {                            // 云不可用且字典没配 → 端侧提地名
     try {
       const name = await edgeSafe.chat(text, { system: '从这句话里找出一个地名（城市或国家），只输出地名本身；没有就输出 NONE。' });
-      const m = matchPlace((name || '').trim());
+      const nm = (name || '').trim();
+      if (nm && nm !== 'NONE' && !rawPlace) rawPlace = nm;
+      const m = matchPlace(nm);
       if (m) loc = m;
     } catch { /* 端侧不可用 */ }
   }
   if (!loc) loc = { place: '此处', lng: fallback[0], lat: fallback[1] };
-  return { ...loc, tone };
+  return { ...loc, tone, rawPlace };
 }
 

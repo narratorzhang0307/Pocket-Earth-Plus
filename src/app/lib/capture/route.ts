@@ -75,6 +75,8 @@ export async function runCapture(text: string, imageDataUrl?: string, onPhase?: 
   else { const c = await classify(t); domain = c.domain; placeHint = c.place || ''; }
   // 确定性护栏：明显的「去过某地」(出行动词 + 可识别城市) 强制 travel，别被云脑误判成 mood
   if (domain === 'mood' && /去了|去过|到了|到过|玩了|逛了|出差|旅行|刚从.{0,6}回来/.test(t) && geocodeCity(t)) domain = 'travel';
+  // 愿望护栏：「想去/打算去/计划去/种草」是还没去的向往、不是去过的行程 → 拉回 mood，钉成「想去」心情便签（而非行程红点）
+  if (domain === 'travel' && /想去|想再去|好想去|超想去|打算去|计划去|准备去|种草|好想.{0,3}走/.test(t)) domain = 'mood';
 
   if (domain === 'movie') {
     const d = await runMovieAgent({ kind: imageDataUrl ? 'image' : 'text', text: t, imageDataUrl }, onPhase ? (p, d) => onPhase(p, d) : undefined);
@@ -100,11 +102,19 @@ export async function runCapture(text: string, imageDataUrl?: string, onPhase?: 
   // mood：含 地点 / 随手想法 / 音乐感想 等一切兜底
   onPhase?.('判地点 + 情绪', '云脑判情绪');
   const r = await analyzeMood(t, FALLBACK);
+  let place = r.place, lng = r.lng, lat = r.lat;
+  // 本地字典没收录的地名（如圣地亚哥）会落到兜底「此处」——用云脑抽的规范地名走 resolvePlace 全球定位补救，钉对真实城市
+  const hint = placeHint || r.rawPlace;
+  if (place === '此处' && hint) {
+    onPhase?.('全球定位地点', 'resolvePlace 本地→Mapbox');
+    const geo = await resolvePlace(hint).catch(() => null);
+    if (geo) { place = geo.place; lng = geo.lng; lat = geo.lat; }
+  }
   return {
-    domain: 'mood', ok: true, title: `${MOOD_TONES[r.tone].label} · ${t.slice(0, 12)}`, where: r.place === '此处' ? '未定位 · 暂落地图' : r.place, note: '记为一条心情贴',
+    domain: 'mood', ok: true, title: `${MOOD_TONES[r.tone].label} · ${t.slice(0, 12)}`, where: place === '此处' ? '未定位 · 暂落地图' : place, note: '记为一条心情贴',
     confirm: async () => {
       const id = 'mood-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);   // 加随机尾，免同毫秒撞 id → React key 重复 / removeMoodSticker 误删两条
-      addMoodSticker({ id, lat: r.lat, lng: r.lng, text: t, place: r.place, color: MOOD_TONES[r.tone].color, rot: pickRot(id), tone: r.tone });
+      addMoodSticker({ id, lat, lng, text: t, place, color: MOOD_TONES[r.tone].color, rot: pickRot(id), tone: r.tone });
       return { pinned: true };
     },
   };
