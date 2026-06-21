@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense, type ComponentType } from 'react';
 import { Image, Globe, Sparkles } from 'lucide-react';
 import ErrorBoundary from './components/ErrorBoundary';
-import RunDrawer from './components/RunDrawer';
+// import RunDrawer from './components/RunDrawer';   // 录视频时临时隐藏「运行轨迹」浮钮；要找回：取消本行 + 下方 <RunDrawer/> 两处注释
 import { subscribeMapFocus } from './data/mapFocus';
 
 // 懒加载重试：持续部署后旧 hash 的 chunk 会从服务器消失，挂着不刷新的页面首次切到该 tab 时
@@ -89,7 +89,7 @@ export default function App() {
         </ErrorBoundary>
       </main>
 
-      <RunDrawer />
+      {/* <RunDrawer /> 录视频时临时隐藏「运行轨迹」浮钮；要找回：取消本行注释 + 顶部 import 注释 */}
 
       <div
         className="absolute bottom-0 left-0 right-0 bg-[#EAEAEA] border-t-2 border-black z-30 pt-2"

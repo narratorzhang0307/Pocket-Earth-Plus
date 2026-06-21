@@ -1,5 +1,7 @@
 # Frost Agent · 架构设计 v2.0
 
+> 📖 本文是 frost-agent **内核**的架构说明。覆盖全系统（端云双脑 / 子 agent 六层流水线 / 长期记忆双层闭环 / 技能系统 / 议事庭审 / 可观测编排）的完整深度总纲见根目录 [`../ARCHITECTURE.md`](../ARCHITECTURE.md)。
+
 frost-agent 是 Pocket Earth 的内核：一个**把地球作为方法**的个人知识整理 agent。它把用户的书、电影、音乐、照片这些个人对象，整理、定位、钉到地球上的某个地点，让地图长成一张属于「这个人」的知识地图。
 
 一个**总 frost-agent** 作为主 agent（CEO / Team Lead），把不同类型的对象委派给专门的 agent 子 agent；每个 agent 在隔离上下文里独立完成「整理 → 定位 → 产出落点建议」，再由 Boundary 校验后钉到地球。radio 只是其中一类对象的处理方式，不是 frost-agent 的全部。
