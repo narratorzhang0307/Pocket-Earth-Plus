@@ -86,7 +86,7 @@ export default function MarkerDetail({ data, onClose, onRemove }: { data: Marker
               {data.rating != null && <span className="text-[11px] text-black/80">{stars(data.rating)}</span>}
             </div>
             <div className="px-3 py-2.5">
-              <div className="text-[15px] font-bold leading-tight">{data.title}</div>
+              <div className="text-[15px] font-bold leading-tight break-words min-w-0">{data.title}</div>
               {data.original && data.original !== data.title && <div className="font-pixel text-[8px] text-black/40 mt-1">{data.original}</div>}
               <div className="text-[11px] text-black/60 mt-1.5">{[data.director, data.country, data.year].filter(Boolean).join(' · ')}</div>
               {/* 电影 agent 补全的多维标签 */}
@@ -117,7 +117,7 @@ export default function MarkerDetail({ data, onClose, onRemove }: { data: Marker
             </div>
             <div className="px-3 py-2.5">
               <div className="flex items-baseline gap-2">
-                <div className="text-[15px] font-bold leading-tight">{data.title}</div>
+                <div className="text-[15px] font-bold leading-tight break-words min-w-0">{data.title}</div>
                 {data.year && <span className="font-pixel text-[8px] text-black/35">{data.year}</span>}
               </div>
               <div className="text-[11px] text-black/60 mt-1">{[data.author, data.country].filter(Boolean).join(' · ')}</div>
@@ -148,7 +148,7 @@ export default function MarkerDetail({ data, onClose, onRemove }: { data: Marker
               <span className="font-pixel text-[7px] tracking-widest text-black">JOURNEY · 整趟行程</span>
             </div>
             <div className="px-3 py-2.5">
-              <div className="text-[15px] font-bold leading-tight">{data.trip.title}</div>
+              <div className="text-[15px] font-bold leading-tight break-words min-w-0">{data.trip.title}</div>
               <div className="text-[11px] text-black/55 mt-1">
                 {data.trip.dateStart ? `${data.trip.dateStart}${data.trip.dateEnd && data.trip.dateEnd !== data.trip.dateStart ? `~${data.trip.dateEnd}` : ''} · ` : ''}
                 途经 {data.trip.cities.join('、')}
@@ -183,7 +183,7 @@ export default function MarkerDetail({ data, onClose, onRemove }: { data: Marker
             </div>
             <div className="px-3 py-2.5">
               <div className="flex items-center gap-1.5">
-                <div className="text-[15px] font-bold leading-tight">{data.title}</div>
+                <div className="text-[15px] font-bold leading-tight break-words min-w-0">{data.title}</div>
                 {data.tag && <span className="font-pixel text-[7px] border border-black/40 px-1 text-black/60">{data.tag}</span>}
               </div>
               <div className="text-[11px] text-black/55 mt-1">{data.city}</div>
@@ -220,7 +220,7 @@ export default function MarkerDetail({ data, onClose, onRemove }: { data: Marker
               <span className="font-pixel text-[7px] tracking-widest text-black">VERDICT · 庭审纪要</span>
             </div>
             <div className="px-3 py-2.5">
-              <div className="text-[14px] font-bold leading-tight">⚖️ {data.title}</div>
+              <div className="text-[14px] font-bold leading-tight break-words min-w-0">⚖️ {data.title}</div>
               {data.verdict && <div className="text-[12px] text-black/75 leading-relaxed mt-2">{data.verdict}</div>}
               {data.ruleEstablished && <div className="text-[11px] text-black/60 italic mt-2 border-l-2 pl-2" style={{ borderColor: '#caa64a' }}>裁判要旨：{data.ruleEstablished}</div>}
               <div className="flex items-center gap-1.5 mt-2.5">
@@ -240,7 +240,7 @@ export default function MarkerDetail({ data, onClose, onRemove }: { data: Marker
               <span className="font-pixel text-[7px] tracking-widest text-black">{(data.agentName || '自建 AGENT').toUpperCase()}</span>
             </div>
             <div className="px-3 py-2.5">
-              <div className="text-[15px] font-bold leading-tight">{data.emoji || '📍'} {data.title}</div>
+              <div className="text-[15px] font-bold leading-tight break-words min-w-0">{data.emoji || '📍'} {data.title}</div>
               {data.note && <div className="text-[12px] text-black/75 leading-relaxed mt-1.5">{data.note}</div>}
               {data.tags && Object.keys(data.tags).length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">

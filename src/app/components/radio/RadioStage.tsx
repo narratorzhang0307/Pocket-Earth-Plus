@@ -174,6 +174,13 @@ export function RadioStage({ isOpen, onClose, startCitySlug, startTrackId, start
 
   useEffect(() => { if (!isOpen) { audioRef.current?.pause(); setIsPlaying(false); setMinimized(false); if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel(); } }, [isOpen]);
 
+  // 卸载时拆 Web Audio 图（断 DJ 闪避用的 source/gain、关 AudioContext）：离开音乐 agent 会卸载本组件，否则反复进出累积未释放的 AudioContext（浏览器约 6 个上限）
+  useEffect(() => () => {
+    try { musicSrcRef.current?.disconnect(); } catch { /* */ }
+    try { musicGainRef.current?.disconnect(); } catch { /* */ }
+    try { audioCtxRef.current?.close(); } catch { /* close() 已关会抛 */ }
+  }, []);
+
   // 播客背景乐：该城音乐低音量循环垫底
   useEffect(() => {
     const bg = bgAudioRef.current;

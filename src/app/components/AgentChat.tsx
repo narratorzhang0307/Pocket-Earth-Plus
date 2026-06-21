@@ -49,7 +49,8 @@ export default function AgentChat({ config }: { config: AgentChatConfig }) {
   const endRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(true);
   const lastAskRef = useRef('');
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  const streamRef = useRef<{ cancel: () => void; done: Promise<void> } | null>(null);
+  useEffect(() => () => { mountedRef.current = false; streamRef.current?.cancel(); }, []);   // 卸载时取消在飞的逐字流，清掉 streamText 内部 interval（否则它会对死组件空跑约 90 次）
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [turns.length, busy]);
 
   // 云脑 JSON 调用（给推荐候选用）：自己 parse + 兜底
@@ -140,11 +141,13 @@ export default function AgentChat({ config }: { config: AgentChatConfig }) {
         setTurns((t) => [...t, { role: 'agent', text: '', intent: intent || undefined, error: failed }]);
       } else { setLast({ error: failed }); }
       let acc = '';
-      await streamText(reply, (e) => {
+      const handle = streamText(reply, (e) => {
         if (!mountedRef.current) return;     // 卸载后停止填充，避免对已卸载组件 setState
         if (e.phase === 'delta' && e.delta) { acc += e.delta; const cur = acc; setLast({ text: cur }); }
         else if (e.phase === 'end') { setLast({ text: reply }); }
-      }).done;
+      });
+      streamRef.current = handle;
+      try { await handle.done; } finally { streamRef.current = null; }
     } finally {
       if (mountedRef.current) setBusy(false);   // try/finally：任何抛错也不把对话框永久锁死
     }

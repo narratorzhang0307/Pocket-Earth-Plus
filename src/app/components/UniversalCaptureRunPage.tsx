@@ -62,7 +62,7 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
   const reset = () => { setResult(null); setRunId(null); setText(''); setImage(null); setPinned(false); setToast(''); };
 
   return (
-    <div className="h-full flex flex-col bg-[#EAEAEA] font-sans overflow-hidden">
+    <div className="h-full flex flex-col bg-[#EAEAEA] font-sans relative overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b-2 border-black bg-white shrink-0">
         <button onClick={onBack} className="w-8 h-8 border-2 border-black bg-white flex items-center justify-center shadow-[1px_1px_0_#000] active:translate-y-px">
@@ -174,7 +174,7 @@ export default function UniversalCaptureRunPage({ onBack }: Props) {
 
       {/* toast */}
       {toast && (
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-6 border-2 border-black bg-black text-[#7CFF6B] px-3 py-1.5 font-pixel text-[8px] tracking-wider shadow-[2px_2px_0_rgba(0,0,0,0.85)]">{toast}</div>
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-6 z-50 border-2 border-black bg-black text-[#7CFF6B] px-3 py-1.5 font-pixel text-[8px] tracking-wider shadow-[2px_2px_0_rgba(0,0,0,0.85)]">{toast}</div>
       )}
     </div>
   );

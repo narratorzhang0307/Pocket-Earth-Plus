@@ -90,7 +90,7 @@ export function ensureHeavyMarkers(): Promise<void> {
       bookById.set('bk-' + b.id, b);
     }
     heavyLoaded = true;
-  });
+  }).catch((e) => { heavyPromise = null; throw e; });   // 失败清缓存→下次切回地球 tab 重新 import；保持 reject 让上层 .catch 照常吞（否则一次瞬时 chunk 404/离线后电影·书标记整会话消失、不自愈）
   return heavyPromise;
 }
 

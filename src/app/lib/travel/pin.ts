@@ -54,6 +54,7 @@ export async function pinManualStop(stop: ManualStop): Promise<{ ok: boolean; re
 export async function confirmArchive(arc: TripArchive): Promise<{ added: number; cities: string[] }> {
   const existing = new Set(getUserMarksByKind('travel').map((m) => m.id));
   const pinnedCities = new Set<string>();
+  const newlyPinnedCities = new Set<string>();   // 只记本次真正新钉的城市，回流用：重确认同一 archive 时 0 新钉 → 0 回流，幂等（不再把已钉城市重复计进长期画像）
   let added = 0; let seq = 0;
   const pinPoint = async (city: string | undefined, label: string, role: string, date?: string, extra?: Record<string, unknown>) => {
     const c = (city || '').trim(); if (!c) return;
@@ -63,13 +64,13 @@ export async function confirmArchive(arc: TripArchive): Promise<{ added: number;
     if (existing.has(id) || getUserMarksByKind('travel').some((m) => m.id === id)) return;   // 实时复查：并发确认各基于旧快照会重复钉（addUserMark 不查重，同 photo geoPin）
     const [lng, lat] = spreadCoord(id, geo.lng, geo.lat, 0.04);
     addUserMark({ id, kind: 'travel', lng, lat, label: label || c, meta: { tripId: arc.id, seq: seq++, role, city: c, date, status: 'done', ...extra } });
-    existing.add(id); added++;
+    existing.add(id); added++; newlyPinnedCities.add(c);
   };
   for (const [i, s] of arc.segments.entries()) await pinPoint(s.toCity || s.fromCity, s.toCity || s.fromCity || '', `seg${i}`, s.date, { mode: s.mode, code: s.code });
   for (const [i, s] of arc.stays.entries()) await pinPoint(s.city, s.hotel || s.city || '', `stay${i}`, s.checkIn, { hotel: s.hotel });
   for (const [i, s] of arc.spots.entries()) await pinPoint(s.city, s.name || '', `spot${i}`, s.date);
   for (const [i, c] of arc.cities.entries()) { if (!pinnedCities.has((c || '').trim())) await pinPoint(c, c, `city${i}`); }
   const season = seasonOf(arc.dateStart);
-  recordSignals('travel', { cities: [...pinnedCities], seasons: season ? [season] : [] });
+  recordSignals('travel', { cities: [...newlyPinnedCities], seasons: season ? [season] : [] });   // 只回流本次新钉城市，重确认幂等
   return { added, cities: [...pinnedCities] };
 }
