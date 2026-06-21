@@ -56,9 +56,10 @@ export async function enrichTags(title: string, hint?: { author?: string; countr
 
 // 地理子 agent：故事地 > 作者地 > 国家（经 [resolvePlace]：本地表命中即返回、未命中走 Mapbox 拿全球）
 export async function geoResolve(opts: { storyPlace?: string; authorPlace?: string; country?: string }): Promise<GeoTarget | null> {
-  const story = opts.storyPlace ? await resolvePlace(opts.storyPlace) : null;
+  // 带国家消歧：光秃秃的中文地名（如「利马」）会被 Mapbox 匹配到同名异地（塞浦路斯利马索尔），拼上国家才钉对秘鲁利马
+  const story = opts.storyPlace ? await resolvePlace(opts.country ? `${opts.storyPlace} ${opts.country}` : opts.storyPlace) : null;
   if (story) return { kind: 'story', place: story.place, lng: story.lng, lat: story.lat, confidence: story.source === 'local' ? 0.9 : 0.82 };
-  const author = opts.authorPlace ? await resolvePlace(opts.authorPlace) : null;
+  const author = opts.authorPlace ? await resolvePlace(opts.country ? `${opts.authorPlace} ${opts.country}` : opts.authorPlace) : null;
   if (author) return { kind: 'author', place: author.place, lng: author.lng, lat: author.lat, confidence: author.source === 'local' ? 0.75 : 0.7 };
   if (opts.country) {
     const c = bookCountry(opts.country);

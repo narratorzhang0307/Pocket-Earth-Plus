@@ -61,9 +61,10 @@ export async function enrichTags(title: string, hint?: { director?: string; coun
 // 地理子 agent：取景地 > 故事地 > 国家，逐级落坐标。
 // 经 [resolvePlace] skill：本地表命中即返回（不联网）、未命中走 Mapbox 拿全球城市/区，破"只认 ~100 城"。
 export async function geoResolve(opts: { filmingPlace?: string; storyPlace?: string; country?: string }): Promise<GeoTarget | null> {
-  const film = opts.filmingPlace ? await resolvePlace(opts.filmingPlace) : null;
+  // 带国家消歧：光秃秃的中文地名会被 Mapbox 匹配到同名异地，拼上国家才钉对（同 book/tagging）
+  const film = opts.filmingPlace ? await resolvePlace(opts.country ? `${opts.filmingPlace} ${opts.country}` : opts.filmingPlace) : null;
   if (film) return { kind: 'filming', place: film.place, lng: film.lng, lat: film.lat, confidence: film.source === 'local' ? 0.9 : 0.82 };
-  const story = opts.storyPlace ? await resolvePlace(opts.storyPlace) : null;
+  const story = opts.storyPlace ? await resolvePlace(opts.country ? `${opts.storyPlace} ${opts.country}` : opts.storyPlace) : null;
   if (story) return { kind: 'story', place: story.place, lng: story.lng, lat: story.lat, confidence: story.source === 'local' ? 0.75 : 0.7 };
   if (opts.country) {
     const c = movieCountry(opts.country);
