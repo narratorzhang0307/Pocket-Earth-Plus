@@ -845,7 +845,7 @@ export default function MyMapTab(_props: MyMapTabProps) {
                   aria-label="删除这条心情"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => removeMoodSticker(s.id)}
-                  className="absolute -top-2.5 -right-2.5 w-4 h-4 bg-black border border-black text-white items-center justify-center hidden group-hover:flex"
+                  className="absolute -top-2.5 -right-2.5 w-4 h-4 bg-black border border-black text-white flex items-center justify-center opacity-50 group-hover:opacity-100 transition-opacity"
                 >
                   <X className="w-2.5 h-2.5" strokeWidth={3} />
                 </button>
