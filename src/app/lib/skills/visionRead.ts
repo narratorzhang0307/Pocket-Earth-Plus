@@ -25,6 +25,7 @@ export function redactText(s: string): string { let t = s || ''; for (const [re,
 export interface VisionReadOptions {
   max?: number;       // 截断上限（默认 1200 字）
   redact?: boolean;   // 是否脱敏（默认 true，与端侧提示词里"别输出敏感号"互为双保险）
+  timeoutMs?: number; // 端侧 VL 推理超时（默认 30s）：3B VL 冷加载 / 大图推理一旦挂起，底层 fetch('/api/edge') 永不返回会让整条记一笔流水线无限转圈（实测卡死 176s），超时即返回 '' 走手填兜底
 }
 
 /**
@@ -34,7 +35,15 @@ export interface VisionReadOptions {
 export async function visionRead(imageDataUrl: string, prompt: string, opts: VisionReadOptions = {}): Promise<string> {
   if (!imageDataUrl) return '';
   let raw = '';
-  try { raw = (await edgeSafe.vision(imageDataUrl, prompt)) || ''; } catch { raw = ''; }
+  // 端侧 vision 经 httpEdge 的 fetch('/api/edge') 无原生超时；服务端 VL 推理挂起时 await 会永久 pending（实测截图认片卡死 176s）。
+  // 唯一收口处再兜一道 Promise.race 超时：超时返回 '' → 上层 sense 拿不到片名 → 走「没认出·去手填」兜底，绝不无限转圈（与 httpEdge 的 AbortController 互为纵深）。
+  const timeoutMs = opts.timeoutMs ?? 30000;
+  try {
+    raw = (await Promise.race([
+      edgeSafe.vision(imageDataUrl, prompt),
+      new Promise<string>((resolve) => setTimeout(() => resolve(''), timeoutMs)),
+    ])) || '';
+  } catch { raw = ''; }
   if (!raw) return '';
   const sliced = raw.slice(0, opts.max ?? 1200);
   return ((opts.redact ?? true) ? redactText(sliced) : sliced).trim();
