@@ -72,8 +72,12 @@ for (const w of WORLD_PHOTOS) {
 }
 export const photoCredit = (url?: string): PhotoCredit | undefined => (url ? CREDIT.get(url) : undefined);
 
-// 给地图用的照片坐标点（即使图池缺失也有，靠 photo-places 入库的坐标）
+// 给相册三视图 / 画像 / 星球用的全量照片点（含本地图池循环配的 PLACE_PHOTOS）
 export const photoPoints = PHOTOS;
+// 地图标记专用：只钉「图片与真实坐标确实对应」的照片——world-photos 每张自带真实城市坐标+对应图片。
+// 刻意排除 PLACE_PHOTOS：那是本地仅有的 29 张图按 i%29 循环铺到 photo-places.json 的 336 个无关 Unsplash 坐标，
+// 图文不符（同一张图撒到十几个不相关城市，越南/柬埔寨的图会落到欧洲），不该撒到地图；它们仍保留在相册三视图。
+export const mapPhotoPoints = WORLD_PHOTOS;
 export const photoTotal = PHOTOS.length;
 export const hasPhotos = IMG_POOL.length > 0;
 

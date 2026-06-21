@@ -3,7 +3,7 @@
 // 新增一类内容只要再 push 一组 marker + 在 MARKER_KINDS 里加一行即可，地图层与图例自动支持。
 
 import musicCities from './music-cities.json';
-import { photoPoints } from './photos';
+import { mapPhotoPoints } from './photos';
 // 只引类型（编译期擦除，不会把 movies/books 及其 douban 大 JSON 拉进首屏 chunk）；
 // 真正的数据在 ensureHeavyMarkers() 里动态 import。
 import type { MoviePoint } from './movies';
@@ -57,7 +57,7 @@ const musicMarkers: MapMarker[] = (musicCities as MusicCity[]).map((c) => {
   return { id: 'm-' + c.slug, kind: 'music', lat, lng, label: c.nameZh };
 });
 
-const photoMarkers: MapMarker[] = photoPoints.map((p) => {
+const photoMarkers: MapMarker[] = mapPhotoPoints.map((p) => {
   const [lat, lng] = jitter('p-' + p.id, p.lat, p.lng);
   return { id: 'p-' + p.id, kind: 'photo', lat, lng, label: (p.city || '').split(',')[0], thumb: p.thumb, full: p.full,
     author: p.author, authorLink: p.authorLink, photoLink: p.photoLink };
@@ -69,7 +69,7 @@ export const MAP_MARKERS: MapMarker[] = [...musicMarkers, ...photoMarkers];
 
 // 点击查详情用的查找表（按带前缀的 marker id）：geojson 里只放 id，详情走这里查，保持要素轻量。
 // 电影 / 书表初始为空，懒加载完成后填充（同一 Map 对象就地填充，外部持有的引用仍有效）。
-export const photoById = new Map(photoPoints.map((p) => ['p-' + p.id, p]));
+export const photoById = new Map(mapPhotoPoints.map((p) => ['p-' + p.id, p]));
 export const movieById = new Map<string, MoviePoint>();
 export const bookById = new Map<string, BookPoint>();
 
