@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense, type ComponentType } from 'react';
 import { Image, Globe, Sparkles } from 'lucide-react';
 import ErrorBoundary from './components/ErrorBoundary';
+import { subscribeMapFocus } from './data/mapFocus';
 
 // 懒加载重试：持续部署后旧 hash 的 chunk 会从服务器消失，挂着不刷新的页面首次切到该 tab 时
 // import() 会 reject → 无 ErrorBoundary 即白屏。这里捕获一次、强刷一次拉到新 index.html+新 hash。
@@ -51,6 +52,8 @@ function useStandalone() {
 // · 已安装 PWA：铺满 100dvw×100dvh，顶部留灵动岛、底部留 home 指示条的安全区
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('earth');
+  // 记一笔等入口钉完会请求地图焦点 → 自动切到地球 tab（MyMapTab 挂载后消费焦点、飞到落点并放大到便签可见）
+  useEffect(() => subscribeMapFocus(() => setActiveTab('earth')), []);
   const standalone = useStandalone();
   // 录制态：本地给地址加 ?rec（或 ?record）才套 iPhone 外壳 + 9:16 录制画布；线上 PWA 默认走正常手机框。
   const recordMode = typeof location !== 'undefined' && /[?&](rec|record)\b/.test(location.search);

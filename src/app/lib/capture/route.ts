@@ -14,6 +14,7 @@ import { GEO_LABEL as BOOK_GEO } from '../book';
 import { pinManualStop } from '../travel/pin';
 import { resolvePlace } from '../skills/resolvePlace';
 import { analyzeMood, addMoodSticker, MOOD_TONES, pickRot, geocodeCity } from '../../data/geoStickers';
+import { requestMapFocus } from '../../data/mapFocus';
 
 export type CaptureDomain = 'movie' | 'book' | 'travel' | 'mood';
 export const DOMAIN_LABEL: Record<CaptureDomain, string> = { movie: '电影', book: '书', travel: '行程', mood: '心情 / 随手' };
@@ -116,6 +117,7 @@ export async function runCapture(text: string, imageDataUrl?: string, onPhase?: 
     confirm: async () => {
       const id = 'mood-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);   // 加随机尾，免同毫秒撞 id → React key 重复 / removeMoodSticker 误删两条
       addMoodSticker({ id, lat, lng, text: t, place, color: MOOD_TONES[r.tone].color, rot: pickRot(id), tone: r.tone });
+      if (place !== '此处') requestMapFocus(lng, lat);   // 钉完让地图自动飞到落点 + 放大到便签可见（未定位的西湖兜底不飞）
       return { pinned: true };
     },
   };

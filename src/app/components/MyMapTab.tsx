@@ -10,6 +10,7 @@ import { trackDownload } from '../data/themePlanet';
 import { showcasePhotos } from '../data/photos';
 import { getMoodStickers, addMoodSticker, removeMoodSticker, updateMoodStickerPos, commitStickers, seedStickers, subscribeMood, resolveMoodPlace, pickStickerColor, pickRot } from '../data/geoStickers';
 import { applyOverride, setOverride, commitOverrides, subscribeOverrides } from '../data/markerOverrides';
+import { consumePendingMapFocus, subscribeMapFocus } from '../data/mapFocus';
 import { Plus, X, Play, Pause } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import MapLegend from './MapLegend';
@@ -270,6 +271,15 @@ export default function MyMapTab(_props: MyMapTabProps) {
       })
       .catch(() => { if (alive) setMarkersReady(true); });   // 懒加载失败也认定「已就绪」：宁可少几百点，也不让统计条带永久省略号
     return () => { alive = false; };
+  }, [map]);
+
+  // 记一笔等入口钉完后，自动飞到落点并放大到便签展开可见（zoom≥6.5）。挂载时消费挂起的焦点请求 + 订阅后续实时请求。
+  useEffect(() => {
+    if (!map) return;
+    const fly = (c: { lng: number; lat: number; zoom: number }) => map.flyTo({ center: [c.lng, c.lat], zoom: Math.max(map.getZoom(), c.zoom), duration: 1600 });
+    const pend = consumePendingMapFocus();
+    if (pend) { if (map.isStyleLoaded()) fly(pend); else map.once('idle', () => fly(pend)); }
+    return subscribeMapFocus(fly);
   }, [map]);
 
   useEffect(() => {
