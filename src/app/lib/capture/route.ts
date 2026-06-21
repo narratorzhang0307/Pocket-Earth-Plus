@@ -74,6 +74,11 @@ export async function runCapture(text: string, imageDataUrl?: string, onPhase?: 
   let domain: CaptureDomain; let placeHint = '';
   if (imageDataUrl && !t) { domain = 'movie'; }
   else { const c = await classify(t); domain = c.domain; placeHint = c.place || ''; }
+  // 判域词护栏：用户明说领域（「这部电影」「这本书」）时别让云脑误判 mood。
+  // 截图+文字时判域全靠 classify(t)，而 classify 只收文字、片名只在截图里，文案没具体作品名 → 云脑按「没作品名→mood」回落
+  //（实测「帮我记录下这部电影到我的电影agent中」+截图被判成心情）。收紧成词组（不含裸「电影/书」）避免「电影博物馆」「软件作者」误判。
+  if (/这部(电影|片|剧|影片|纪录片)|这部片子|影片|剧集|看的这部/i.test(t)) domain = 'movie';
+  else if (/这本(书|小说)|这部小说|看的这本/i.test(t)) domain = 'book';
   // 确定性护栏：明显的「去过某地」(出行动词 + 可识别城市) 强制 travel，别被云脑误判成 mood
   if (domain === 'mood' && /去了|去过|到了|到过|玩了|逛了|出差|旅行|刚从.{0,6}回来/.test(t) && geocodeCity(t)) domain = 'travel';
   // 愿望护栏：「想去 + 某地」是还没去的向往，但常被作家名/书名/片名带偏（如「看了波拉尼奥想去圣地亚哥」被判成读书）。
