@@ -35,28 +35,33 @@ export interface CaptureResult {
 const FALLBACK: [number, number] = [120.14, 30.24];   // 杭州西湖（与 MoodRunPage 一致）
 const NO_PIN = async () => ({ pinned: false, reason: 'noDraft' });
 
-// frost 云脑判域：只回 {domain}。失败 / 判不准一律回落 mood（最稳的兜底）。
-async function classifyDomain(text: string): Promise<CaptureDomain> {
+// frost 云脑判域 +（travel 时）抽目的地规范地名：回 {domain, place}。失败 / 判不准一律回落 mood（最稳的兜底）。
+// place 关键：让云脑从整句里只抽出地名（还能借上下文消歧，如「波拉尼奥是智利作家」→ 智利圣地亚哥），
+// 别把整句喂给地理编码器——噪声词会把「圣地亚哥」从智利首都拽到哥伦比亚同名小镇（钉错洲）。
+async function classify(text: string): Promise<{ domain: CaptureDomain; place?: string }> {
   try {
     const r = await fetch('/api/frost-llm', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        system: '你判断用户这句「随手记」最适合钉成哪一类，只输出 JSON {"domain":"..."}。四类：'
+        system: '你判断用户这句「随手记」最适合钉成哪一类，只输出 JSON {"domain":"...","place":"..."}。四类：'
           + 'movie（看了某部电影 / 影片 / 剧集，如"看完奥本海默"）、book（读了某本书 / 某位作者，如"读完百年孤独"）、'
           + 'travel（亲身去过 / 到过 / 玩了某个地方的出行经历，如"上周去了京都""在巴黎待了三天""刚从西藏回来""出差去了东京"——只要是"我去过某地"就归这里）、'
           + 'mood（表达此刻的心情 / 感受 / 随手想法，没有具体作品、也不是某次出行，如"今天有点累""想喝杯咖啡"）。'
-          + '判断顺序：先看有没有具体作品名 → movie / book；再看是不是"亲身去过 / 到过某地" → travel；都不是 → mood。',
+          + '判断顺序：先看有没有具体作品名 → movie / book；再看是不是"亲身去过 / 到过某地" → travel；都不是 → mood。'
+          + 'place 字段：仅当 domain=travel 时，从句子里抽出那个目的地的规范地名（只填地名本身，不要原句的其它字；能判断国家就带上国家消歧，如"智利圣地亚哥""日本京都"），其余情况一律填空字符串 ""。',
         prompt: text, json: true,
       }),
     });
-    if (!r.ok) return 'mood';
+    if (!r.ok) return { domain: 'mood' };
     const d = await r.json();
     const t = typeof d?.text === 'string' ? d.text : '';
     const s = t.indexOf('{'), e = t.lastIndexOf('}');
-    if (s < 0 || e <= s) return 'mood';
-    const dom = ((JSON.parse(t.slice(s, e + 1)) as { domain?: string }).domain || '').trim();
-    return (['movie', 'book', 'travel', 'mood'] as string[]).includes(dom) ? (dom as CaptureDomain) : 'mood';
-  } catch { return 'mood'; }
+    if (s < 0 || e <= s) return { domain: 'mood' };
+    const o = JSON.parse(t.slice(s, e + 1)) as { domain?: string; place?: string };
+    const dom = (o.domain || '').trim();
+    const domain = (['movie', 'book', 'travel', 'mood'] as string[]).includes(dom) ? (dom as CaptureDomain) : 'mood';
+    return { domain, place: typeof o.place === 'string' ? o.place.trim() : '' };
+  } catch { return { domain: 'mood' }; }
 }
 
 // 一句话（+可选截图）→ 判域 → 走对应 agent → 统一 CaptureResult（suggest，confirm 才钉）。
@@ -65,7 +70,9 @@ export async function runCapture(text: string, imageDataUrl?: string, onPhase?: 
   if (!t && !imageDataUrl) return null;
   // 只给截图没文字时默认先认作品（电影封面 / 海报最常见）；否则云脑判域
   onPhase?.('判断这是哪一类', '云脑判域');
-  let domain: CaptureDomain = imageDataUrl && !t ? 'movie' : await classifyDomain(t);
+  let domain: CaptureDomain; let placeHint = '';
+  if (imageDataUrl && !t) { domain = 'movie'; }
+  else { const c = await classify(t); domain = c.domain; placeHint = c.place || ''; }
   // 确定性护栏：明显的「去过某地」(出行动词 + 可识别城市) 强制 travel，别被云脑误判成 mood
   if (domain === 'mood' && /去了|去过|到了|到过|玩了|逛了|出差|旅行|刚从.{0,6}回来/.test(t) && geocodeCity(t)) domain = 'travel';
 
@@ -81,7 +88,9 @@ export async function runCapture(text: string, imageDataUrl?: string, onPhase?: 
   }
   if (domain === 'travel') {
     onPhase?.('定位行程地点', 'resolvePlace 本地→Mapbox');
-    const geo = await resolvePlace(t);
+    // 用云脑抽出的规范地名查坐标，整句兜底——整句会把「看了波拉尼奥想去」这类噪声喂进地理编码器，
+    // 实测会把「圣地亚哥」从智利首都[-70.6,-33.4]拽到哥伦比亚同名小镇[-77,1.1]（钉错洲、目的地方向找不到）。
+    const geo = await resolvePlace(placeHint || t);
     if (!geo) return { domain, ok: false, title: '', where: '', note: '没认出地点，写清城市名再试', confirm: NO_PIN };
     return {
       domain, ok: true, title: geo.place, where: geo.place, note: '记为去过的一段行程',
