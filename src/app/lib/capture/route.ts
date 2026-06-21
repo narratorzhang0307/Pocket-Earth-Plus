@@ -75,8 +75,9 @@ export async function runCapture(text: string, imageDataUrl?: string, onPhase?: 
   else { const c = await classify(t); domain = c.domain; placeHint = c.place || ''; }
   // 确定性护栏：明显的「去过某地」(出行动词 + 可识别城市) 强制 travel，别被云脑误判成 mood
   if (domain === 'mood' && /去了|去过|到了|到过|玩了|逛了|出差|旅行|刚从.{0,6}回来/.test(t) && geocodeCity(t)) domain = 'travel';
-  // 愿望护栏：「想去/打算去/计划去/种草」是还没去的向往、不是去过的行程 → 拉回 mood，钉成「想去」心情便签（而非行程红点）
-  if (domain === 'travel' && /想去|想再去|好想去|超想去|打算去|计划去|准备去|种草|好想.{0,3}走/.test(t)) domain = 'mood';
+  // 愿望护栏：「想去 + 某地」是还没去的向往，但常被作家名/书名/片名带偏（如「看了波拉尼奥想去圣地亚哥」被判成读书）。
+  // 不限源域(book/travel/movie/mood)：只要句中有「想去…」且后面不是「看/吃/玩」这类动作 → 强制 mood，钉成「想去」心情便签。
+  if (/(想去|想再去|好想去|超想去|打算去|计划去|准备去|种草)(?![看吃喝玩做听买找逛])/.test(t)) domain = 'mood';
 
   if (domain === 'movie') {
     const d = await runMovieAgent({ kind: imageDataUrl ? 'image' : 'text', text: t, imageDataUrl }, onPhase ? (p, d) => onPhase(p, d) : undefined);
