@@ -10,10 +10,11 @@ import { trackDownload } from '../data/themePlanet';
 import { showcasePhotos } from '../data/photos';
 import { getMoodStickers, addMoodSticker, removeMoodSticker, updateMoodStickerPos, commitStickers, seedStickers, subscribeMood, resolveMoodPlace, pickStickerColor, pickRot } from '../data/geoStickers';
 import { applyOverride, setOverride, commitOverrides, subscribeOverrides } from '../data/markerOverrides';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Play, Pause } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import MapLegend from './MapLegend';
 import MarkerDetail, { type MarkerDetailData } from './MarkerDetail';
+import { SONG_MARKERS, SONG_MARKER_BY_KEY } from '../data/songMarkers';
 
 // 星球图层数据：把所有「可见星球」的照片摊平成 circle 要素（每点带星球色）
 function planetsToGeoJSON() {
@@ -58,6 +59,10 @@ function buildMarksData() {
 // 照片标记（含 thumb/full，已带散开坐标）—— 放大后做缩略预览用
 const PHOTO_MARKERS = MAP_MARKERS.filter((m) => m.kind === 'photo');
 const PREVIEW_ZOOM = 5.5; // 放大到此缩放以上，照片以缩略图预览
+const SONG_ZOOM = PREVIEW_ZOOM;  // 放大到此缩放以上：城市级音乐点散开成 621 首歌的落点卡片
+const SONG_CARD_MAX = 80;        // 视口内同时渲染的歌曲点上限
+function songHash(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+function songFallbackAudio(i: number): string { return `https://www.soundhelix.com/examples/mp3/SoundHelix-Song-${(i % 8) + 1}.mp3`; }
 
 // 点击标记 → 取详情（用户落点优先，其次静态查找表）
 function resolveDetail(id: string, kind: MarkerKind, label: string): MarkerDetailData | null {
@@ -157,6 +162,43 @@ export default function MyMapTab(_props: MyMapTabProps) {
   const [moodStyle, setMoodStyle] = useState<'color' | 'card'>('color'); // 「+」可产出两种便贴：彩色 / 白卡片
   // 点击标记后的详情弹层
   const [selected, setSelected] = useState<MarkerDetailData | null>(null);
+  // 歌曲落点卡片三态：折叠点 →(点击)展开卡片(songSel) →(点击播放)就地迷你播放器(songPlaying)
+  const [songSel, setSongSel] = useState<string | null>(null);
+  const [songDetail, setSongDetail] = useState(false);
+  const [songPlaying, setSongPlaying] = useState<string | null>(null);
+  const [songPaused, setSongPaused] = useState(false);
+  const [songProg, setSongProg] = useState(0);
+  const [songSrcMode, setSongSrcMode] = useState<'real' | 'fallback'>('real');
+  const songAudioRef = useRef<HTMLAudioElement>(null);
+  // 切歌：设音源 + 自动播；真实源 7s 不可达 → 回落示例音源（沿用 MusicLibraryView 的范式）
+  useEffect(() => {
+    const a = songAudioRef.current;
+    if (!a) return;
+    if (!songPlaying) { a.pause(); a.removeAttribute('src'); a.load(); setSongProg(0); return; }
+    const sm = SONG_MARKER_BY_KEY.get(songPlaying);
+    if (!sm) return;
+    let fell = false;
+    setSongSrcMode('real');
+    a.src = sm.audioUrl || '';
+    a.load();
+    a.play().catch(() => setSongPaused(true));   // 自动播放被拦 → UI 同步成暂停
+    const fallback = () => {
+      if (fell) return; fell = true; setSongSrcMode('fallback');
+      a.src = songFallbackAudio(songHash(sm.trackId) % 8); a.load();
+      a.play().catch(() => setSongPaused(true));
+    };
+    a.addEventListener('error', fallback);
+    const t = window.setTimeout(() => { if (a.readyState < 2) fallback(); }, 7000);
+    return () => { window.clearTimeout(t); a.removeEventListener('error', fallback); };
+  }, [songPlaying]);
+  useEffect(() => {   // 暂停/播放切换
+    const a = songAudioRef.current;
+    if (!a || !songPlaying) return;
+    if (songPaused) a.pause(); else a.play().catch(() => setSongPaused(true));
+  }, [songPaused, songPlaying]);
+  useEffect(() => {   // 关掉「音乐」图层时停播 + 收起
+    if (!visibleKinds.has('music')) { setSongPlaying(null); setSongSel(null); }
+  }, [visibleKinds]);
 
   // 刷新 mapbox 两个源（拖动落点后让底层方块/圆点跟到新位置；不在拖动每帧调用，避免大量要素重建卡顿）
   const refreshMapSources = () => {
@@ -324,11 +366,13 @@ export default function MyMapTab(_props: MyMapTabProps) {
     if (!map) return;
     const apply = () => {
       if (!map.getLayer('mark-layer')) return;
-      map.setFilter('mark-layer', ['in', ['get', 'kind'], ['literal', [...visibleKinds]]] as never);
+      // 放大到街区(≥SONG_ZOOM)时，城市级音乐点交给歌曲落点卡片接管，从 symbol 层排除 music
+      const kinds = [...visibleKinds].filter((k) => !(k === 'music' && zoom >= SONG_ZOOM));
+      map.setFilter('mark-layer', ['in', ['get', 'kind'], ['literal', kinds]] as never);
     };
     if (map.isStyleLoaded()) apply();
     else map.once('idle', apply);
-  }, [map, visibleKinds]);
+  }, [map, visibleKinds, zoom >= SONG_ZOOM]);
 
   // tab1 ⇄ tab2 联动：各 agent 写入用户落点后，实时刷新地球图层数据
   useEffect(() => {
@@ -669,6 +713,67 @@ export default function MyMapTab(_props: MyMapTabProps) {
           return out;
         })()}
 
+        {/* 音乐落点：放大到街区，城市级音乐点散开成 621 首歌的卡片（点击展开介绍 → 再点就地变迷你播放器） */}
+        {map && zoom >= SONG_ZOOM && visibleKinds.has('music') && (() => {
+          const b = map.getBounds();
+          const out: React.ReactNode[] = [];
+          for (const sm of SONG_MARKERS) {
+            if (!b || !b.contains([sm.lng, sm.lat])) continue;
+            const pt = map.project([sm.lng, sm.lat]);
+            const left = `${pt.x}px`; const top = `${pt.y}px`;
+            if (songPlaying === sm.key) {
+              out.push(
+                <div key={sm.key} className="absolute z-[20] -translate-x-1/2 -translate-y-full" style={{ left, top }} onClick={(e) => e.stopPropagation()}>
+                  <div className="w-[212px] bg-black text-[#7CFF6B] border-2 border-black shadow-[2px_2px_0_rgba(0,0,0,0.85)] p-2">
+                    <div className="flex items-center gap-2">
+                      <img src={sm.cover} alt="" className="w-10 h-10 object-cover border border-[#7CFF6B]/40 shrink-0" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.opacity = '0'; }} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] font-bold truncate text-white">{sm.title}</div>
+                        <div className="text-[9px] text-[#7CFF6B]/70 truncate">{sm.artist} · {sm.cityNameZh}{songSrcMode === 'fallback' ? ' · 示例音源' : ''}</div>
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); setSongPaused((p) => !p); }} className="w-7 h-7 border border-[#7CFF6B]/50 flex items-center justify-center shrink-0 active:scale-95" aria-label={songPaused ? '播放' : '暂停'}>
+                        {songPaused ? <Play size={13} fill="currentColor" strokeWidth={0} className="ml-0.5" /> : <Pause size={13} fill="currentColor" strokeWidth={0} />}
+                      </button>
+                    </div>
+                    <div className="mt-2 h-1 bg-[#7CFF6B]/20">
+                      <div className="h-full bg-[#7CFF6B]" style={{ width: `${Math.round(songProg * 100)}%` }} />
+                    </div>
+                    <button onClick={(e) => { e.stopPropagation(); setSongPlaying(null); }} className="mt-1.5 w-full font-pixel text-[8px] tracking-widest text-[#7CFF6B]/60 hover:text-[#7CFF6B] py-0.5">收起 ▾</button>
+                  </div>
+                  <div className="w-2.5 h-2.5 bg-[#00ff88] border border-black rotate-45 mx-auto -mt-[7px]" />
+                </div>
+              );
+            } else if (songSel === sm.key) {
+              out.push(
+                <div key={sm.key} className="absolute z-[19] -translate-x-1/2 -translate-y-full" style={{ left, top }} onClick={(e) => e.stopPropagation()}>
+                  <div className="w-[212px] bg-[#FFFCF2] border-2 border-black shadow-[2px_2px_0_rgba(0,0,0,0.85)] p-2">
+                    <div className="flex items-center justify-between mb-1 gap-1">
+                      <span className="font-pixel text-[7px] tracking-widest text-[#0a8] truncate">◍ {sm.cityNameZh} · {sm.anchorLabel}</span>
+                      <button onClick={(e) => { e.stopPropagation(); setSongSel(null); }} className="text-black/40 hover:text-[#d23b3b] shrink-0" aria-label="收起卡片"><X className="w-3 h-3" strokeWidth={3} /></button>
+                    </div>
+                    <div className="text-[12px] font-bold leading-snug break-words">《{sm.title}》</div>
+                    <div className="text-[10px] text-black/55 mb-1">{sm.artist} · {sm.duration}</div>
+                    <div className={`text-[10px] text-black/75 leading-snug ${songDetail ? 'max-h-[160px] overflow-y-auto' : 'line-clamp-5'}`}>{songDetail ? sm.detail : sm.summary}</div>
+                    <div className="flex gap-1.5 mt-2">
+                      <button onClick={(e) => { e.stopPropagation(); setSongDetail((v) => !v); }} className="flex-1 border border-black bg-white text-[9px] py-1 active:translate-y-px">{songDetail ? '收起' : '完整介绍'}</button>
+                      <button onClick={(e) => { e.stopPropagation(); setSongPlaying(sm.key); setSongPaused(false); setSongDetail(false); }} className="flex-1 flex items-center justify-center gap-1 border border-black bg-[#00ff88] text-black text-[9px] font-bold py-1 active:translate-y-px"><Play size={11} fill="currentColor" strokeWidth={0} /> 播放</button>
+                    </div>
+                  </div>
+                  <div className="w-2.5 h-2.5 bg-[#00ff88] border border-black rotate-45 mx-auto -mt-[7px]" />
+                </div>
+              );
+            } else {
+              out.push(
+                <button key={sm.key} aria-label={`${sm.title} · ${sm.cityNameZh}`} onClick={(e) => { e.stopPropagation(); setSongSel(sm.key); setSongDetail(false); }}
+                  className="absolute z-[16] w-2.5 h-2.5 bg-[#00ff88] border border-black shadow-[1px_1px_0_rgba(0,0,0,0.6)] -translate-x-1/2 -translate-y-1/2 hover:scale-150 transition-transform cursor-pointer"
+                  style={{ left, top }} />
+              );
+            }
+            if (out.length >= SONG_CARD_MAX) break;
+          }
+          return out;
+        })()}
+
         {/* 心情贴：缩小时收成小图钉（和标记点一样钉在地球，不浮动），放大才展开成卡片 */}
         {map && getMoodStickers().map((s) => {
           if (zoom < 5 && centralAngleDeg(mapCenter, [s.lng, s.lat]) > 78) return null;
@@ -766,6 +871,8 @@ export default function MyMapTab(_props: MyMapTabProps) {
       <AnimatePresence>
         {selected && <MarkerDetail data={selected} onClose={() => setSelected(null)} onRemove={(id) => { removeUserMark(id); refreshMapSources(); }} />}
       </AnimatePresence>
+      {/* 歌曲落点迷你播放器共用的单个音频元素（一次只播一首） */}
+      <audio ref={songAudioRef} onTimeUpdate={(e) => { const a = e.currentTarget; setSongProg(a.duration ? a.currentTime / a.duration : 0); }} onEnded={() => { setSongPaused(true); setSongProg(1); }} />
     </div>
   );
 }
