@@ -38,3 +38,7 @@ langchain-master/
 
 # 原始照片源（已处理上 OSS + resource-library，原图不入库）
 照片替换/
+
+# 开发工具配置 / 优化日志：含服务器信息与开发过程记录，不进公开仓库
+.claude/
+OPTIMIZATION-LOG.md
